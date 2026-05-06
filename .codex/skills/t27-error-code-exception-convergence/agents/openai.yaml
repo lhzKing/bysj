@@ -1,4 +1,0 @@
-interface:
-  display_name: "T27 Error Code & Exception Convergence"
-  short_description: "Continue T27 backend error handling convergence"
-  default_prompt: "Continue T27 error-code and exception convergence in d:\bysj. Read docs/progress/MASTER.md first, keep scope narrow, run backend tests, and update progress docs plus the root task table."

@@ -1,4 +1,0 @@
-interface:
-  display_name: "T28 Response Model Factory Convergence"
-  short_description: "Continue T28 ApiResponse cleanup"
-  default_prompt: "Continue T28 response-model factory convergence in d:\\bysj. Read docs/progress/MASTER.md first, keep scope narrow, run backend tests, and update progress docs plus the root task table."

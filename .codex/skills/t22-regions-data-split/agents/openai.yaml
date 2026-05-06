@@ -1,4 +1,0 @@
-interface:
-  display_name: "T22 Regions Data Split"
-  short_description: "Continue T22 shared regions data cleanup"
-  default_prompt: "Continue T22 regions data responsibility split in d:\bysj. Read docs/progress/MASTER.md first, keep scope limited to shared data modules and tests, avoid frontend component edits, and update progress docs plus the root task table."

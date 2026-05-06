@@ -69,3 +69,19 @@ __pycache__/
 *.bak
 *.orig
 .cache/
+
+# Local AI / Codex project skills and generated workflow state
+.codex/
+
+# Thesis / article drafts and binary exports
+文章/
+article/
+
+# AI/spec-driven generated process docs
+# Keep only curated project docs under docs/ tracked explicitly.
+docs/analysis/
+docs/plan/
+docs/specs/
+docs/superpowers/
+docs/design/
+docs/progress/phase-*.md
