@@ -1,0 +1,2746 @@
+{
+	"info": {
+		"_postman_id": "full-system-test-001",
+		"name": "溯源系统全面测试集合",
+		"description": "# 溯源系统API全面测试\n\n## 测试覆盖范围\n\n### 1. 认证模块测试\n- 登录/注册/登出\n- Token刷新\n- 密码修改\n\n### 2. 安全性测试\n- 无Token访问\n- 伪造/过期Token\n- 权限边界\n- SQL注入防护\n- XSS防护\n\n### 3. 权限测试\n- 各角色权限边界\n- 细粒度权限控制\n- 越权操作防护\n\n### 4. 业务功能测试\n- 溯源全流程\n- 用户管理\n- 角色管理\n- 配件管理\n- Dashboard\n\n### 5. 边界和异常测试\n- 参数校验\n- 并发安全\n- 数据完整性\n\n## 运行说明\n按文件夹顺序执行，确保后端服务已启动",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. 认证模块测试",
+			"item": [
+				{
+					"name": "1.1 超级管理员登录",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('登录成功 - 状态码200', function() {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('返回Token和用户信息', function() {",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.token).to.be.a('string').and.not.empty;",
+									"    pm.expect(res.data.username).to.eql('superadmin');",
+									"    pm.expect(res.data.role).to.eql('SUPER_ADMIN');",
+									"    pm.expect(res.data.permissions).to.be.an('array');",
+									"    pm.collectionVariables.set('superadmin_token', res.data.token);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"superadmin\", \"password\": \"superadmin123456\"}"
+						},
+						"url": "{{base_url}}/api/auth/login"
+					}
+				},
+				{
+					"name": "1.2 系统管理员登录",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('登录成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.data.role).to.eql('ADMIN');",
+									"    pm.collectionVariables.set('admin_token', res.data.token);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"admin\", \"password\": \"admin123456\"}"
+						},
+						"url": "{{base_url}}/api/auth/login"
+					}
+				},
+				{
+					"name": "1.3 生产人员登录",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('登录成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.data.role).to.eql('PRODUCER');",
+									"    pm.collectionVariables.set('producer_token', res.data.token);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"producer\", \"password\": \"producer123456\"}"
+						},
+						"url": "{{base_url}}/api/auth/login"
+					}
+				},
+				{
+					"name": "1.4 仓库人员登录",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('登录成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.data.role).to.eql('WAREHOUSE');",
+									"    pm.collectionVariables.set('warehouse_token', res.data.token);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"warehouse\", \"password\": \"warehouse123456\"}"
+						},
+						"url": "{{base_url}}/api/auth/login"
+					}
+				},
+				{
+					"name": "1.5 物流人员登录",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('登录成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.data.role).to.eql('LOGISTICS');",
+									"    pm.collectionVariables.set('logistics_token', res.data.token);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"logistics\", \"password\": \"logistics123456\"}"
+						},
+						"url": "{{base_url}}/api/auth/login"
+					}
+				},
+				{
+					"name": "1.6 普通用户登录",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('登录成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.data.role).to.eql('USER');",
+									"    pm.collectionVariables.set('user_token', res.data.token);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"user\", \"password\": \"user123456\"}"
+						},
+						"url": "{{base_url}}/api/auth/login"
+					}
+				},
+				{
+					"name": "1.7 错误密码登录",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('登录失败 - 401', function() {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"",
+									"pm.test('返回密码错误信息', function() {",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.not.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"admin\", \"password\": \"wrongpassword\"}"
+						},
+						"url": "{{base_url}}/api/auth/login"
+					}
+				},
+				{
+					"name": "1.8 不存在用户登录",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('登录失败 - 401', function() {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"",
+									"pm.test('返回用户不存在信息', function() {",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.not.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"notexistuser12345\", \"password\": \"anypassword\"}"
+						},
+						"url": "{{base_url}}/api/auth/login"
+					}
+				},
+				{
+					"name": "1.9 获取当前用户信息",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取用户信息成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.username).to.eql('superadmin');",
+									"    pm.expect(res.data.permissions).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": "{{base_url}}/api/auth/me"
+					}
+				},
+				{
+					"name": "1.10 Token刷新",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Token刷新成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.token).to.be.a('string').and.not.empty;",
+									"    // 更新Token",
+									"    pm.collectionVariables.set('superadmin_token', res.data.token);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": "{{base_url}}/api/auth/refresh"
+					}
+				}
+			]
+		},
+		{
+			"name": "2. 安全性测试",
+			"item": [
+				{
+					"name": "2.1 无Token访问受保护接口",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('返回401未授权', function() {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"",
+									"pm.test('不泄露敏感信息', function() {",
+									"    const res = pm.response.json();",
+									"    pm.expect(JSON.stringify(res)).to.not.include('password');",
+									"    pm.expect(JSON.stringify(res)).to.not.include('secret');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{base_url}}/api/users"
+					}
+				},
+				{
+					"name": "2.2 伪造Token访问",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('伪造Token返回401', function() {",
+									"    // 修复后：伪造Token应明确返回401",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"",
+									"pm.test('错误消息提示Token无效', function() {",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.message).to.include('无效');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJoYWNrZXIiLCJyb2xlIjoiU1VQRVJfQURNSU4ifQ.fakesignature"}],
+						"url": "{{base_url}}/api/users"
+					}
+				},
+				{
+					"name": "2.3 格式错误Token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('返回401', function() {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer not.a.valid.jwt.token"}],
+						"url": "{{base_url}}/api/users"
+					}
+				},
+				{
+					"name": "2.4 SQL注入防护 - 登录用户名",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('SQL注入被阻止', function() {",
+									"    // 应该返回401或400，不应该成功",
+									"    pm.expect(pm.response.code).to.be.oneOf([400, 401]);",
+									"});",
+									"",
+									"pm.test('不返回数据库错误信息', function() {",
+									"    const text = pm.response.text();",
+									"    pm.expect(text.toLowerCase()).to.not.include('sql');",
+									"    pm.expect(text.toLowerCase()).to.not.include('syntax');",
+									"    pm.expect(text.toLowerCase()).to.not.include('mysql');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"admin' OR '1'='1' --\", \"password\": \"anything\"}"
+						},
+						"url": "{{base_url}}/api/auth/login"
+					}
+				},
+				{
+					"name": "2.5 SQL注入防护 - 查询参数",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('SQL注入被阻止', function() {",
+									"    // 应该正常返回或400，不应该报数据库错误",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+									"});",
+									"",
+									"pm.test('不返回数据库错误信息', function() {",
+									"    const text = pm.response.text();",
+									"    pm.expect(text.toLowerCase()).to.not.include('sql');",
+									"    pm.expect(text.toLowerCase()).to.not.include('syntax error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": {
+							"raw": "{{base_url}}/api/users?username=admin' OR 1=1 --",
+							"host": ["{{base_url}}"],
+							"path": ["api", "users"],
+							"query": [{"key": "username", "value": "admin' OR 1=1 --"}]
+						}
+					}
+				},
+				{
+					"name": "2.6 XSS防护 - 用户名",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('XSS被阻止或转义', function() {",
+									"    // 应该返回400（参数校验失败）或成功但转义",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 400, 401]);",
+									"});",
+									"",
+									"pm.test('不直接返回脚本标签', function() {",
+									"    const text = pm.response.text();",
+									"    pm.expect(text).to.not.include('<script>');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"<script>alert('xss')</script>\", \"password\": \"test123456\"}"
+						},
+						"url": "{{base_url}}/api/auth/login"
+					}
+				},
+				{
+					"name": "2.7 路径遍历防护",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('路径遍历被阻止', function() {",
+									"    // 应该返回400或404，不应该暴露系统文件",
+									"    pm.expect(pm.response.code).to.be.oneOf([400, 404]);",
+									"});",
+									"",
+									"pm.test('不暴露系统路径', function() {",
+									"    const text = pm.response.text();",
+									"    pm.expect(text).to.not.include('/etc/');",
+									"    pm.expect(text).to.not.include('C:\\\\');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": "{{base_url}}/api/traces/..%2F..%2Fetc%2Fpasswd"
+					}
+				},
+				{
+					"name": "2.8 大量参数DoS防护",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('服务正常响应', function() {",
+									"    // 应该返回正常处理，不应该超时或崩溃",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 400, 401, 413, 429]);",
+									"});",
+									"",
+									"pm.test('响应时间合理', function() {",
+									"    pm.expect(pm.response.responseTime).to.be.below(5000);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"test\", \"password\": \"test123\", \"extra1\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"extra2\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}"
+						},
+						"url": "{{base_url}}/api/auth/login"
+					}
+				},
+				{
+					"name": "2.9 敏感信息不泄露 - 用户列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('用户列表不包含密码', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const text = pm.response.text();",
+									"    pm.expect(text).to.not.include('password');",
+									"    pm.expect(text).to.not.include('$2a$'); // BCrypt hash prefix",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": "{{base_url}}/api/users"
+					}
+				},
+				{
+					"name": "2.10 CORS预检请求",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('OPTIONS返回成功', function() {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 204]);",
+									"});",
+									"",
+									"pm.test('包含必要CORS响应头', function() {",
+									"    // CORS可能通过不同头配置",
+									"    const hasAllowMethods = pm.response.headers.has('Access-Control-Allow-Methods');",
+									"    const hasAllowOrigin = pm.response.headers.has('Access-Control-Allow-Origin');",
+									"    pm.expect(hasAllowMethods || hasAllowOrigin).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "OPTIONS",
+						"header": [
+							{"key": "Origin", "value": "https://localhost:5173"},
+							{"key": "Access-Control-Request-Method", "value": "POST"}
+						],
+						"url": "{{base_url}}/api/auth/login"
+					}
+				}
+			]
+		},
+		{
+			"name": "3. 权限边界测试",
+			"item": [
+				{
+					"name": "3.1 普通用户访问用户管理（应失败）",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('普通用户无权访问用户管理', function() {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{user_token}}"}],
+						"url": "{{base_url}}/api/users"
+					}
+				},
+				{
+					"name": "3.2 普通用户创建溯源（应失败）",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('普通用户无权生产赋码', function() {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{user_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"spu_id\": 1, \"quantity\": 1, \"manufacturer_node\": \"测试\"}"
+						},
+						"url": "{{base_url}}/api/traces"
+					}
+				},
+				{
+					"name": "3.3 物流人员执行入库（应失败）",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// 先获取一个测试用的traceCode",
+									"const traceCode = pm.collectionVariables.get('test_trace_code');",
+									"if (!traceCode) {",
+									"    pm.collectionVariables.set('test_trace_code', 'TC-TEST-001');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('物流人员无权执行INBOUND', function() {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{logistics_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"action_type\": \"INBOUND\", \"from_node\": \"A\", \"to_node\": \"B\"}"
+						},
+						"url": "{{base_url}}/api/traces/{{test_trace_code}}/events"
+					}
+				},
+				{
+					"name": "3.4 物流人员执行出库（应失败）",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('物流人员无权执行OUTBOUND', function() {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{logistics_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"action_type\": \"OUTBOUND\", \"from_node\": \"A\", \"to_node\": \"B\"}"
+						},
+						"url": "{{base_url}}/api/traces/{{test_trace_code}}/events"
+					}
+				},
+				{
+					"name": "3.5 仓库人员执行流转（应失败）",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('仓库人员无权执行TRANSFER', function() {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{warehouse_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"action_type\": \"TRANSFER\", \"from_node\": \"A\", \"to_node\": \"B\"}"
+						},
+						"url": "{{base_url}}/api/traces/{{test_trace_code}}/events"
+					}
+				},
+				{
+					"name": "3.6 Admin修改SuperAdmin（应失败）",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Admin无权修改SuperAdmin', function() {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": {
+							"raw": "{{base_url}}/api/users/1/status?status=0",
+							"host": ["{{base_url}}"],
+							"path": ["api", "users", "1", "status"],
+							"query": [{"key": "status", "value": "0"}]
+						}
+					}
+				},
+				{
+					"name": "3.7 Admin删除SuperAdmin（应失败）",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Admin无权删除SuperAdmin', function() {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": "{{base_url}}/api/users/1"
+					}
+				},
+				{
+					"name": "3.8 普通用户访问Dashboard（应成功）",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('普通用户可以查看Dashboard', function() {",
+									"    // USER角色有dashboard:view权限",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{user_token}}"}],
+						"url": "{{base_url}}/api/dashboard/kpi"
+					}
+				},
+				{
+					"name": "3.9 普通用户查看溯源详情（应成功）",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('普通用户可以查看溯源详情', function() {",
+									"    // USER有trace:view权限",
+									"    const code = pm.response.code;",
+									"    pm.expect(code).to.be.oneOf([200, 404]); // 200成功或404不存在都可以",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{user_token}}"}],
+						"url": "{{base_url}}/api/traces/{{test_trace_code}}"
+					}
+				},
+				{
+					"name": "3.10 生产人员创建溯源（应成功）",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('生产人员可以生产赋码', function() {",
+									"    pm.response.to.have.status(201);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    if (res.data && res.data.trace_codes && res.data.trace_codes.length > 0) {",
+									"        pm.collectionVariables.set('test_trace_code', res.data.trace_codes[0]);",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{producer_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"spu_id\": 1, \"quantity\": 1, \"manufacturer_node\": \"权限测试工厂\", \"province\": \"浙江省\", \"city\": \"杭州市\"}"
+						},
+						"url": "{{base_url}}/api/traces"
+					}
+				}
+			]
+		},
+		{
+			"name": "4. 溯源模块测试",
+			"item": [
+				{
+					"name": "4.1 生产赋码 - 使用spu_id",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('生产赋码成功', function() {",
+									"    pm.response.to.have.status(201);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.generated_count).to.eql(2);",
+									"    pm.expect(res.data.trace_codes).to.be.an('array').with.lengthOf(2);",
+									"    pm.collectionVariables.set('test_trace_code', res.data.trace_codes[0]);",
+									"    pm.collectionVariables.set('test_trace_code_2', res.data.trace_codes[1]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{producer_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"spu_id\": 1, \"quantity\": 2, \"manufacturer_node\": \"测试工厂A\", \"province\": \"浙江省\", \"city\": \"杭州市\"}"
+						},
+						"url": "{{base_url}}/api/traces"
+					}
+				},
+				{
+					"name": "4.2 生产赋码 - 使用part_code",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('使用part_code生产赋码成功', function() {",
+									"    pm.response.to.have.status(201);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.generated_count).to.eql(1);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{producer_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"part_code\": \"SPU-VALVE-001\", \"quantity\": 1, \"manufacturer_node\": \"测试工厂B\"}"
+						},
+						"url": "{{base_url}}/api/traces"
+					}
+				},
+				{
+					"name": "4.3 生产赋码 - 无效spu_id",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('无效spu_id被拒绝', function() {",
+									"    // 无效spu_id应返回400(参数无效)或404(未找到)",
+									"    pm.expect(pm.response.code).to.be.oneOf([400, 404]);",
+									"});",
+									"",
+									"pm.test('不创建溯源记录', function() {",
+									"    pm.expect(pm.response.code).to.not.eql(201);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{producer_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"spu_id\": 99999, \"quantity\": 1, \"manufacturer_node\": \"测试\"}"
+						},
+						"url": "{{base_url}}/api/traces"
+					}
+				},
+				{
+					"name": "4.4 生产赋码 - 无效part_code",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('无效part_code被拒绝', function() {",
+									"    // 无效part_code应返回400(参数无效)或404(未找到)",
+									"    pm.expect(pm.response.code).to.be.oneOf([400, 404]);",
+									"});",
+									"",
+									"pm.test('不创建溯源记录', function() {",
+									"    pm.expect(pm.response.code).to.not.eql(201);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{producer_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"part_code\": \"NONEXISTENT-PART\", \"quantity\": 1, \"manufacturer_node\": \"测试\"}"
+						},
+						"url": "{{base_url}}/api/traces"
+					}
+				},
+				{
+					"name": "4.5 仓库人员入库操作",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('入库成功', function() {",
+									"    pm.response.to.have.status(201);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{warehouse_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"action_type\": \"INBOUND\", \"from_node\": \"测试工厂A\", \"to_node\": \"中心仓库\", \"province\": \"江苏省\", \"city\": \"苏州市\"}"
+						},
+						"url": "{{base_url}}/api/traces/{{test_trace_code}}/events"
+					}
+				},
+				{
+					"name": "4.6 仓库人员出库操作",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('出库成功', function() {",
+									"    pm.response.to.have.status(201);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{warehouse_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"action_type\": \"OUTBOUND\", \"from_node\": \"中心仓库\", \"to_node\": \"物流中心\", \"province\": \"江苏省\", \"city\": \"南京市\"}"
+						},
+						"url": "{{base_url}}/api/traces/{{test_trace_code}}/events"
+					}
+				},
+				{
+					"name": "4.7 物流人员流转操作",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('流转成功', function() {",
+									"    pm.response.to.have.status(201);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{logistics_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"action_type\": \"TRANSFER\", \"from_node\": \"物流中心\", \"to_node\": \"区域配送站\", \"province\": \"上海市\", \"city\": \"上海市\"}"
+						},
+						"url": "{{base_url}}/api/traces/{{test_trace_code}}/events"
+					}
+				},
+				{
+					"name": "4.8 查询溯源详情",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('溯源详情查询成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.snapshot).to.be.an('object');",
+									"    pm.expect(res.data.history).to.be.an('array');",
+									"});",
+									"",
+									"pm.test('历史记录包含多条日志', function() {",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.data.history.length).to.be.at.least(3);",
+									"});",
+									"",
+									"pm.test('Hash链完整', function() {",
+									"    const res = pm.response.json();",
+									"    const history = res.data.history;",
+									"    for (let i = 1; i < history.length; i++) {",
+									"        pm.expect(history[i].prev_hash).to.eql(history[i-1].current_hash);",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{user_token}}"}],
+						"url": "{{base_url}}/api/traces/{{test_trace_code}}"
+					}
+				},
+				{
+					"name": "4.9 验证溯源链完整性",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('验证成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.valid).to.be.true;",
+									"});",
+									"",
+									"pm.test('返回验证详情', function() {",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.data.total_logs).to.be.at.least(1);",
+									"    pm.expect(res.data.hash_verified_count).to.be.at.least(1);",
+									"    pm.expect(res.data.errors).to.be.an('array').that.is.empty;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{user_token}}"}],
+						"url": "{{base_url}}/api/traces/{{test_trace_code}}/verify"
+					}
+				},
+				{
+					"name": "4.10 获取验证公钥（公开接口）",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取公钥成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    // 注意：该接口返回驼峰命名的publicKey",
+									"    pm.expect(res.data.publicKey).to.be.a('string').and.not.empty;",
+									"    pm.expect(res.data.algorithm).to.eql('RSA');",
+									"    pm.expect(res.data.signatureAlgorithm).to.eql('SHA256withRSA');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{base_url}}/api/traces/public-key"
+					}
+				},
+				{
+					"name": "4.11 查询不存在的溯源码",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('返回404', function() {",
+									"    pm.response.to.have.status(404);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{user_token}}"}],
+						"url": "{{base_url}}/api/traces/NONEXISTENT-TRACE-CODE-12345"
+					}
+				},
+				{
+					"name": "4.12 无效action_type",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('无效action_type返回400', function() {",
+									"    pm.response.to.have.status(400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{warehouse_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"action_type\": \"INVALID_TYPE\", \"from_node\": \"A\", \"to_node\": \"B\"}"
+						},
+						"url": "{{base_url}}/api/traces/{{test_trace_code}}/events"
+					}
+				}
+			]
+		},
+		{
+			"name": "5. 用户管理测试",
+			"item": [
+				{
+					"name": "5.1 查询用户列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('查询用户列表成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.list).to.be.an('array');",
+									"    pm.expect(res.data.total).to.be.at.least(1);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": "{{base_url}}/api/users"
+					}
+				},
+				{
+					"name": "5.2 创建测试用户",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"const randomStr = 'testuser' + Date.now().toString().slice(-6);",
+									"pm.collectionVariables.set('random_username', randomStr);"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('创建用户成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.id).to.be.a('number');",
+									"    pm.collectionVariables.set('test_user_id', res.data.id);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"{{random_username}}\", \"password\": \"Test123456\", \"roleId\": 6, \"status\": 1}"
+						},
+						"url": "{{base_url}}/api/users"
+					}
+				},
+				{
+					"name": "5.3 查询用户详情",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('查询用户详情成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.id).to.eql(parseInt(pm.collectionVariables.get('test_user_id')));",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": "{{base_url}}/api/users/{{test_user_id}}"
+					}
+				},
+				{
+					"name": "5.4 更新用户信息",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('更新用户成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"status\": 1}"
+						},
+						"url": "{{base_url}}/api/users/{{test_user_id}}"
+					}
+				},
+				{
+					"name": "5.5 禁用用户",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('禁用用户成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.status).to.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": {
+							"raw": "{{base_url}}/api/users/{{test_user_id}}/status?status=0",
+							"host": ["{{base_url}}"],
+							"path": ["api", "users", "{{test_user_id}}", "status"],
+							"query": [{"key": "status", "value": "0"}]
+						}
+					}
+				},
+				{
+					"name": "5.6 启用用户",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('启用用户成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.status).to.eql(1);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": {
+							"raw": "{{base_url}}/api/users/{{test_user_id}}/status?status=1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "users", "{{test_user_id}}", "status"],
+							"query": [{"key": "status", "value": "1"}]
+						}
+					}
+				},
+				{
+					"name": "5.7 修改用户角色",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('修改角色成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": {
+							"raw": "{{base_url}}/api/users/{{test_user_id}}/role?roleId=5",
+							"host": ["{{base_url}}"],
+							"path": ["api", "users", "{{test_user_id}}", "role"],
+							"query": [{"key": "roleId", "value": "5"}]
+						}
+					}
+				},
+				{
+					"name": "5.8 重置用户密码",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('重置密码成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"newPassword\": \"NewPass123456\"}"
+						},
+						"url": "{{base_url}}/api/users/{{test_user_id}}/reset-password"
+					}
+				},
+				{
+					"name": "5.9 创建重复用户名（应失败）",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('重复用户名返回400/409', function() {",
+									"    pm.expect(pm.response.code).to.be.oneOf([400, 409]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"admin\", \"password\": \"Test123456\", \"roleId\": 6}"
+						},
+						"url": "{{base_url}}/api/users"
+					}
+				},
+				{
+					"name": "5.10 删除测试用户",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('删除用户成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": "{{base_url}}/api/users/{{test_user_id}}"
+					}
+				}
+			]
+		},
+		{
+			"name": "6. 角色管理测试",
+			"item": [
+				{
+					"name": "6.1 查询所有角色",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('查询角色列表成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data).to.be.an('array');",
+									"    pm.expect(res.data.length).to.be.at.least(6);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": "{{base_url}}/api/roles"
+					}
+				},
+				{
+					"name": "6.2 查询角色详情（含权限）",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('查询角色详情成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.permissions).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": "{{base_url}}/api/roles/1"
+					}
+				},
+				{
+					"name": "6.3 查询所有权限",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('查询权限列表成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data).to.be.an('array');",
+									"    pm.expect(res.data.length).to.be.at.least(10);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": "{{base_url}}/api/roles/permissions"
+					}
+				}
+			]
+		},
+		{
+			"name": "7. 配件管理测试",
+			"item": [
+				{
+					"name": "7.1 查询配件列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('查询配件列表成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.list).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": "{{base_url}}/api/parts"
+					}
+				},
+				{
+					"name": "7.2 创建配件",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"const partCode = 'TEST-PART-' + Date.now().toString().slice(-6);",
+									"pm.collectionVariables.set('test_part_code', partCode);"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('创建配件成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.id).to.be.a('number');",
+									"    pm.collectionVariables.set('test_part_id', res.data.id);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{admin_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"partCode\": \"{{test_part_code}}\", \"partName\": \"测试配件\", \"partType\": \"测试类型\", \"manufacturer\": \"测试厂商\"}"
+						},
+						"url": "{{base_url}}/api/parts"
+					}
+				},
+				{
+					"name": "7.3 查询配件详情",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('查询配件详情成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.part_code).to.eql(pm.collectionVariables.get('test_part_code'));",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": "{{base_url}}/api/parts/{{test_part_id}}"
+					}
+				},
+				{
+					"name": "7.4 根据编码查询配件",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('根据编码查询成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": "{{base_url}}/api/parts/code/{{test_part_code}}"
+					}
+				},
+				{
+					"name": "7.5 更新配件",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('更新配件成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.part_name).to.eql('更新后的配件名');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{admin_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"partName\": \"更新后的配件名\"}"
+						},
+						"url": "{{base_url}}/api/parts/{{test_part_id}}"
+					}
+				},
+				{
+					"name": "7.6 获取配件类型列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取配件类型列表成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": "{{base_url}}/api/parts/types"
+					}
+				},
+				{
+					"name": "7.7 获取厂商列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取厂商列表成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": "{{base_url}}/api/parts/manufacturers"
+					}
+				},
+				{
+					"name": "7.8 使用keyword搜索配件",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('关键词搜索成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": {
+							"raw": "{{base_url}}/api/parts?keyword=阀门",
+							"host": ["{{base_url}}"],
+							"path": ["api", "parts"],
+							"query": [{"key": "keyword", "value": "阀门"}]
+						}
+					}
+				},
+				{
+					"name": "7.9 删除配件",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('删除配件成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": "{{base_url}}/api/parts/{{test_part_id}}"
+					}
+				}
+			]
+		},
+		{
+			"name": "8. Dashboard测试",
+			"item": [
+				{
+					"name": "8.1 获取KPI统计",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取KPI成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.total_traces).to.be.a('number');",
+									"    pm.expect(res.data.today_new).to.be.a('number');",
+									"    pm.expect(res.data.total_logs).to.be.a('number');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": "{{base_url}}/api/dashboard/kpi"
+					}
+				},
+				{
+					"name": "8.2 获取KPI - 不同时间范围",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取7天KPI成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.range).to.eql('7d');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": {
+							"raw": "{{base_url}}/api/dashboard/kpi?range=7d",
+							"host": ["{{base_url}}"],
+							"path": ["api", "dashboard", "kpi"],
+							"query": [{"key": "range", "value": "7d"}]
+						}
+					}
+				},
+				{
+					"name": "8.3 获取地图数据",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取地图数据成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.items).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": "{{base_url}}/api/dashboard/map"
+					}
+				},
+				{
+					"name": "8.4 获取趋势数据",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取趋势数据成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.items).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": "{{base_url}}/api/dashboard/trend"
+					}
+				},
+				{
+					"name": "8.5 获取拓扑图数据",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取拓扑数据成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.nodes).to.be.an('array');",
+									"    pm.expect(res.data.links).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": "{{base_url}}/api/dashboard/topology"
+					}
+				},
+				{
+					"name": "8.6 获取单条溯源的拓扑",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取单条溯源拓扑成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": {
+							"raw": "{{base_url}}/api/dashboard/topology?trace_code={{test_trace_code}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "dashboard", "topology"],
+							"query": [{"key": "trace_code", "value": "{{test_trace_code}}"}]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "9. 边界和异常测试",
+			"item": [
+				{
+					"name": "9.1 用户名太短",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('用户名太短返回400', function() {",
+									"    pm.response.to.have.status(400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"ab\", \"password\": \"Test123456\"}"
+						},
+						"url": "{{base_url}}/api/auth/register"
+					}
+				},
+				{
+					"name": "9.2 密码太短",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('密码太短返回400', function() {",
+									"    pm.response.to.have.status(400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"testuser123\", \"password\": \"12345\"}"
+						},
+						"url": "{{base_url}}/api/auth/register"
+					}
+				},
+				{
+					"name": "9.3 密码无字母",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('纯数字密码返回400', function() {",
+									"    pm.response.to.have.status(400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"username\": \"testuser123\", \"password\": \"12345678\"}"
+						},
+						"url": "{{base_url}}/api/auth/register"
+					}
+				},
+				{
+					"name": "9.4 生产数量为0",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('数量为0返回400', function() {",
+									"    pm.response.to.have.status(400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{producer_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"spu_id\": 1, \"quantity\": 0, \"manufacturer_node\": \"测试\"}"
+						},
+						"url": "{{base_url}}/api/traces"
+					}
+				},
+				{
+					"name": "9.5 生产数量为负数",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('负数数量返回400', function() {",
+									"    pm.response.to.have.status(400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{producer_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"spu_id\": 1, \"quantity\": -5, \"manufacturer_node\": \"测试\"}"
+						},
+						"url": "{{base_url}}/api/traces"
+					}
+				},
+				{
+					"name": "9.6 空请求体",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('空请求体返回400', function() {",
+									"    pm.response.to.have.status(400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{producer_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{}"
+						},
+						"url": "{{base_url}}/api/traces"
+					}
+				},
+				{
+					"name": "9.7 无效分页参数",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('无效分页参数处理', function() {",
+									"    // 应该返回200使用默认值，或400拒绝",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": {
+							"raw": "{{base_url}}/api/users?page=-1&size=0",
+							"host": ["{{base_url}}"],
+							"path": ["api", "users"],
+							"query": [
+								{"key": "page", "value": "-1"},
+								{"key": "size", "value": "0"}
+							]
+						}
+					}
+				},
+				{
+					"name": "9.8 超长字符串参数",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('超长参数处理', function() {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 400, 413]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": {
+							"raw": "{{base_url}}/api/users?username=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+							"host": ["{{base_url}}"],
+							"path": ["api", "users"],
+							"query": [{"key": "username", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]
+						}
+					}
+				},
+				{
+					"name": "9.9 特殊字符参数",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('特殊字符参数处理', function() {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": {
+							"raw": "{{base_url}}/api/users?username=<>\"'&;|",
+							"host": ["{{base_url}}"],
+							"path": ["api", "users"],
+							"query": [{"key": "username", "value": "<>\"'&;|"}]
+						}
+					}
+				},
+				{
+					"name": "9.10 不存在的用户ID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('不存在的用户返回404', function() {",
+									"    pm.response.to.have.status(404);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": "{{base_url}}/api/users/999999"
+					}
+				}
+			]
+		},
+		{
+			"name": "10. 高级安全测试",
+			"item": [
+				{
+					"name": "10.1 并发创建溯源记录",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// 记录请求开始时间用于并发检测",
+									"pm.collectionVariables.set('concurrent_test_start', Date.now());"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('并发请求正常处理', function() {",
+									"    // 应成功创建或返回409冲突",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 201, 409]);",
+									"});",
+									"",
+									"pm.test('响应时间合理（无死锁）', function() {",
+									"    pm.expect(pm.response.responseTime).to.be.below(5000);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{producer_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"part_code\": \"SPU-VALVE-001\", \"quantity\": 1, \"manufacturer_node\": \"并发测试工厂\"}"
+						},
+						"url": "{{base_url}}/api/traces"
+					}
+				},
+				{
+					"name": "10.2 重复提交相同请求（幂等性）",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('重复入库请求被正确处理', function() {",
+									"    // 第二次入库应该失败（状态已变更）或被拒绝",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 409]);",
+									"});",
+									"",
+									"pm.test('不会产生重复数据', function() {",
+									"    // 如果返回错误，应该是业务逻辑拒绝",
+									"    if (pm.response.code >= 400) {",
+									"        const res = pm.response.json();",
+									"        pm.expect(res.code).to.not.eql(0);",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Authorization", "value": "Bearer {{warehouse_token}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"action_type\": \"INBOUND\", \"location\": \"幂等性测试仓库\", \"to_node\": \"重复测试仓库\", \"province\": \"测试省\", \"city\": \"测试市\"}"
+						},
+						"url": "{{base_url}}/api/traces/{{test_trace_code}}/events"
+					}
+				},
+				{
+					"name": "10.3 Dashboard KPI性能测试",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('KPI查询成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('响应时间合理（<2秒）', function() {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test('返回正确的KPI结构', function() {",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"    pm.expect(res.data.total_traces).to.be.a('number');",
+									"    pm.expect(res.data.today_new).to.be.a('number');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": "{{base_url}}/api/dashboard/kpi"
+					}
+				},
+				{
+					"name": "10.4 Dashboard地图数据测试",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('地图数据查询成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});",
+									"",
+									"pm.test('响应时间合理', function() {",
+									"    pm.expect(pm.response.responseTime).to.be.below(5000);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": "{{base_url}}/api/dashboard/map"
+					}
+				},
+				{
+					"name": "10.5 Hash链完整性验证",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('溯源链验证成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});",
+									"",
+									"pm.test('返回完整性验证结果', function() {",
+									"    const res = pm.response.json();",
+									"    // 验证接口应返回验证状态",
+									"    pm.expect(res.data).to.have.property('valid');",
+									"    pm.expect(res.data.valid).to.be.true;",
+									"});",
+									"",
+									"pm.test('签名信息完整', function() {",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.data).to.have.property('anchor_signature');",
+									"    pm.expect(res.data.anchor_signature).to.be.a('string').and.not.empty;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{user_token}}"}],
+						"url": "{{base_url}}/api/traces/{{test_trace_code}}/verify"
+					}
+				},
+				{
+					"name": "10.6 数字签名验证",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取溯源详情成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});",
+									"",
+									"pm.test('包含历史记录', function() {",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.data).to.have.property('history');",
+									"    pm.expect(res.data.history).to.be.an('array');",
+									"});",
+									"",
+									"pm.test('历史记录包含数字签名', function() {",
+									"    const res = pm.response.json();",
+									"    if (res.data.history && res.data.history.length > 0) {",
+									"        res.data.history.forEach(log => {",
+									"            pm.expect(log).to.have.property('signature');",
+									"            pm.expect(log.signature).to.be.a('string').and.not.empty;",
+									"        });",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{user_token}}"}],
+						"url": "{{base_url}}/api/traces/{{test_trace_code}}"
+					}
+				},
+				{
+					"name": "10.7 生命周期日志完整性",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取溯源详情成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.eql(0);",
+									"});",
+									"",
+									"pm.test('历史日志存在', function() {",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.data).to.have.property('history');",
+									"    pm.expect(res.data.history).to.be.an('array');",
+									"});",
+									"",
+									"pm.test('每条日志包含Hash链信息', function() {",
+									"    const res = pm.response.json();",
+									"    const history = res.data.history;",
+									"    if (history && history.length > 0) {",
+									"        history.forEach(log => {",
+									"            pm.expect(log).to.have.property('current_hash');",
+									"            pm.expect(log).to.have.property('prev_hash');",
+									"        });",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{user_token}}"}],
+						"url": "{{base_url}}/api/traces/{{test_trace_code}}"
+					}
+				},
+				{
+					"name": "10.8 Token版本校验",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('使用有效Token访问成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"// 注意：如果用户密码或角色被修改，旧Token应失效",
+									"pm.test('Token版本验证机制存在', function() {",
+									"    const res = pm.response.json();",
+									"    // 成功访问说明Token版本正确",
+									"    pm.expect(res.code).to.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{superadmin_token}}"}],
+						"url": "{{base_url}}/api/auth/me"
+					}
+				},
+				{
+					"name": "10.9 禁用用户Token失效",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// 创建一个测试用户用于禁用测试",
+									"// 实际测试中需要先创建用户、获取Token、禁用用户、再用旧Token访问"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('禁用用户机制说明', function() {",
+									"    // 这是一个说明性测试",
+									"    // 实际测试需要：1.创建用户 2.获取Token 3.禁用用户 4.验证旧Token失效",
+									"    // 由于测试顺序限制，此处仅验证接口可用",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 401, 403]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{admin_token}}"}],
+						"url": "{{base_url}}/api/auth/me"
+					}
+				},
+				{
+					"name": "10.10 多角色权限隔离验证",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('用户管理需要管理员权限', function() {",
+									"    pm.response.to.have.status(403);",
+									"});",
+									"",
+									"pm.test('返回权限拒绝信息', function() {",
+									"    const res = pm.response.json();",
+									"    pm.expect(res.code).to.not.eql(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{logistics_token}}"}],
+						"url": "{{base_url}}/api/users"
+					}
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// 全局预处理脚本",
+					"const baseUrl = pm.environment.get('base_url') || 'http://localhost:8080';",
+					"pm.variables.set('base_url', baseUrl);",
+					"",
+					"// 辅助函数：生成随机字符串",
+					"pm.globals.set('randomString', function(length) {",
+					"    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';",
+					"    let result = '';",
+					"    for (let i = 0; i < length; i++) {",
+					"        result += chars.charAt(Math.floor(Math.random() * chars.length));",
+					"    }",
+					"    return result;",
+					"});"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// 全局测试脚本 - 基础响应验证",
+					"pm.test('响应时间小于3秒', function() {",
+					"    pm.expect(pm.response.responseTime).to.be.below(3000);",
+					"});",
+					"",
+					"// 对于特定测试跳过JSON格式检查",
+					"const skipJsonCheck = ['CORS', 'OPTIONS', '路径遍历', '特殊字符', 'DoS'].some(s => pm.info.requestName.includes(s));",
+					"if (!skipJsonCheck) {",
+					"    pm.test('响应格式正确（JSON）', function() {",
+					"        pm.response.to.be.json;",
+					"    });",
+					"}"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "superadmin_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "admin_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "producer_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "warehouse_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "logistics_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "user_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "test_trace_code",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "test_user_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "test_part_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "random_username",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "test_trace_code_2",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "test_part_code",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

@@ -1,0 +1,27 @@
+spring:
+  datasource:
+    url: ${TRACE_DB_URL:}
+    username: ${TRACE_DB_USERNAME:}
+    password: ${TRACE_DB_PASSWORD:}
+
+jwt:
+  secret: ${TRACE_JWT_SECRET:}
+
+cors:
+  allowed-origins: ${TRACE_CORS_ALLOWED_ORIGINS:}
+  allowed-origin-patterns: ${TRACE_CORS_ALLOWED_ORIGIN_PATTERNS:}
+  allow-credentials: ${TRACE_CORS_ALLOW_CREDENTIALS:true}
+
+logging:
+  level:
+    com.example.trace.security: ${TRACE_SECURITY_LOG_LEVEL:WARN}
+
+trace:
+  signature:
+    private-key-path: ${TRACE_SIGNATURE_PRIVATE_KEY_PATH:}
+    public-key-path: ${TRACE_SIGNATURE_PUBLIC_KEY_PATH:}
+    key-id: ${TRACE_SIGNATURE_KEY_ID:}
+    key-version: ${TRACE_SIGNATURE_KEY_VERSION:}
+    auto-generate: ${TRACE_SIGNATURE_AUTO_GENERATE:false}
+  demo-data:
+    enabled: ${TRACE_DEMO_DATA_ENABLED:false}

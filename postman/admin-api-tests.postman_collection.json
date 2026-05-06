@@ -1,0 +1,473 @@
+{
+  "info": {
+    "name": "管理模块接口测试 - Admin API",
+    "description": "工业零配件供应链溯源系统 - 管理模块 API 测试\n\n包含：示例数据生成、数据清理等管理功能\n\n⚠️ 使用前请先导入 trace-local.postman_environment.json 环境变量文件\n\n⚠️ 请按顺序执行：0 → 1 → 2 → 3 → 4",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8080", "type": "string"},
+    {"key": "adminToken", "value": "", "type": "string"},
+    {"key": "userToken", "value": "", "type": "string"},
+    {"key": "testTraceCode", "value": "", "type": "string"}
+  ],
+  "item": [
+    {
+      "name": "0. 前置准备",
+      "item": [
+        {
+          "name": "0.1 SuperAdmin 登录获取 Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('SuperAdmin 登录成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "    pm.expect(jsonData.data.role).to.eql('SUPER_ADMIN');",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.environment.set('adminToken', jsonData.data.token);",
+                  "    pm.collectionVariables.set('adminToken', jsonData.data.token);",
+                  "    console.log('✅ Admin Token 已保存到 environment 和 collectionVariables');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"superadmin\",\n    \"password\": \"superadmin123456\",\n    \"rememberMe\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          }
+        },
+        {
+          "name": "0.2 普通用户登录获取 Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('普通用户登录成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "    pm.expect(jsonData.data.role).to.eql('USER');",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.environment.set('userToken', jsonData.data.token);",
+                  "    pm.collectionVariables.set('userToken', jsonData.data.token);",
+                  "    console.log('✅ User Token 已保存到 environment 和 collectionVariables');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"user\",\n    \"password\": \"user123456\",\n    \"rememberMe\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. 清空溯源数据",
+      "item": [
+        {
+          "name": "1.1 清空所有溯源数据",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('清空数据成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.test('返回删除统计', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.have.property('deletedLogs');",
+                  "    pm.expect(jsonData.data).to.have.property('deletedSnapshots');",
+                  "    console.log('📊 删除日志数: ' + jsonData.data.deletedLogs);",
+                  "    console.log('📊 删除快照数: ' + jsonData.data.deletedSnapshots);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{adminToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/admin/clear-trace-data"
+          }
+        },
+        {
+          "name": "1.2 无权限用户尝试清空 (应 403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('普通用户无权限 - 应返回 403', function() {",
+                  "    pm.expect(pm.response.code).to.eql(403);",
+                  "});",
+                  "",
+                  "console.log('✅ 权限验证正确，普通用户无法清空数据');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{userToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/admin/clear-trace-data"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. 生成示例数据",
+      "item": [
+        {
+          "name": "2.1 生成默认数量 (100条)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('生成成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.test('返回生成统计', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.have.property('partSpecs');",
+                  "    pm.expect(jsonData.data).to.have.property('traceCodes');",
+                  "    pm.expect(jsonData.data).to.have.property('lifecycleLogs');",
+                  "    pm.expect(jsonData.data.traceCodes).to.be.at.least(100);",
+                  "    console.log('📊 生成配件规格: ' + jsonData.data.partSpecs);",
+                  "    console.log('📊 生成溯源码: ' + jsonData.data.traceCodes);",
+                  "    console.log('📊 生成日志: ' + jsonData.data.lifecycleLogs);",
+                  "});",
+                  "",
+                  "// 保存第一个溯源码用于后续测试",
+                  "var today = new Date();",
+                  "var yyyy = today.getFullYear();",
+                  "var mm = String(today.getMonth() + 1).padStart(2, '0');",
+                  "var dd = String(today.getDate()).padStart(2, '0');",
+                  "var traceCode = 'TC-' + yyyy + mm + dd + '-0001';",
+                  "pm.environment.set('testTraceCode', traceCode);",
+                  "pm.collectionVariables.set('testTraceCode', traceCode);",
+                  "console.log('🔖 测试溯源码: ' + traceCode);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{adminToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/admin/generate-sample-data"
+          }
+        },
+        {
+          "name": "2.2 生成指定数量 (50条)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('生成成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "    pm.expect(jsonData.data.traceCodes).to.be.at.least(50);",
+                  "});",
+                  "",
+                  "console.log('✅ 指定数量生成完成');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{adminToken}}"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/generate-sample-data?count=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "generate-sample-data"],
+              "query": [{"key": "count", "value": "50"}]
+            }
+          }
+        },
+        {
+          "name": "2.3 无权限用户尝试生成 (应 403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('普通用户无权限 - 应返回 403', function() {",
+                  "    pm.expect(pm.response.code).to.eql(403);",
+                  "});",
+                  "",
+                  "console.log('✅ 权限验证正确，普通用户无法生成数据');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{userToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/admin/generate-sample-data"
+          }
+        },
+        {
+          "name": "2.4 未登录尝试生成 (应 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('未登录被拒绝 - 应返回 401', function() {",
+                  "    pm.expect(pm.response.code).to.eql(401);",
+                  "});",
+                  "",
+                  "console.log('✅ 未登录验证正确');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/admin/generate-sample-data"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. 验证生成的数据",
+      "item": [
+        {
+          "name": "3.1 查询第一条溯源码",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('查询溯源详情成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.test('包含快照和历史记录', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.have.property('snapshot');",
+                  "    pm.expect(jsonData.data).to.have.property('history');",
+                  "    pm.expect(jsonData.data.history.length).to.be.at.least(1);",
+                  "    console.log('📊 历史记录数: ' + jsonData.data.history.length);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{adminToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/traces/{{testTraceCode}}"
+          }
+        },
+        {
+          "name": "3.2 验证溯源链完整性",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('验证成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.test('Hash 链和签名验证通过', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.valid).to.eql(true);",
+                  "    pm.expect(jsonData.data.hash_verified_count).to.eql(jsonData.data.total_logs);",
+                  "    pm.expect(jsonData.data.signature_verified_count).to.eql(jsonData.data.total_logs);",
+                  "    console.log('验证结果: ' + (jsonData.data.valid ? '✅ 通过' : '❌ 失败'));",
+                  "    console.log('总日志数: ' + jsonData.data.total_logs);",
+                  "    console.log('Hash验证: ' + jsonData.data.hash_verified_count + '/' + jsonData.data.total_logs);",
+                  "    console.log('签名验证: ' + jsonData.data.signature_verified_count + '/' + jsonData.data.total_logs);",
+                  "});",
+                  "",
+                  "pm.test('无错误信息', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.errors).to.be.an('array').that.is.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{adminToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/traces/{{testTraceCode}}/verify"
+          }
+        },
+        {
+          "name": "3.3 获取公钥 (无需认证)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('获取公钥成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.test('公钥格式正确', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.public_key).to.be.a('string');",
+                  "    pm.expect(jsonData.data.algorithm).to.eql('RSA');",
+                  "    console.log('🔑 公钥长度: ' + jsonData.data.public_key.length + ' 字符');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/traces/public-key"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Dashboard 数据检查",
+      "item": [
+        {
+          "name": "4.1 获取 KPI 统计",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('KPI 返回成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.test('KPI 包含统计数据', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.total_traces).to.be.at.least(1);",
+                  "    console.log('📊 总溯源数: ' + jsonData.data.total_traces);",
+                  "    console.log('📊 今日新增: ' + jsonData.data.today_new);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{adminToken}}"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard/kpi?range=30d",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dashboard", "kpi"],
+              "query": [{"key": "range", "value": "30d"}]
+            }
+          }
+        },
+        {
+          "name": "4.2 获取地图数据",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('地图数据返回成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.test('包含地理分布数据', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.items).to.be.an('array');",
+                  "    pm.expect(jsonData.data.items.length).to.be.at.least(1);",
+                  "    console.log('📊 覆盖省份数: ' + jsonData.data.items.length);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{adminToken}}"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard/map?range=30d",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dashboard", "map"],
+              "query": [{"key": "range", "value": "30d"}]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

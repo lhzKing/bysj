@@ -1,0 +1,646 @@
+{
+  "info": {
+    "name": "溯源系统 v2.0 安全增强测试",
+    "description": "测试新增的安全功能：\n\n1. 验证溯源链完整性接口\n2. 获取公钥接口\n3. ActionType 枚举校验\n4. 跨链攻击防御\n5. 乐观锁并发控制\n\n【重要】测试前准备步骤：\n1. 执行清理脚本：mysql -u root -p trace_db < sql/cleanup_old_data.sql\n2. 重启后端服务\n3. 按顺序运行 0.1 → 0.2 → 0.3 → 0.4 创建测试数据\n4. 然后运行其他测试用例",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "v2-security-enhance-tests"
+  },
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8080", "type": "string"}
+  ],
+  "item": [
+    {
+      "name": "0. 准备工作",
+      "item": [
+        {
+          "name": "0.1 登录获取 Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('登录成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.environment.set('token', jsonData.data.token);",
+                  "    console.log('Token saved:', jsonData.data.token.substring(0, 20) + '...');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"admin\",\n    \"password\": \"admin123456\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          }
+        },
+        {
+          "name": "0.2 创建测试溯源码",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('创建成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(201);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "    pm.expect(jsonData.data.trace_codes).to.be.an('array');",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    var traceCode = jsonData.data.trace_codes[0];",
+                  "    pm.environment.set('testTraceCode', traceCode);",
+                  "    console.log('Test trace code:', traceCode);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"spu_id\": 1,\n    \"quantity\": 1,\n    \"manufacturer_node\": \"测试工厂\",\n    \"province\": \"浙江省\",\n    \"city\": \"杭州市\"\n}"
+            },
+            "url": "{{baseUrl}}/api/traces"
+          }
+        },
+        {
+          "name": "0.3 添加流转记录",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('流转成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(201);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action_type\": \"OUTBOUND\",\n    \"from_node\": \"测试工厂\",\n    \"to_node\": \"物流中心A\",\n    \"province\": \"浙江省\",\n    \"city\": \"宁波市\"\n}"
+            },
+            "url": "{{baseUrl}}/api/traces/{{testTraceCode}}/events"
+          }
+        },
+        {
+          "name": "0.4 再添加一条流转",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('流转成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(201);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action_type\": \"INBOUND\",\n    \"from_node\": \"物流中心A\",\n    \"to_node\": \"仓库B\",\n    \"province\": \"江苏省\",\n    \"city\": \"苏州市\"\n}"
+            },
+            "url": "{{baseUrl}}/api/traces/{{testTraceCode}}/events"
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. 验链接口测试",
+      "item": [
+        {
+          "name": "1.1 验证有效溯源链",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('验证成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.test('链验证通过', function() {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.valid).to.be.true;",
+                  "    pm.expect(data.total_logs).to.be.at.least(1);",
+                  "    pm.expect(data.hash_verified_count).to.eql(data.total_logs);",
+                  "    pm.expect(data.signature_verified_count).to.eql(data.total_logs);",
+                  "});",
+                  "",
+                  "pm.test('返回锚点信息', function() {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.anchor_hash).to.be.a('string');",
+                  "    pm.expect(data.anchor_signature).to.be.a('string');",
+                  "    pm.expect(data.public_key).to.be.a('string');",
+                  "});",
+                  "",
+                  "pm.test('无错误信息', function() {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.errors).to.be.an('array').that.is.empty;",
+                  "});",
+                  "",
+                  "// 保存公钥用于后续测试",
+                  "if (pm.response.code === 200) {",
+                  "    var data = pm.response.json().data;",
+                  "    if (data.public_key) {",
+                  "        pm.environment.set('publicKey', data.public_key);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": "{{baseUrl}}/api/traces/{{testTraceCode}}/verify"
+          }
+        },
+        {
+          "name": "1.2 验证不存在的溯源码",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('返回空日志错误', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.valid).to.be.false;",
+                  "    pm.expect(data.total_logs).to.eql(0);",
+                  "    pm.expect(data.errors).to.have.length.at.least(1);",
+                  "    pm.expect(data.errors[0].error_type).to.eql('NO_LOGS');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": "{{baseUrl}}/api/traces/NON_EXISTENT_TRACE_CODE_12345/verify"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. 公钥接口测试",
+      "item": [
+        {
+          "name": "2.1 获取公钥（无需认证）",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('获取成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.code).to.eql(0);",
+                  "});",
+                  "",
+                  "pm.test('返回公钥信息', function() {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.public_key).to.be.a('string');",
+                  "    pm.expect(data.algorithm).to.eql('RSA');",
+                  "    pm.expect(data.signature_algorithm).to.eql('SHA256withRSA');",
+                  "});",
+                  "",
+                  "pm.test('公钥是有效的 Base64', function() {",
+                  "    var data = pm.response.json().data;",
+                  "    // Base64 格式检查",
+                  "    var base64Regex = /^[A-Za-z0-9+/=]+$/;",
+                  "    pm.expect(data.public_key).to.match(base64Regex);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/traces/public-key"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. ActionType 枚举校验",
+      "item": [
+        {
+          "name": "3.1 有效的 action_type",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('请求成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(201);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action_type\": \"TRANSFER\",\n    \"from_node\": \"仓库B\",\n    \"to_node\": \"客户C\",\n    \"province\": \"江苏省\",\n    \"city\": \"南京市\"\n}"
+            },
+            "url": "{{baseUrl}}/api/traces/{{testTraceCode}}/events"
+          }
+        },
+        {
+          "name": "3.2 无效的 action_type (拼写错误)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('返回 400 错误', function() {",
+                  "    pm.expect(pm.response.code).to.eql(400);",
+                  "});",
+                  "",
+                  "pm.test('错误信息包含非法 ActionType', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.message).to.include('ActionType');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action_type\": \"INBOUDN\",\n    \"from_node\": \"NodeA\",\n    \"to_node\": \"NodeB\"\n}"
+            },
+            "url": "{{baseUrl}}/api/traces/{{testTraceCode}}/events"
+          }
+        },
+        {
+          "name": "3.3 无效的 action_type (IN_BOUND)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('返回 400 错误', function() {",
+                  "    pm.expect(pm.response.code).to.eql(400);",
+                  "});",
+                  "",
+                  "pm.test('拒绝 IN_BOUND 格式', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    // IN_BOUND 是常见拼写错误，应被拒绝",
+                  "    pm.expect(jsonData.code).to.not.eql(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action_type\": \"IN_BOUND\",\n    \"from_node\": \"NodeA\",\n    \"to_node\": \"NodeB\"\n}"
+            },
+            "url": "{{baseUrl}}/api/traces/{{testTraceCode}}/events"
+          }
+        },
+        {
+          "name": "3.4 小写 action_type (自动转换)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('小写也能成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(201);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action_type\": \"exception\",\n    \"from_node\": \"客户C\",\n    \"to_node\": \"售后中心\",\n    \"province\": \"江苏省\",\n    \"city\": \"南京市\"\n}"
+            },
+            "url": "{{baseUrl}}/api/traces/{{testTraceCode}}/events"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. 跨链攻击防御",
+      "item": [
+        {
+          "name": "4.1 创建另一个溯源码",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.environment.set('otherTraceCode', jsonData.data.trace_codes[0]);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"spu_id\": 1,\n    \"quantity\": 1,\n    \"manufacturer_node\": \"另一个工厂\",\n    \"province\": \"广东省\",\n    \"city\": \"深圳市\"\n}"
+            },
+            "url": "{{baseUrl}}/api/traces"
+          }
+        },
+        {
+          "name": "4.2 CORRECTION 必须指定 correctionOf",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('返回 400 错误', function() {",
+                  "    pm.expect(pm.response.code).to.eql(400);",
+                  "});",
+                  "",
+                  "pm.test('提示必须指定 correctionOf', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.message).to.include('correctionOf');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action_type\": \"CORRECTION\",\n    \"from_node\": \"NodeA\",\n    \"to_node\": \"NodeB\"\n}"
+            },
+            "url": "{{baseUrl}}/api/traces/{{testTraceCode}}/events"
+          }
+        },
+        {
+          "name": "4.3 跨链修正攻击（使用其他链的日志ID）",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// 注意：这个测试需要知道另一个链的日志ID",
+                  "// 在实际场景中，攻击者会尝试传入其他链的ID",
+                  "pm.test('返回 400 错误', function() {",
+                  "    pm.expect(pm.response.code).to.eql(400);",
+                  "});",
+                  "",
+                  "pm.test('检测到跨链攻击', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.message).to.include('跨链');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// 这里假设日志ID 1 属于其他链",
+                  "// 实际测试时需要根据数据库情况调整"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action_type\": \"CORRECTION\",\n    \"from_node\": \"NodeA\",\n    \"to_node\": \"NodeB\",\n    \"correction_of\": 1\n}"
+            },
+            "url": "{{baseUrl}}/api/traces/{{otherTraceCode}}/events"
+          }
+        },
+        {
+          "name": "4.4 修正不存在的日志ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('返回 400 错误', function() {",
+                  "    pm.expect(pm.response.code).to.eql(400);",
+                  "});",
+                  "",
+                  "pm.test('提示日志不存在', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.message).to.include('不存在');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action_type\": \"CORRECTION\",\n    \"from_node\": \"NodeA\",\n    \"to_node\": \"NodeB\",\n    \"correction_of\": 999999999\n}"
+            },
+            "url": "{{baseUrl}}/api/traces/{{testTraceCode}}/events"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. 溯源详情（带签名）",
+      "item": [
+        {
+          "name": "5.1 查看溯源详情",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('查询成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "});",
+                  "",
+                  "pm.test('包含快照信息', function() {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.snapshot).to.be.an('object');",
+                  "    pm.expect(data.snapshot.trace_code).to.be.a('string');",
+                  "});",
+                  "",
+                  "pm.test('包含历史记录', function() {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.history).to.be.an('array');",
+                  "    pm.expect(data.history.length).to.be.at.least(1);",
+                  "});",
+                  "",
+                  "pm.test('历史记录包含签名', function() {",
+                  "    var data = pm.response.json().data;",
+                  "    var firstLog = data.history[0];",
+                  "    pm.expect(firstLog.signature).to.be.a('string');",
+                  "    pm.expect(firstLog.signature.length).to.be.at.least(100);",
+                  "});",
+                  "",
+                  "pm.test('历史记录包含 Hash', function() {",
+                  "    var data = pm.response.json().data;",
+                  "    var firstLog = data.history[0];",
+                  "    pm.expect(firstLog.prev_hash).to.be.a('string');",
+                  "    pm.expect(firstLog.current_hash).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": "{{baseUrl}}/api/traces/{{testTraceCode}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. 最终验链",
+      "item": [
+        {
+          "name": "6.1 验证完整链（所有操作后）",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('验证成功', function() {",
+                  "    pm.expect(pm.response.code).to.eql(200);",
+                  "});",
+                  "",
+                  "pm.test('完整链验证通过', function() {",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.valid).to.be.true;",
+                  "    console.log('总日志数:', data.total_logs);",
+                  "    console.log('Hash 验证:', data.hash_verified_count);",
+                  "    console.log('签名验证:', data.signature_verified_count);",
+                  "    console.log('验证耗时:', data.verify_duration_ms, 'ms');",
+                  "});",
+                  "",
+                  "pm.test('可用于外部锚定的信息', function() {",
+                  "    var data = pm.response.json().data;",
+                  "    console.log('链尾 Hash (可锚定):', data.anchor_hash);",
+                  "    console.log('链尾签名:', data.anchor_signature);",
+                  "    pm.expect(data.anchor_hash).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": "{{baseUrl}}/api/traces/{{testTraceCode}}/verify"
+          }
+        }
+      ]
+    }
+  ]
+}

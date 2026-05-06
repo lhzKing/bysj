@@ -1,0 +1,33 @@
+spring:
+  datasource:
+    url: ${TRACE_DB_URL:jdbc:mysql://localhost:3306/trace_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}
+    username: ${TRACE_DB_USERNAME:root}
+    password: ${TRACE_DB_PASSWORD:root}
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+jwt:
+  secret: ${TRACE_JWT_SECRET:TraceSystemDevOnlyJwtSecretKey2026!@#}
+
+logging:
+  level:
+    com.example.trace.security: ${TRACE_SECURITY_LOG_LEVEL:DEBUG}
+
+trace:
+  signature:
+    # dev profile 默认 auto-generate=true：开箱即用、跨平台（Windows / macOS / Linux 任何机器都能直接 mvn spring-boot:run -Dspring-boot.run.profiles=dev 启动）。
+    # 代价：每次重启会生成新内存密钥，旧 lifecycle log 的签名将无法验证（dev 演示数据需要重新生成）。
+    # 如需稳定密钥（保留历史签名验证），通过环境变量指向外部 key 文件即可：
+    #   TRACE_SIGNATURE_PRIVATE_KEY_PATH=D:/trace-runtime/keys/private_key.pem
+    #   TRACE_SIGNATURE_PUBLIC_KEY_PATH=D:/trace-runtime/keys/public_key.pem
+    #   TRACE_SIGNATURE_AUTO_GENERATE=false
+    # 注意：path 与 auto-generate 不能同时启用——SignatureUtil 优先 path，其次 auto-generate。
+    private-key-path: ${TRACE_SIGNATURE_PRIVATE_KEY_PATH:}
+    public-key-path: ${TRACE_SIGNATURE_PUBLIC_KEY_PATH:}
+    key-id: ${TRACE_SIGNATURE_KEY_ID:default}
+    key-version: ${TRACE_SIGNATURE_KEY_VERSION:1}
+    auto-generate: ${TRACE_SIGNATURE_AUTO_GENERATE:true}
+  demo-data:
+    enabled: ${TRACE_DEMO_DATA_ENABLED:true}

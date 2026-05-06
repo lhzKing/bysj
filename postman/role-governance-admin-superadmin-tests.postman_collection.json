@@ -1,0 +1,567 @@
+{
+  "info": {
+    "name": "Role governance - ADMIN vs SUPER_ADMIN",
+    "description": "Role governance regression collection.\n\nCoverage:\n1. Login as SUPER_ADMIN and ADMIN.\n2. ADMIN cannot update SUPER_ADMIN basic information.\n3. ADMIN cannot assign permissions to SUPER_ADMIN.\n4. ADMIN cannot delegate user:* or role:* management permissions to lower roles.\n5. ADMIN can assign allowed lower-scope permissions.\n6. SUPER_ADMIN role remains unchanged after denied operations.\n7. SUPER_ADMIN can clean up the temporary role.\n\nDesigned for Postman Collection v2.1 and local base URL http://localhost:8080.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "superAdminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "superAdminRoleId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tempRoleId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tempRoleCode",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tempRoleName",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "traceViewPermissionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "dashboardViewPermissionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "roleManagePermissionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userManagePermissionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "superAdminPermissionIdsJson",
+      "value": "[]",
+      "type": "string"
+    },
+    {
+      "key": "tempRoleBusinessPermissionIdsJson",
+      "value": "[]",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Login",
+      "item": [
+        {
+          "name": "0.1 SUPER_ADMIN login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('SUPER_ADMIN login succeeds', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.code).to.eql(0);",
+                  "    pm.expect(json.data.role || json.data.role_code).to.eql('SUPER_ADMIN');",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('superAdminToken', json.data.token);",
+                  "console.log('Saved superAdminToken');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"superadmin\",\n  \"password\": \"superadmin123456\",\n  \"rememberMe\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          }
+        },
+        {
+          "name": "0.2 ADMIN login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ADMIN login succeeds', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.code).to.eql(0);",
+                  "    pm.expect(json.data.role || json.data.role_code).to.eql('ADMIN');",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('adminToken', json.data.token);",
+                  "console.log('Saved adminToken');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123456\",\n  \"rememberMe\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Baseline setup",
+      "item": [
+        {
+          "name": "1.1 Fetch permission list and save IDs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('permission list is fetched', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.code).to.eql(0);",
+                  "    pm.expect(json.data).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "const list = pm.response.json().data || [];",
+                  "const byCode = {};",
+                  "list.forEach(item => {",
+                  "    byCode[item.perm_code || item.permCode] = item;",
+                  "});",
+                  "['trace:view', 'dashboard:view', 'role:manage', 'user:manage'].forEach(code => {",
+                  "    pm.expect(byCode[code], `missing permission ${code}`).to.exist;",
+                  "});",
+                  "pm.collectionVariables.set('traceViewPermissionId', String(byCode['trace:view'].id));",
+                  "pm.collectionVariables.set('dashboardViewPermissionId', String(byCode['dashboard:view'].id));",
+                  "pm.collectionVariables.set('roleManagePermissionId', String(byCode['role:manage'].id));",
+                  "pm.collectionVariables.set('userManagePermissionId', String(byCode['user:manage'].id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/roles/permissions"
+          }
+        },
+        {
+          "name": "1.2 Fetch role list and save SUPER_ADMIN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('role list is fetched', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.code).to.eql(0);",
+                  "    pm.expect(json.data).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "const list = pm.response.json().data || [];",
+                  "const role = list.find(item => (item.role_code || item.roleCode) === 'SUPER_ADMIN');",
+                  "pm.expect(role, 'SUPER_ADMIN role must exist').to.exist;",
+                  "pm.collectionVariables.set('superAdminRoleId', String(role.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/roles"
+          }
+        },
+        {
+          "name": "1.3 Read SUPER_ADMIN role detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('SUPER_ADMIN detail is loaded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.code).to.eql(0);",
+                  "    pm.expect(json.data).to.be.an('object');",
+                  "    pm.expect(json.data.permissions).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "const detail = pm.response.json().data;",
+                  "const ids = (detail.permissions || []).map(item => item.id);",
+                  "pm.collectionVariables.set('superAdminPermissionIdsJson', JSON.stringify(ids));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/roles/{{superAdminRoleId}}"
+          }
+        },
+        {
+          "name": "1.4 Create temporary role",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const suffix = Date.now();",
+                  "pm.collectionVariables.set('tempRoleCode', `POSTMAN_ROLE_GUARD_${suffix}`);",
+                  "pm.collectionVariables.set('tempRoleName', `Postman Guard ${suffix}`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('temporary role is created', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.code).to.eql(0);",
+                  "    pm.expect(json.data.id).to.exist;",
+                  "});",
+                  "const data = pm.response.json().data;",
+                  "pm.collectionVariables.set('tempRoleId', String(data.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleCode\": \"{{tempRoleCode}}\",\n  \"roleName\": \"{{tempRoleName}}\",\n  \"remark\": \"Postman temporary role for role governance regression test\"\n}"
+            },
+            "url": "{{baseUrl}}/api/roles"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Governance guardrails",
+      "item": [
+        {
+          "name": "2.1 ADMIN cannot update SUPER_ADMIN basic info (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ADMIN is blocked from updating SUPER_ADMIN', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleName\": \"Should Not Change\",\n  \"remark\": \"admin must not update super admin role\"\n}"
+            },
+            "url": "{{baseUrl}}/api/roles/{{superAdminRoleId}}"
+          }
+        },
+        {
+          "name": "2.2 ADMIN cannot assign SUPER_ADMIN permissions (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ADMIN is blocked from assigning SUPER_ADMIN permissions', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissionIds\": {{superAdminPermissionIdsJson}}\n}"
+            },
+            "url": "{{baseUrl}}/api/roles/{{superAdminRoleId}}/permissions"
+          }
+        },
+        {
+          "name": "2.3 ADMIN can assign allowed permissions to lower role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ADMIN can assign allowed permissions', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.code).to.eql(0);",
+                  "});",
+                  "const data = pm.response.json().data;",
+                  "const perms = data.permissions || [];",
+                  "const ids = perms.map(item => item.id).sort((a, b) => a - b);",
+                  "const codes = perms.map(item => item.perm_code || item.permCode).sort();",
+                  "pm.expect(codes).to.eql(['dashboard:view', 'trace:view']);",
+                  "pm.collectionVariables.set('tempRoleBusinessPermissionIdsJson', JSON.stringify(ids));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissionIds\": [{{traceViewPermissionId}}, {{dashboardViewPermissionId}}]\n}"
+            },
+            "url": "{{baseUrl}}/api/roles/{{tempRoleId}}/permissions"
+          }
+        },
+        {
+          "name": "2.4 ADMIN cannot assign user/role management permissions (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ADMIN is blocked from assigning user/role permissions', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissionIds\": [{{traceViewPermissionId}}, {{dashboardViewPermissionId}}, {{roleManagePermissionId}}, {{userManagePermissionId}}]\n}"
+            },
+            "url": "{{baseUrl}}/api/roles/{{tempRoleId}}/permissions"
+          }
+        },
+        {
+          "name": "2.5 Verify SUPER_ADMIN role unchanged",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('SUPER_ADMIN role remains unchanged', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.code).to.eql(0);",
+                  "    const before = JSON.parse(pm.collectionVariables.get('superAdminPermissionIdsJson') || '[]').sort((a, b) => a - b);",
+                  "    const after = (json.data.permissions || []).map(item => item.id).sort((a, b) => a - b);",
+                  "    pm.expect(after).to.eql(before);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/roles/{{superAdminRoleId}}"
+          }
+        },
+        {
+          "name": "2.6 Verify temporary role permissions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('temporary role permissions are unchanged', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.code).to.eql(0);",
+                  "    const expected = JSON.parse(pm.collectionVariables.get('tempRoleBusinessPermissionIdsJson') || '[]').sort((a, b) => a - b);",
+                  "    const after = (json.data.permissions || []).map(item => item.id).sort((a, b) => a - b);",
+                  "    const codes = (json.data.permissions || []).map(item => item.perm_code || item.permCode);",
+                  "    pm.expect(after).to.eql(expected);",
+                  "    pm.expect(codes.filter(code => (code || '').startsWith('user:') || (code || '').startsWith('role:'))).to.have.length(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/roles/{{tempRoleId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Cleanup",
+      "item": [
+        {
+          "name": "3.1 SUPER_ADMIN deletes temporary role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('temporary role cleanup succeeds', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.code).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/roles/{{tempRoleId}}"
+          }
+        }
+      ]
+    }
+  ]
+}

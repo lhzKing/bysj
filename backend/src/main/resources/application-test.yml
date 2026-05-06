@@ -1,0 +1,30 @@
+spring:
+  datasource:
+    url: ${TRACE_DB_URL:jdbc:mysql://localhost:3306/trace_test_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}
+    username: ${TRACE_DB_USERNAME:root}
+    password: ${TRACE_DB_PASSWORD:root}
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+jwt:
+  secret: ${TRACE_JWT_SECRET:TraceSystemTestOnlyJwtSecretKey2026!@#}
+
+logging:
+  level:
+    com.example.trace.security: ${TRACE_SECURITY_LOG_LEVEL:DEBUG}
+
+trace:
+  signature:
+    # test profile 默认 auto-generate=true：让 CI/本地 mvn test 在任意操作系统上零配置启动。
+    # 单元测试本身（SignatureUtilTest 等）通过 ReflectionTestUtils 直接注入字段，不读这些默认值；
+    # 这里的默认值只在 @SpringBootTest 等 Spring 上下文加载场景下生效，作为"测试默认走自动生成"的兜底。
+    # 如需稳定 key 跑契约/集成测试，可通过 TRACE_SIGNATURE_PRIVATE_KEY_PATH / TRACE_SIGNATURE_PUBLIC_KEY_PATH 覆盖。
+    private-key-path: ${TRACE_SIGNATURE_PRIVATE_KEY_PATH:}
+    public-key-path: ${TRACE_SIGNATURE_PUBLIC_KEY_PATH:}
+    key-id: ${TRACE_SIGNATURE_KEY_ID:default}
+    key-version: ${TRACE_SIGNATURE_KEY_VERSION:1}
+    auto-generate: ${TRACE_SIGNATURE_AUTO_GENERATE:true}
+  demo-data:
+    enabled: ${TRACE_DEMO_DATA_ENABLED:true}

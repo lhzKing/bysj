@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>扫码中心 · 工业克制风</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #0b1220;
+    --ink-2: #1f2937;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --line-2: #d1d5db;
+    --paper: #f7f7f5;
+    --card: #ffffff;
+    --steel: #1d4ed8;       /* 主操作蓝 */
+    --steel-bg: #eff4ff;
+    --warn: #c2410c;        /* 警示橙 */
+    --warn-bg: #fff3ec;
+    --good: #15803d;
+    --good-bg: #ecfdf3;
+    --bad: #b91c1c;
+    --bad-bg: #fef1f1;
+  }
+  html, body { background: var(--paper); color: var(--ink); }
+  body { font-family: 'Inter','Noto Sans SC',sans-serif; -webkit-font-smoothing: antialiased; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .card { background: var(--card); border: 1px solid var(--line); }
+  .hair { border-color: var(--line); }
+  .hair-strong { border-color: var(--line-2); }
+  .chip { display:inline-flex; align-items:center; gap:6px; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; line-height:18px; border:1px solid; }
+  .chip-good { color: var(--good); background: var(--good-bg); border-color:#bbf7d0; }
+  .chip-warn { color: var(--warn); background: var(--warn-bg); border-color:#fed7aa; }
+  .chip-bad  { color: var(--bad); background: var(--bad-bg); border-color:#fecaca; }
+  .chip-info { color: var(--steel); background: var(--steel-bg); border-color:#c7d2fe; }
+  .chip-mute { color: var(--ink-2); background:#f3f4f6; border-color: var(--line); }
+  .btn-primary { background: var(--ink); color:#fff; }
+  .btn-primary:hover { background:#1f2937; }
+  .btn-ghost { background:#fff; color: var(--ink); border:1px solid var(--line-2); }
+  .btn-ghost:hover { background:#f9fafb; }
+  /* 扫描框四角 */
+  .corner { position:absolute; width:22px; height:22px; border-color:#facc15; }
+  .corner.tl { top:0; left:0; border-top:2px solid; border-left:2px solid; }
+  .corner.tr { top:0; right:0; border-top:2px solid; border-right:2px solid; }
+  .corner.bl { bottom:0; left:0; border-bottom:2px solid; border-left:2px solid; }
+  .corner.br { bottom:0; right:0; border-bottom:2px solid; border-right:2px solid; }
+  .scanline {
+    position:absolute; left:8%; right:8%; height:2px;
+    background: linear-gradient(90deg, transparent, #facc15, transparent);
+    animation: scan 2.4s ease-in-out infinite;
+  }
+  @keyframes scan {
+    0%,100% { top: 12%; opacity: .9; }
+    50% { top: 86%; opacity: 1; }
+  }
+  /* 横纹背景：模拟工位面板 */
+  .panel-stripes {
+    background-image: repeating-linear-gradient(0deg, transparent 0 23px, rgba(0,0,0,.025) 23px 24px);
+  }
+  /* 网格分隔 */
+  .data-row { display:grid; grid-template-columns: 96px 1fr; padding: 6px 0; font-size: 13px; }
+  .data-row dt { color: var(--muted); font-weight:500; }
+  .data-row dd { color: var(--ink); font-weight:600; }
+  .section-label { font-size: 11px; letter-spacing: .12em; color: var(--muted); font-weight: 700; text-transform: uppercase; }
+  .preview-tag { position: sticky; top: 0; z-index: 50; }
+  .kbd { font-family: 'JetBrains Mono'; font-size: 11px; padding: 2px 6px; border:1px solid var(--line-2); border-bottom-width:2px; border-radius:4px; background:#fff; color: var(--ink-2); }
+</style>
+</head>
+<body>
+
+<!-- 顶栏：极简，模仿真实 MES 顶部状态条 -->
+<header class="border-b hair bg-white sticky top-0 z-40">
+  <div class="max-w-[1200px] mx-auto px-6 h-12 flex items-center justify-between text-[13px]">
+    <div class="flex items-center gap-6">
+      <div class="flex items-center gap-2">
+        <div class="w-5 h-5 bg-[var(--ink)] text-white grid place-items-center text-[10px] font-bold mono">TC</div>
+        <span class="font-semibold">溯源中心</span>
+        <span class="text-[var(--muted)]">/</span>
+        <span class="text-[var(--ink-2)]">扫码工位</span>
+      </div>
+      <nav class="hidden md:flex items-center gap-5 text-[var(--muted)]">
+        <a class="text-[var(--ink)] font-semibold border-b-2 border-[var(--ink)] pb-3.5 -mb-px">扫码</a>
+        <a class="hover:text-[var(--ink)]">追溯查询</a>
+        <a class="hover:text-[var(--ink)]">配件</a>
+        <a class="hover:text-[var(--ink)]">报表</a>
+      </nav>
+    </div>
+    <div class="flex items-center gap-4 text-[var(--muted)]">
+      <span class="mono text-xs">A线 · 工位 04</span>
+      <span class="w-px h-4 bg-[var(--line)]"></span>
+      <span>张建国 / 仓管员</span>
+      <span class="w-7 h-7 rounded-full bg-[var(--ink)] text-white grid place-items-center text-[11px] font-bold">张</span>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-[1200px] mx-auto px-6 py-8 space-y-12">
+
+  <!-- 预览说明（仅评估时可见） -->
+  <div class="border-l-4 border-[var(--ink)] bg-white card px-5 py-3 text-[13px] text-[var(--ink-2)] leading-6">
+    <strong class="text-[var(--ink)]">风格 1 · 工业克制风</strong>
+    白底 / 1px 细线 / 无毛玻璃 / 极少阴影 / 强信息密度 / 主色靠中性墨黑 + 钢蓝点缀。下面依次展示三种状态：①待机　②扫描中　③扫码成功后操作面板。
+  </div>
+
+  <!-- ============ 状态①：待机 ============ -->
+  <section>
+    <div class="flex items-baseline justify-between mb-3">
+      <h2 class="section-label">状态 01　待机</h2>
+      <span class="text-xs text-[var(--muted)]">未唤起摄像头时</span>
+    </div>
+
+    <div class="card grid grid-cols-12">
+      <!-- 左：扫码区 -->
+      <div class="col-span-12 lg:col-span-7 p-8 border-b lg:border-b-0 lg:border-r hair">
+        <div class="flex items-center gap-2 mb-6">
+          <span class="chip chip-mute">工位空闲</span>
+          <span class="text-xs text-[var(--muted)]">最近一次扫码 11 分钟前</span>
+        </div>
+
+        <h1 class="text-[28px] leading-[1.2] font-bold tracking-[-0.01em]">扫码登记 / 流转 / 异常上报</h1>
+        <p class="text-[var(--muted)] mt-2 text-sm leading-6 max-w-md">
+          将零件追溯码对准摄像头取景框。系统将基于哈希链 + RSA 数字签名记录此次扫描，记录写入后不可篡改。
+        </p>
+
+        <div class="mt-7 flex items-center gap-3">
+          <button class="btn-primary px-5 h-10 rounded-md font-semibold text-sm inline-flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="1"/><circle cx="12" cy="12" r="3"/></svg>
+            唤起摄像头扫码
+          </button>
+          <button class="btn-ghost px-4 h-10 rounded-md text-sm font-medium inline-flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+            手动输入追溯码
+          </button>
+          <span class="text-xs text-[var(--muted)] ml-1">快捷键 <span class="kbd">F2</span></span>
+        </div>
+
+        <!-- 副入口：生产赋码 -->
+        <div class="mt-10 pt-6 border-t hair">
+          <div class="text-xs text-[var(--muted)] mb-2">生产线 · 新批次赋码</div>
+          <a class="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--steel)] hover:underline">
+            为新批次生成追溯码
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </a>
+          <p class="text-xs text-[var(--muted)] mt-1.5 leading-5">用于产线下线、首次入库；与扫码（消费已有码）流程独立。</p>
+        </div>
+      </div>
+
+      <!-- 右：今日工位看板 -->
+      <div class="col-span-12 lg:col-span-5 p-8 bg-[var(--paper)]">
+        <div class="flex items-center justify-between mb-4">
+          <span class="section-label">今日 · 本工位</span>
+          <span class="mono text-xs text-[var(--muted)]">2026-05-05 14:32</span>
+        </div>
+
+        <div class="grid grid-cols-3 gap-px bg-[var(--line)] border hair">
+          <div class="bg-white p-3">
+            <div class="text-[11px] text-[var(--muted)] font-semibold">入库</div>
+            <div class="text-2xl font-bold mono mt-1">142</div>
+          </div>
+          <div class="bg-white p-3">
+            <div class="text-[11px] text-[var(--muted)] font-semibold">出库</div>
+            <div class="text-2xl font-bold mono mt-1">98</div>
+          </div>
+          <div class="bg-white p-3">
+            <div class="text-[11px] text-[var(--muted)] font-semibold">异常</div>
+            <div class="text-2xl font-bold mono mt-1 text-[var(--bad)]">3</div>
+          </div>
+        </div>
+
+        <div class="mt-6">
+          <div class="section-label mb-2">最近扫码</div>
+          <div class="card">
+            <div class="grid grid-cols-[1fr_auto] items-center px-3 py-2.5 border-b hair text-sm">
+              <div>
+                <div class="mono text-[12px] text-[var(--ink)]">TC-260505-A8F3K2</div>
+                <div class="text-xs text-[var(--muted)] mt-0.5">M8×60 内六角 · 入库</div>
+              </div>
+              <span class="chip chip-good">成功</span>
+            </div>
+            <div class="grid grid-cols-[1fr_auto] items-center px-3 py-2.5 border-b hair text-sm">
+              <div>
+                <div class="mono text-[12px]">TC-260505-A8F3J9</div>
+                <div class="text-xs text-[var(--muted)] mt-0.5">SKF-6204 轴承 · 出库</div>
+              </div>
+              <span class="chip chip-good">成功</span>
+            </div>
+            <div class="grid grid-cols-[1fr_auto] items-center px-3 py-2.5 text-sm">
+              <div>
+                <div class="mono text-[12px]">TC-260505-A8F3J7</div>
+                <div class="text-xs text-[var(--muted)] mt-0.5">阀芯 DN25 · 异常</div>
+              </div>
+              <span class="chip chip-bad">外壳磕碰</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 状态②：扫描中 ============ -->
+  <section>
+    <div class="flex items-baseline justify-between mb-3">
+      <h2 class="section-label">状态 02　摄像头扫描中</h2>
+      <span class="text-xs text-[var(--muted)]">取景与设备状态</span>
+    </div>
+
+    <div class="card grid grid-cols-12">
+      <!-- 取景区 -->
+      <div class="col-span-12 lg:col-span-8 p-6 border-b lg:border-b-0 lg:border-r hair">
+        <div class="flex items-center justify-between mb-3 text-xs">
+          <div class="flex items-center gap-3">
+            <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-[var(--bad)] animate-pulse"></span><span class="font-semibold">REC</span></span>
+            <span class="text-[var(--muted)] mono">USB Camera #2 · 1280×720 · 30fps</span>
+          </div>
+          <button class="text-[var(--muted)] hover:text-[var(--ink)] inline-flex items-center gap-1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            停止
+          </button>
+        </div>
+
+        <!-- 摄像头预览 -->
+        <div class="relative aspect-[16/10] panel-stripes bg-[#0b1220] overflow-hidden">
+          <!-- 模拟取景图像 -->
+          <div class="absolute inset-0 opacity-40 mix-blend-screen"
+               style="background:
+                 radial-gradient(circle at 30% 40%, rgba(120,140,180,.4), transparent 40%),
+                 radial-gradient(circle at 70% 60%, rgba(80,90,110,.5), transparent 40%);"></div>
+          <!-- 叠加假二维码框 -->
+          <div class="absolute inset-0 grid place-items-center">
+            <div class="relative w-[58%] aspect-square">
+              <div class="corner tl"></div>
+              <div class="corner tr"></div>
+              <div class="corner bl"></div>
+              <div class="corner br"></div>
+              <div class="scanline"></div>
+              <div class="absolute -bottom-7 left-0 right-0 text-center text-[11px] text-yellow-300/90 mono">将追溯码置于框内</div>
+            </div>
+          </div>
+          <!-- 左下提示 -->
+          <div class="absolute left-3 bottom-3 text-[11px] text-white/70 mono">距离 28cm　亮度 中</div>
+          <!-- 右上 HUD -->
+          <div class="absolute right-3 top-3 text-[11px] text-white/70 mono">FPS 30　DET 0</div>
+        </div>
+
+        <div class="mt-3 flex items-center justify-between text-xs text-[var(--muted)]">
+          <span>提示：若识别困难，靠近至 15-20cm 并避免反光</span>
+          <span>快捷键：<span class="kbd">空格</span> 切换设备 · <span class="kbd">Esc</span> 取消</span>
+        </div>
+      </div>
+
+      <!-- 设备/会话状态 -->
+      <div class="col-span-12 lg:col-span-4 p-6 bg-[var(--paper)]">
+        <div class="section-label mb-3">本次会话</div>
+        <dl class="divide-y hair">
+          <div class="data-row"><dt>会话编号</dt><dd class="mono">SCN-260505-1432-04</dd></div>
+          <div class="data-row"><dt>工位</dt><dd>A 装配线 / 工位 04</dd></div>
+          <div class="data-row"><dt>操作员</dt><dd>张建国</dd></div>
+          <div class="data-row"><dt>角色</dt><dd>仓管员</dd></div>
+          <div class="data-row"><dt>开启时间</dt><dd class="mono text-[12px]">14:31:08</dd></div>
+        </dl>
+
+        <div class="section-label mt-6 mb-3">设备健康</div>
+        <ul class="text-sm space-y-2.5">
+          <li class="flex items-center justify-between"><span>摄像头权限</span><span class="chip chip-good">已授权</span></li>
+          <li class="flex items-center justify-between"><span>HTTPS 证书</span><span class="chip chip-good">有效</span></li>
+          <li class="flex items-center justify-between"><span>后端连通</span><span class="chip chip-good">12ms</span></li>
+          <li class="flex items-center justify-between"><span>RSA 公钥</span><span class="chip chip-info">已加载</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 状态③：扫码成功 ============ -->
+  <section>
+    <div class="flex items-baseline justify-between mb-3">
+      <h2 class="section-label">状态 03　扫码成功 · 等待操作</h2>
+      <span class="text-xs text-[var(--muted)]">追溯码已识别</span>
+    </div>
+
+    <!-- 顶部识别条 -->
+    <div class="card border-l-4 !border-l-[var(--good)] flex items-center justify-between px-5 py-4 mb-px">
+      <div class="flex items-center gap-4">
+        <div class="w-9 h-9 rounded-md bg-[var(--good-bg)] grid place-items-center text-[var(--good)]">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg>
+        </div>
+        <div>
+          <div class="text-xs text-[var(--muted)] font-semibold">已识别追溯码</div>
+          <div class="mono text-[18px] font-bold tracking-tight">TC-260505-A8F3K2</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="btn-ghost px-3 h-8 rounded-md text-xs inline-flex items-center gap-1.5">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14l-4-4 4-4M5 10h11a4 4 0 010 8h-1"/></svg>
+          重新扫描
+        </button>
+        <button class="btn-ghost px-3 h-8 rounded-md text-xs">复制</button>
+      </div>
+    </div>
+
+    <div class="card grid grid-cols-12">
+      <!-- 左：零件信息 -->
+      <div class="col-span-12 lg:col-span-5 p-6 border-b lg:border-b-0 lg:border-r hair">
+        <div class="flex items-center justify-between mb-4">
+          <div class="section-label">配件档案</div>
+          <span class="chip chip-info">在库</span>
+        </div>
+        <h3 class="text-base font-bold leading-snug">M8×60 内六角圆柱头螺栓 · 8.8 级</h3>
+        <div class="text-xs text-[var(--muted)] mono mt-1">SPU-GB70.1-M8X60-8.8</div>
+
+        <dl class="mt-5">
+          <div class="data-row"><dt>批次号</dt><dd class="mono">B260428-039</dd></div>
+          <div class="data-row"><dt>生产厂</dt><dd>苏州精工紧固件有限公司</dd></div>
+          <div class="data-row"><dt>下线时间</dt><dd class="mono text-[12px]">2026-04-28 09:14:22</dd></div>
+          <div class="data-row"><dt>当前位置</dt><dd>2# 立体仓 · 货位 C-08-12</dd></div>
+          <div class="data-row"><dt>持有方</dt><dd>本厂 / A 装配线</dd></div>
+          <div class="data-row"><dt>累计流转</dt><dd>4 次</dd></div>
+        </dl>
+
+        <div class="mt-5 pt-5 border-t hair flex items-center justify-between text-xs">
+          <span class="text-[var(--muted)]">链上完整性</span>
+          <span class="chip chip-good">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg>
+            4/4 节点验签通过
+          </span>
+        </div>
+      </div>
+
+      <!-- 中：操作面板 -->
+      <div class="col-span-12 lg:col-span-4 p-6 border-b lg:border-b-0 lg:border-r hair">
+        <div class="section-label mb-3">登记操作</div>
+        <p class="text-xs text-[var(--muted)] mb-4 leading-5">选择对此追溯码执行的动作。所有动作将以你的身份记录至链上。</p>
+
+        <div class="space-y-2">
+          <button class="w-full flex items-center justify-between px-4 h-12 rounded-md bg-[var(--ink)] text-white text-sm font-semibold hover:bg-[var(--ink-2)]">
+            <span class="flex items-center gap-2.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+              入库登记
+            </span>
+            <span class="text-[11px] opacity-60 mono">F1</span>
+          </button>
+
+          <button class="w-full flex items-center justify-between px-4 h-12 rounded-md border hair-strong text-sm font-semibold hover:bg-[var(--paper)]">
+            <span class="flex items-center gap-2.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0l-4 4m4-4l4 4M5 3h14"/></svg>
+              出库登记
+            </span>
+            <span class="text-[11px] text-[var(--muted)] mono">F2</span>
+          </button>
+
+          <button class="w-full flex items-center justify-between px-4 h-12 rounded-md border hair-strong text-sm font-semibold hover:bg-[var(--paper)]">
+            <span class="flex items-center gap-2.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="7" width="15" height="10" rx="1"/><path d="M16 10h4l3 3v4h-7zM5 21a2 2 0 100-4 2 2 0 000 4zM18 21a2 2 0 100-4 2 2 0 000 4z"/></svg>
+              物流流转
+            </span>
+            <span class="text-[11px] text-[var(--muted)] mono">F3</span>
+          </button>
+
+          <button class="w-full flex items-center justify-between px-4 h-12 rounded-md border border-[var(--bad)]/30 text-[var(--bad)] text-sm font-semibold hover:bg-[var(--bad-bg)]">
+            <span class="flex items-center gap-2.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+              异常上报
+            </span>
+            <span class="text-[11px] opacity-60 mono">F4</span>
+          </button>
+        </div>
+
+        <a class="mt-5 inline-flex items-center gap-1.5 text-xs text-[var(--steel)] font-semibold hover:underline">
+          查看全链路审计详情
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+
+      <!-- 右：流转时间线（精简） -->
+      <div class="col-span-12 lg:col-span-3 p-6 bg-[var(--paper)]">
+        <div class="section-label mb-4">最近流转</div>
+        <ol class="relative border-l hair pl-4 space-y-4 text-xs">
+          <li>
+            <span class="absolute -left-[5px] w-2.5 h-2.5 rounded-full bg-[var(--ink)]"></span>
+            <div class="font-semibold">入库 · 2# 立体仓</div>
+            <div class="text-[var(--muted)] mono mt-0.5">04-28 14:02 · 王师傅</div>
+          </li>
+          <li>
+            <span class="absolute -left-[5px] w-2.5 h-2.5 rounded-full bg-white border border-[var(--line-2)]"></span>
+            <div class="font-semibold">物流到达</div>
+            <div class="text-[var(--muted)] mono mt-0.5">04-28 11:38 · 顺丰 SF1208…</div>
+          </li>
+          <li>
+            <span class="absolute -left-[5px] w-2.5 h-2.5 rounded-full bg-white border border-[var(--line-2)]"></span>
+            <div class="font-semibold">出厂</div>
+            <div class="text-[var(--muted)] mono mt-0.5">04-28 09:42 · 苏州精工</div>
+          </li>
+          <li>
+            <span class="absolute -left-[5px] w-2.5 h-2.5 rounded-full bg-white border border-[var(--line-2)]"></span>
+            <div class="font-semibold">下线赋码</div>
+            <div class="text-[var(--muted)] mono mt-0.5">04-28 09:14 · 三号产线</div>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- 页脚说明 -->
+  <footer class="pt-8 pb-12 text-xs text-[var(--muted)] border-t hair flex items-center justify-between">
+    <span>溯源中心 v2.4.1 · 工位 A04 · 当前角色：仓管员</span>
+    <span class="mono">build 260505.1632</span>
+  </footer>
+</main>
+
+</body>
+</html>

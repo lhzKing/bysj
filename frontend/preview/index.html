@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>扫码中心 · 三种风格预览</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif; background: #0b1220; color: #fff; overflow: hidden; }
+  .topbar {
+    height: 56px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between;
+    background: #0f172a; border-bottom: 1px solid #1e293b;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+  .brand strong { font-weight: 700; }
+  .brand .meta { color: #64748b; font-size: 12px; }
+  .tabs { display: flex; gap: 4px; background: #1e293b; padding: 4px; border-radius: 10px; }
+  .tab {
+    padding: 7px 14px; font-size: 13px; font-weight: 600; color: #94a3b8; cursor: pointer;
+    border-radius: 7px; transition: all .15s; border: none; background: transparent; font-family: inherit;
+  }
+  .tab:hover { color: #e2e8f0; }
+  .tab.active { background: #fff; color: #0f172a; }
+  .tab .num { font-family: ui-monospace, 'JetBrains Mono', monospace; font-size: 10.5px; opacity: .6; margin-right: 6px; }
+  .actions { display: flex; gap: 8px; align-items: center; }
+  .btn-link {
+    padding: 6px 12px; font-size: 12px; color: #94a3b8; border: 1px solid #334155; border-radius: 6px;
+    background: transparent; cursor: pointer; text-decoration: none; transition: all .15s;
+  }
+  .btn-link:hover { color: #e2e8f0; border-color: #475569; }
+  .stage { height: calc(100vh - 56px); background: #fff; }
+  iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .hidden { display: none !important; }
+  .hint {
+    position: fixed; bottom: 16px; right: 16px; z-index: 99;
+    background: rgba(15, 23, 42, .92); backdrop-filter: blur(12px);
+    color: #cbd5e1; font-size: 12px; padding: 10px 14px; border-radius: 10px; border: 1px solid #1e293b;
+    max-width: 320px; line-height: 1.55;
+  }
+  .hint b { color: #fff; }
+  .hint kbd { font-family: ui-monospace, monospace; background: #1e293b; padding: 1px 6px; border-radius: 4px; font-size: 11px; }
+  .close-hint { float: right; margin-left: 12px; cursor: pointer; color: #64748b; }
+  .close-hint:hover { color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <strong>扫码中心 · 风格选型预览</strong>
+    <span class="meta">三种风格 · 同一组数据 · 同一组状态</span>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-target="industrial"><span class="num">01</span>工业克制</button>
+    <button class="tab" data-target="saas"><span class="num">02</span>现代 SaaS</button>
+    <button class="tab" data-target="glass"><span class="num">03</span>收敛毛玻璃</button>
+  </div>
+
+  <div class="actions">
+    <a class="btn-link" id="open-new" href="scan-hub-industrial.html" target="_blank">新窗口打开 ↗</a>
+  </div>
+</div>
+
+<div class="stage">
+  <iframe id="frame-industrial" src="scan-hub-industrial.html"></iframe>
+  <iframe id="frame-saas" class="hidden" src="scan-hub-saas.html"></iframe>
+  <iframe id="frame-glass" class="hidden" src="scan-hub-glass.html"></iframe>
+</div>
+
+<div class="hint" id="hint">
+  <span class="close-hint" onclick="document.getElementById('hint').remove()">×</span>
+  <b>使用说明</b><br>
+  顶部三个 Tab 切换风格 · 按 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> 也能切换。<br>
+  右上角"新窗口打开"可在独立标签页对比。
+</div>
+
+<script>
+  const tabs = document.querySelectorAll('.tab');
+  const frames = {
+    industrial: document.getElementById('frame-industrial'),
+    saas: document.getElementById('frame-saas'),
+    glass: document.getElementById('frame-glass'),
+  };
+  const links = {
+    industrial: 'scan-hub-industrial.html',
+    saas: 'scan-hub-saas.html',
+    glass: 'scan-hub-glass.html',
+  };
+  const openNew = document.getElementById('open-new');
+
+  function activate(target) {
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.target === target));
+    Object.entries(frames).forEach(([k, f]) => f.classList.toggle('hidden', k !== target));
+    openNew.setAttribute('href', links[target]);
+  }
+
+  tabs.forEach(t => t.addEventListener('click', () => activate(t.dataset.target)));
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '1') activate('industrial');
+    if (e.key === '2') activate('saas');
+    if (e.key === '3') activate('glass');
+  });
+</script>
+
+</body>
+</html>

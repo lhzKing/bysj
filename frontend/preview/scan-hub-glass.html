@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>扫码中心 · 收敛毛玻璃风</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#fafbff;
+    --ink:#0f172a;
+    --ink-2:#334155;
+    --muted:#64748b;
+    --line:#e2e8f0;
+    --indigo:#4f46e5;
+    --indigo-soft:#eef2ff;
+    --good:#059669;
+    --good-soft:#ecfdf5;
+    --warn:#b45309;
+    --warn-soft:#fefce8;
+    --bad:#dc2626;
+    --bad-soft:#fef2f2;
+  }
+  html,body{background:var(--bg);color:var(--ink);min-height:100vh;}
+  body{
+    font-family:'Plus Jakarta Sans','Noto Sans SC',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(60% 40% at 10% 0%, rgba(99,102,241,.10), transparent 70%),
+      radial-gradient(50% 40% at 90% 100%, rgba(20,184,166,.07), transparent 70%);
+    background-attachment:fixed;
+  }
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace;}
+  /* 关键：克制版毛玻璃。圆角统一 16-20px，模糊降到 14px，不再叠加阴影怪光晕 */
+  .glass{
+    background:rgba(255,255,255,.62);
+    backdrop-filter:blur(14px) saturate(150%);
+    -webkit-backdrop-filter:blur(14px) saturate(150%);
+    border:1px solid rgba(255,255,255,.72);
+    box-shadow:0 1px 0 rgba(255,255,255,.6) inset, 0 8px 30px -10px rgba(15,23,42,.06);
+    border-radius:18px;
+  }
+  .glass-strong{
+    background:rgba(255,255,255,.78);
+    backdrop-filter:blur(18px) saturate(160%);
+    -webkit-backdrop-filter:blur(18px) saturate(160%);
+    border:1px solid rgba(255,255,255,.85);
+    box-shadow:0 1px 0 rgba(255,255,255,.6) inset, 0 12px 40px -12px rgba(99,102,241,.10);
+    border-radius:20px;
+  }
+  .pill{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:999px;font-size:11.5px;font-weight:600;line-height:24px;}
+  .pill-good{color:var(--good);background:rgba(16,185,129,.12);}
+  .pill-warn{color:var(--warn);background:rgba(245,158,11,.14);}
+  .pill-bad{color:var(--bad);background:rgba(220,38,38,.10);}
+  .pill-indigo{color:var(--indigo);background:rgba(99,102,241,.10);}
+  .pill-mute{color:var(--ink-2);background:rgba(15,23,42,.05);}
+  .btn{height:40px;padding:0 16px;border-radius:12px;font-size:13.5px;font-weight:600;display:inline-flex;align-items:center;gap:8px;transition:all .2s;}
+  .btn-primary{background:var(--indigo);color:#fff;box-shadow:0 6px 20px -6px rgba(79,70,229,.5);}
+  .btn-primary:hover{background:#4338ca;transform:translateY(-1px);}
+  .btn-ghost{background:rgba(255,255,255,.7);color:var(--ink);border:1px solid rgba(15,23,42,.08);}
+  .btn-ghost:hover{background:rgba(255,255,255,.95);}
+  .label{font-size:11.5px;font-weight:700;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;}
+  /* 扫描框 */
+  .corner{position:absolute;width:26px;height:26px;border-color:#a5b4fc;}
+  .corner.tl{top:0;left:0;border-top:2px solid;border-left:2px solid;border-top-left-radius:8px;}
+  .corner.tr{top:0;right:0;border-top:2px solid;border-right:2px solid;border-top-right-radius:8px;}
+  .corner.bl{bottom:0;left:0;border-bottom:2px solid;border-left:2px solid;border-bottom-left-radius:8px;}
+  .corner.br{bottom:0;right:0;border-bottom:2px solid;border-right:2px solid;border-bottom-right-radius:8px;}
+  .scanline{position:absolute;left:10%;right:10%;height:2px;border-radius:2px;
+    background:linear-gradient(90deg,transparent,#a5b4fc,transparent);box-shadow:0 0 16px rgba(99,102,241,.5);
+    animation:scan 2.4s ease-in-out infinite;}
+  @keyframes scan{0%,100%{top:14%;opacity:.85}50%{top:84%;opacity:1}}
+  .row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(15,23,42,.06);font-size:13.5px;}
+  .row:last-child{border-bottom:0;}
+  .row dt{color:var(--muted);}
+  .row dd{font-weight:600;color:var(--ink);}
+  .kbd{font-family:'JetBrains Mono';font-size:10.5px;color:var(--muted);background:rgba(255,255,255,.6);border:1px solid rgba(15,23,42,.08);padding:1px 6px;border-radius:5px;}
+  .ring-soft{box-shadow:0 0 0 6px rgba(99,102,241,.06);}
+</style>
+</head>
+<body>
+
+<!-- 顶部岛屿导航 -->
+<header class="sticky top-4 z-40 px-6">
+  <div class="max-w-[1200px] mx-auto glass-strong h-14 px-5 flex items-center justify-between">
+    <div class="flex items-center gap-7">
+      <div class="flex items-center gap-2.5">
+        <div class="w-7 h-7 rounded-lg bg-[var(--indigo)] grid place-items-center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round"><path d="M3 7v10M21 7v10M7 3h10M7 21h10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+        </div>
+        <span class="font-bold text-[15px] tracking-tight">溯源中心</span>
+      </div>
+      <nav class="hidden md:flex items-center gap-1 text-[13.5px]">
+        <a class="px-3.5 h-9 rounded-lg grid place-items-center font-semibold bg-[var(--indigo-soft)] text-[var(--indigo)]">扫码</a>
+        <a class="px-3.5 h-9 rounded-lg grid place-items-center text-[var(--muted)] hover:text-[var(--ink)] hover:bg-white/40 font-medium">追溯查询</a>
+        <a class="px-3.5 h-9 rounded-lg grid place-items-center text-[var(--muted)] hover:text-[var(--ink)] hover:bg-white/40 font-medium">配件库</a>
+        <a class="px-3.5 h-9 rounded-lg grid place-items-center text-[var(--muted)] hover:text-[var(--ink)] hover:bg-white/40 font-medium">仪表盘</a>
+      </nav>
+    </div>
+    <div class="flex items-center gap-3 text-[13px]">
+      <span class="pill pill-mute">A 装配线 · 工位 04</span>
+      <div class="w-px h-5 bg-[var(--line)]"></div>
+      <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 grid place-items-center text-white text-[12px] font-bold ring-2 ring-white">张</div>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-[1200px] mx-auto px-6 py-10 space-y-14">
+
+  <!-- 预览说明 -->
+  <div class="glass px-5 py-3.5 text-[13px] text-[var(--ink-2)] flex items-start gap-3 leading-6">
+    <span class="pill pill-indigo mt-0.5">风格 3</span>
+    <div>
+      <strong class="text-[var(--ink)]">收敛毛玻璃风</strong>　保留半透明 + 柔光层次，但去掉旋转虚线、超大圆角与生造英文；圆角统一 16–20px，模糊降到 14px，主色依旧 indigo。
+    </div>
+  </div>
+
+  <!-- ============ 状态①：待机 ============ -->
+  <section>
+    <div class="flex items-end justify-between mb-5">
+      <div>
+        <h1 class="text-[28px] font-bold tracking-tight">扫码工位</h1>
+        <p class="text-[13.5px] text-[var(--muted)] mt-1">扫描零件追溯码登记入库、出库、流转或异常。所有动作通过 RSA 签名上链不可篡改。</p>
+      </div>
+      <span class="pill pill-good"><span class="w-1.5 h-1.5 rounded-full bg-[var(--good)]"></span>系统就绪</span>
+    </div>
+
+    <div class="grid grid-cols-12 gap-5">
+      <!-- 主卡：扫码 -->
+      <div class="col-span-12 lg:col-span-7 glass-strong p-9 relative overflow-hidden">
+        <!-- 柔光（克制：单一光源，不再四角各一） -->
+        <div class="absolute -right-20 -top-20 w-72 h-72 rounded-full bg-indigo-300/40 blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10">
+          <div class="flex items-center gap-2 mb-5">
+            <span class="pill pill-mute">最近扫码 · 11 分钟前</span>
+            <span class="pill pill-mute mono">14:32</span>
+          </div>
+
+          <h2 class="text-[24px] font-bold tracking-tight leading-snug max-w-md">开始一次扫码</h2>
+          <p class="text-[14px] text-[var(--ink-2)]/80 mt-2.5 leading-7 max-w-md">
+            将零件二维码对准摄像头取景框，识别成功后会进入登记面板。也可手动输入追溯码或使用 USB 扫码枪。
+          </p>
+
+          <div class="mt-7 flex items-center gap-3">
+            <button class="btn btn-primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+              启动摄像头
+            </button>
+            <button class="btn btn-ghost">手动输入</button>
+            <span class="text-xs text-[var(--muted)] ml-1"><span class="kbd">空格</span> 快捷</span>
+          </div>
+
+          <div class="mt-10 pt-6 border-t border-white/60 flex items-center justify-between">
+            <div>
+              <div class="text-[13.5px] font-semibold">为新批次生成追溯码</div>
+              <div class="text-xs text-[var(--muted)] mt-0.5">用于产线下线、首次入库（与扫码独立流程）</div>
+            </div>
+            <button class="btn btn-ghost">
+              生成
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 副：今日 + 最近 -->
+      <div class="col-span-12 lg:col-span-5 space-y-5">
+        <div class="glass p-6">
+          <div class="flex items-center justify-between mb-4">
+            <span class="label">今日 · 本工位</span>
+            <span class="text-[11px] text-[var(--muted)] mono">2026-05-05</span>
+          </div>
+          <div class="grid grid-cols-3 gap-4">
+            <div class="rounded-xl bg-white/50 p-3.5 border border-white/70">
+              <div class="text-[26px] font-bold tracking-tight leading-none mono">142</div>
+              <div class="text-[11.5px] text-[var(--muted)] mt-1.5 font-medium">入库</div>
+            </div>
+            <div class="rounded-xl bg-white/50 p-3.5 border border-white/70">
+              <div class="text-[26px] font-bold tracking-tight leading-none mono">98</div>
+              <div class="text-[11.5px] text-[var(--muted)] mt-1.5 font-medium">出库</div>
+            </div>
+            <div class="rounded-xl bg-[var(--bad-soft)]/80 p-3.5 border border-rose-100">
+              <div class="text-[26px] font-bold tracking-tight leading-none mono text-[var(--bad)]">3</div>
+              <div class="text-[11.5px] text-[var(--bad)] mt-1.5 font-medium">异常</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass p-6">
+          <div class="flex items-center justify-between mb-3">
+            <span class="label">最近扫码</span>
+            <a class="text-[11.5px] text-[var(--indigo)] font-semibold hover:underline">查看全部</a>
+          </div>
+          <ul class="space-y-2.5">
+            <li class="flex items-center gap-3 px-2 py-1.5 -mx-2 rounded-lg hover:bg-white/50">
+              <div class="w-8 h-8 rounded-lg bg-[var(--good-soft)] grid place-items-center text-[var(--good)] flex-shrink-0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="mono text-[12.5px] truncate">TC-260505-A8F3K2</div>
+                <div class="text-[11.5px] text-[var(--muted)] truncate">M8×60 内六角 · 入库</div>
+              </div>
+              <span class="text-[11px] text-[var(--muted)] mono">14:21</span>
+            </li>
+            <li class="flex items-center gap-3 px-2 py-1.5 -mx-2 rounded-lg hover:bg-white/50">
+              <div class="w-8 h-8 rounded-lg bg-[var(--good-soft)] grid place-items-center text-[var(--good)] flex-shrink-0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="mono text-[12.5px] truncate">TC-260505-A8F3J9</div>
+                <div class="text-[11.5px] text-[var(--muted)] truncate">SKF-6204 轴承 · 出库</div>
+              </div>
+              <span class="text-[11px] text-[var(--muted)] mono">14:18</span>
+            </li>
+            <li class="flex items-center gap-3 px-2 py-1.5 -mx-2 rounded-lg hover:bg-white/50">
+              <div class="w-8 h-8 rounded-lg bg-[var(--bad-soft)] grid place-items-center text-[var(--bad)] flex-shrink-0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01"/></svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="mono text-[12.5px] truncate">TC-260505-A8F3J7</div>
+                <div class="text-[11.5px] text-[var(--muted)] truncate">阀芯 DN25 · 外壳磕碰</div>
+              </div>
+              <span class="text-[11px] text-[var(--muted)] mono">14:09</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 状态②：扫描中 ============ -->
+  <section>
+    <div class="flex items-end justify-between mb-5">
+      <div>
+        <h2 class="text-[20px] font-bold tracking-tight">摄像头取景</h2>
+        <p class="text-[13.5px] text-[var(--muted)] mt-1">将追溯码对准框内，识别成功后自动进入登记。</p>
+      </div>
+      <button class="btn btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M6 18L18 6"/></svg>
+        关闭扫描
+      </button>
+    </div>
+
+    <div class="grid grid-cols-12 gap-5">
+      <div class="col-span-12 lg:col-span-8 glass overflow-hidden">
+        <div class="px-5 h-12 flex items-center justify-between text-[12.5px] border-b border-white/60">
+          <div class="flex items-center gap-3">
+            <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-[var(--bad)] animate-pulse"></span><span class="font-semibold">实时取景</span></span>
+            <span class="text-[var(--muted)] mono">USB Camera #2</span>
+          </div>
+          <div class="text-[var(--muted)] mono">1280×720 · 30 fps</div>
+        </div>
+        <div class="relative aspect-[16/9] bg-gradient-to-br from-slate-900 to-slate-800">
+          <div class="absolute inset-0 opacity-50"
+               style="background:
+                 radial-gradient(circle at 30% 35%, rgba(140,150,180,.4), transparent 45%),
+                 radial-gradient(circle at 70% 65%, rgba(60,70,90,.6), transparent 45%);"></div>
+          <div class="absolute inset-0 grid place-items-center">
+            <div class="relative w-[42%] aspect-square ring-soft rounded-xl">
+              <div class="corner tl"></div>
+              <div class="corner tr"></div>
+              <div class="corner bl"></div>
+              <div class="corner br"></div>
+              <div class="scanline"></div>
+            </div>
+          </div>
+          <div class="absolute left-5 bottom-4 text-[11.5px] text-white/75 mono">就绪 · 等待识别</div>
+          <div class="absolute right-5 bottom-4 flex items-center gap-2">
+            <button class="h-8 px-3 rounded-lg bg-white/10 text-white text-[11.5px] hover:bg-white/15 backdrop-blur border border-white/15">切换设备</button>
+            <button class="h-8 px-3 rounded-lg bg-white/10 text-white text-[11.5px] hover:bg-white/15 backdrop-blur border border-white/15">闪光灯</button>
+          </div>
+        </div>
+        <div class="px-5 h-12 flex items-center justify-between text-[12.5px] text-[var(--muted)] border-t border-white/60">
+          <span>建议距离 15–20cm　避免反光</span>
+          <span><span class="kbd">Esc</span> 取消　<span class="kbd">Space</span> 切换</span>
+        </div>
+      </div>
+
+      <div class="col-span-12 lg:col-span-4 space-y-5">
+        <div class="glass p-6">
+          <div class="label mb-4">本次会话</div>
+          <dl>
+            <div class="row"><dt>会话编号</dt><dd class="mono text-[12.5px]">SCN-260505-1432-04</dd></div>
+            <div class="row"><dt>工位</dt><dd>A 装配线 · 04</dd></div>
+            <div class="row"><dt>操作员</dt><dd>张建国</dd></div>
+            <div class="row"><dt>开始</dt><dd class="mono text-[12.5px]">14:31:08</dd></div>
+          </dl>
+        </div>
+
+        <div class="glass p-6">
+          <div class="label mb-4">设备健康</div>
+          <ul class="text-[13px] space-y-3">
+            <li class="flex items-center justify-between"><span>摄像头权限</span><span class="pill pill-good">已授权</span></li>
+            <li class="flex items-center justify-between"><span>HTTPS 证书</span><span class="pill pill-good">有效</span></li>
+            <li class="flex items-center justify-between"><span>后端连通</span><span class="pill pill-good">12 ms</span></li>
+            <li class="flex items-center justify-between"><span>RSA 公钥</span><span class="pill pill-indigo">已加载</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 状态③：扫码成功 ============ -->
+  <section>
+    <div class="flex items-end justify-between mb-5">
+      <div>
+        <h2 class="text-[20px] font-bold tracking-tight">已识别追溯码</h2>
+        <p class="text-[13.5px] text-[var(--muted)] mt-1">选择对此条码执行的动作。完成后自动回到扫码取景。</p>
+      </div>
+      <button class="btn btn-ghost">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14l-4-4 4-4M5 10h11a4 4 0 010 8h-1"/></svg>
+        重新扫描
+      </button>
+    </div>
+
+    <div class="glass-strong p-6 mb-5 flex items-center justify-between relative overflow-hidden">
+      <div class="absolute -left-12 -top-12 w-44 h-44 bg-emerald-300/30 rounded-full blur-3xl"></div>
+      <div class="flex items-center gap-5 relative z-10">
+        <div class="w-12 h-12 rounded-2xl bg-[var(--good-soft)] grid place-items-center text-[var(--good)]">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 7"/></svg>
+        </div>
+        <div>
+          <div class="text-[12px] text-[var(--muted)] font-semibold">追溯码</div>
+          <div class="mono text-[22px] font-bold tracking-tight mt-0.5">TC-260505-A8F3K2</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-5 text-[13px] relative z-10">
+        <div class="text-right">
+          <div class="text-[11.5px] text-[var(--muted)]">链上完整性</div>
+          <div class="font-semibold mt-0.5 inline-flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-[var(--good)]"></span>
+            4 / 4 节点验签通过
+          </div>
+        </div>
+        <button class="btn btn-ghost">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
+          复制
+        </button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-12 gap-5">
+      <!-- 配件信息 -->
+      <div class="col-span-12 lg:col-span-5 glass p-6">
+        <div class="flex items-center justify-between mb-4">
+          <span class="label">配件信息</span>
+          <span class="pill pill-indigo">在库</span>
+        </div>
+        <h3 class="text-[16px] font-bold leading-snug">M8×60 内六角圆柱头螺栓 · 8.8 级</h3>
+        <div class="text-[12px] text-[var(--muted)] mono mt-1">SPU-GB70.1-M8X60-8.8</div>
+
+        <dl class="mt-5">
+          <div class="row"><dt>批次</dt><dd class="mono text-[12.5px]">B260428-039</dd></div>
+          <div class="row"><dt>生产厂</dt><dd>苏州精工紧固件</dd></div>
+          <div class="row"><dt>下线时间</dt><dd class="mono text-[12.5px]">2026-04-28 09:14</dd></div>
+          <div class="row"><dt>当前位置</dt><dd>2# 立体仓 · C-08-12</dd></div>
+          <div class="row"><dt>持有方</dt><dd>本厂 / A 装配线</dd></div>
+          <div class="row"><dt>累计流转</dt><dd>4 次</dd></div>
+        </dl>
+      </div>
+
+      <!-- 操作 -->
+      <div class="col-span-12 lg:col-span-4 glass p-6">
+        <div class="label mb-4">登记动作</div>
+
+        <div class="space-y-2.5">
+          <button class="w-full flex items-center justify-between px-4 h-12 rounded-xl bg-[var(--indigo)] text-white text-[14px] font-semibold hover:bg-[#4338ca] shadow-lg shadow-indigo-500/20 transition-all hover:-translate-y-0.5">
+            <span class="flex items-center gap-3">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+              入库登记
+            </span>
+            <span class="text-[11px] opacity-70 mono">F1</span>
+          </button>
+
+          <button class="w-full flex items-center justify-between px-4 h-12 rounded-xl bg-white/60 border border-white/80 text-[14px] font-semibold hover:bg-white transition-colors">
+            <span class="flex items-center gap-3 text-[var(--ink)]">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0l-4 4m4-4l4 4M5 3h14"/></svg>
+              出库登记
+            </span>
+            <span class="text-[11px] text-[var(--muted)] mono">F2</span>
+          </button>
+
+          <button class="w-full flex items-center justify-between px-4 h-12 rounded-xl bg-white/60 border border-white/80 text-[14px] font-semibold hover:bg-white transition-colors">
+            <span class="flex items-center gap-3 text-[var(--ink)]">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="7" width="15" height="10" rx="1"/><path d="M16 10h4l3 3v4h-7zM5 21a2 2 0 100-4 2 2 0 000 4zM18 21a2 2 0 100-4 2 2 0 000 4z"/></svg>
+              物流流转
+            </span>
+            <span class="text-[11px] text-[var(--muted)] mono">F3</span>
+          </button>
+
+          <button class="w-full flex items-center justify-between px-4 h-12 rounded-xl bg-[var(--bad-soft)]/70 border border-rose-100 text-[var(--bad)] text-[14px] font-semibold hover:bg-[var(--bad-soft)] transition-colors">
+            <span class="flex items-center gap-3">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+              异常上报
+            </span>
+            <span class="text-[11px] opacity-70 mono">F4</span>
+          </button>
+        </div>
+
+        <a class="mt-5 inline-flex items-center gap-1.5 text-[13px] text-[var(--indigo)] font-semibold hover:underline">
+          查看全链路审计详情
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+
+      <!-- 流转 -->
+      <div class="col-span-12 lg:col-span-3 glass p-6">
+        <div class="label mb-4">流转记录</div>
+        <ol class="relative pl-4 space-y-4 text-[12.5px]" style="border-left:1px dashed rgba(99,102,241,.25)">
+          <li>
+            <span class="absolute -left-[5px] top-0.5 w-2.5 h-2.5 rounded-full bg-[var(--indigo)] ring-4 ring-indigo-100"></span>
+            <div class="font-semibold">入库 · 2# 立体仓</div>
+            <div class="text-[var(--muted)] mono mt-0.5">04-28 14:02 · 王师傅</div>
+          </li>
+          <li>
+            <span class="absolute -left-[5px] top-0.5 w-2.5 h-2.5 rounded-full bg-white ring-1 ring-indigo-200"></span>
+            <div class="font-semibold">物流到达</div>
+            <div class="text-[var(--muted)] mono mt-0.5">04-28 11:38</div>
+          </li>
+          <li>
+            <span class="absolute -left-[5px] top-0.5 w-2.5 h-2.5 rounded-full bg-white ring-1 ring-indigo-200"></span>
+            <div class="font-semibold">出厂 · 苏州精工</div>
+            <div class="text-[var(--muted)] mono mt-0.5">04-28 09:42</div>
+          </li>
+          <li>
+            <span class="absolute -left-[5px] top-0.5 w-2.5 h-2.5 rounded-full bg-white ring-1 ring-indigo-200"></span>
+            <div class="font-semibold">下线赋码</div>
+            <div class="text-[var(--muted)] mono mt-0.5">04-28 09:14</div>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <footer class="pt-8 pb-12 text-[12px] text-[var(--muted)] flex items-center justify-between">
+    <span>溯源中心 · v2.4.1</span>
+    <span class="flex items-center gap-3">
+      <span>张建国 · 仓管员</span>
+      <span class="mono">build 260505.1632</span>
+    </span>
+  </footer>
+</main>
+
+</body>
+</html>

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.trace.mapper.TraceLifecycleLogMapper">
+
+    <sql id="TraceLifecycleLogColumns">
+        id,
+        trace_code AS traceCode,
+        spu_id AS spuId,
+        action_type AS actionType,
+        from_node AS fromNode,
+        to_node AS toNode,
+        province,
+        city,
+        remark,
+        event_time AS eventTime,
+        ingest_time AS ingestTime,
+        prev_hash AS prevHash,
+        current_hash AS currentHash,
+        correction_of AS correctionOf,
+        operator,
+        signature,
+        signature_key_id AS signatureKeyId,
+        signature_key_version AS signatureKeyVersion,
+        create_time AS createTime
+    </sql>
+
+    <sql id="TraceLifecycleLogColumnsWithAlias">
+        l.id,
+        l.trace_code AS traceCode,
+        l.spu_id AS spuId,
+        l.action_type AS actionType,
+        l.from_node AS fromNode,
+        l.to_node AS toNode,
+        l.province,
+        l.city,
+        l.remark,
+        l.event_time AS eventTime,
+        l.ingest_time AS ingestTime,
+        l.prev_hash AS prevHash,
+        l.current_hash AS currentHash,
+        l.correction_of AS correctionOf,
+        l.operator,
+        l.signature,
+        l.signature_key_id AS signatureKeyId,
+        l.signature_key_version AS signatureKeyVersion,
+        l.create_time AS createTime
+    </sql>
+
+    <select id="selectLatestByTraceCode" resultType="com.example.trace.entity.TraceLifecycleLog">
+        SELECT
+            <include refid="TraceLifecycleLogColumns"/>
+        FROM trace_lifecycle_log
+        WHERE trace_code = #{traceCode}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <!-- 红冲蓝补：如果某条日志被修正，则原日志在“有效视图”中隐藏 -->
+    <select id="selectEffectiveHistory" resultType="com.example.trace.entity.TraceLifecycleLog">
+        SELECT
+            <include refid="TraceLifecycleLogColumnsWithAlias"/>
+        FROM trace_lifecycle_log l
+        LEFT JOIN trace_lifecycle_log c ON c.correction_of = l.id
+        WHERE l.trace_code = #{traceCode}
+          AND c.id IS NULL
+        ORDER BY l.event_time ASC, l.id ASC
+    </select>
+
+    <select id="selectTopologyEdges" resultType="map">
+        SELECT
+            from_node AS source,
+            to_node AS target
+        FROM trace_lifecycle_log
+        WHERE (#{traceCode} IS NULL OR trace_code = #{traceCode})
+                    AND from_node IS NOT NULL AND from_node != ''
+                    AND to_node IS NOT NULL AND to_node != ''
+        ORDER BY event_time ASC, id ASC
+    </select>
+
+    <!-- 完整日志链（用于验链，不过滤被修正的日志） -->
+    <select id="selectFullChain" resultType="com.example.trace.entity.TraceLifecycleLog">
+        SELECT
+            <include refid="TraceLifecycleLogColumns"/>
+        FROM trace_lifecycle_log
+        WHERE trace_code = #{traceCode}
+        ORDER BY id ASC
+    </select>
+
+</mapper>

@@ -1,0 +1,4 @@
+interface:
+  display_name: "T25 Permission Split"
+  short_description: "Continue T25 PermissionService split"
+  default_prompt: "Continue T25 PermissionService split in d:\\bysj. Read docs/progress/MASTER.md first, avoid frontend UI edits, and update progress docs plus the root task table markdown file after each completed subtask."

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Awesome Design MD"
+  short_description: "Pick and apply a DESIGN.md reference for frontend UI work."
+  default_prompt: "Use $awesome-design-md to choose and apply a DESIGN.md style for this UI task."
+
+policy:
+  allow_implicit_invocation: true

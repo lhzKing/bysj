@@ -1,0 +1,4 @@
+﻿interface:
+  display_name: "T29 Historical Residue Cleanup"
+  short_description: "Continue T29 low-risk cleanup"
+  default_prompt: "Continue T29 historical residue cleanup in d:\bysj. Read docs/progress/MASTER.md first, keep scope narrow, run backend tests and residue searches, and update progress docs plus the root task table."

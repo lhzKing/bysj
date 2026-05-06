@@ -1,0 +1,4 @@
+﻿interface:
+  display_name: "T04 TraceSnapshotMapper Cleanup"
+  short_description: "Continue T04 mapper residue cleanup"
+  default_prompt: "Continue T04 TraceSnapshotMapper cleanup in d:\\bysj. Read docs/progress/MASTER.md first, keep scope tight, run focused trace tests, and update progress docs plus the root task table."

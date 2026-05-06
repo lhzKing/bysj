@@ -1,0 +1,41 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+vite_runtime*.log
+vite_t*.log
+runtime_*.png
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Local env overrides — must never be committed (敏感凭据如高德 Key 只放这里)
+# 注意：上面的 *.local 已经覆盖以下后缀，这里显式列出方便检索与提醒
+.env.local
+.env.development.local
+.env.production.local
+.env.test.local
+
+# 自签 HTTPS 证书目录 - 必须本地生成、绝不进版本库
+# 用"禁全部 + 白名单"模式：任何未来新增的证书格式（pfx/p12/etc.）都默认被忽略；
+# 只有显式 ! 白名单的非敏感模板（如 openssl.cnf 用于生成证书）能入库。
+# 不强制保留 .gitkeep——openssl.cnf 已能保住目录存在。
+certs/*
+!certs/openssl.cnf
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

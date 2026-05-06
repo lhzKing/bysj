@@ -1,0 +1,4 @@
+interface:
+  display_name: "T21 Config Externalization"
+  short_description: "Continue T21 config governance"
+  default_prompt: "Continue T21 config externalization in d:\\bysj. Read docs/progress/MASTER.md first, avoid frontend UI edits, and update progress docs plus the root task table markdown file after each completed subtask."

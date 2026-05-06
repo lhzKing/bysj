@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工业溯源数字孪生系统 - 高端重构预览</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 高端 Plus Jakarta Sans 字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --surface: #ffffff;
+            --bg: #fdfdff;
+        }
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background-color: var(--bg);
+            /* 动态弥散渐变背景 */
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(20, 184, 166, 0.08) 0px, transparent 50%);
+            min-height: 100vh;
+        }
+        /* Glassmorphism 2.0 核心样式 */
+        .premium-card {
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(24px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.7);
+            box-shadow: 
+                0 10px 40px -6px rgba(0, 0, 0, 0.02), 
+                0 20px 80px -12px rgba(99, 102, 241, 0.08);
+            transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+        .premium-card:hover {
+            transform: translateY(-6px) scale(1.01);
+            background: rgba(255, 255, 255, 0.8);
+            border-color: rgba(99, 102, 241, 0.3);
+            box-shadow: 0 30px 100px -15px rgba(99, 102, 241, 0.15);
+        }
+        /* 导航动画 */
+        .nav-item {
+            position: relative;
+            color: #64748b;
+            transition: all 0.3s ease;
+        }
+        .nav-item:hover, .nav-item-active {
+            color: var(--primary);
+        }
+        .nav-item-active::after {
+            content: '';
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--primary);
+            box-shadow: 0 0 12px var(--primary);
+        }
+        /* 渐变发光文字 */
+        .stat-value {
+            background: linear-gradient(135deg, #0f172a 30%, #6366f1 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.04em;
+        }
+        /* 网格背景装饰 */
+        .grid-accent {
+            background-image: radial-gradient(rgba(99, 102, 241, 0.1) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+    </style>
+</head>
+<body class="text-slate-900 antialiased overflow-x-hidden">
+
+    <div class="fixed inset-0 grid-accent pointer-events-none opacity-50"></div>
+
+    <!-- 悬浮岛导航 (The Floating Island) -->
+    <nav class="fixed top-8 left-1/2 -translate-x-1/2 w-[92%] max-w-5xl h-20 premium-card rounded-[40px] z-50 px-10 flex items-center justify-between">
+        <div class="flex items-center space-x-12">
+            <div class="flex items-center space-x-4 group cursor-pointer">
+                <div class="size-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-200 transition-transform group-hover:rotate-12">
+                    <svg class="size-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                </div>
+                <span class="text-2xl font-black tracking-tighter italic">TRACE<span class="text-indigo-600">.CORE</span></span>
+            </div>
+            <div class="hidden lg:flex items-center space-x-10 text-sm font-bold tracking-tight">
+                <a href="#" class="nav-item nav-item-active">数字看板</a>
+                <a href="#" class="nav-item hover:scale-105">智能矩阵</a>
+                <a href="#" class="nav-item hover:scale-105">全链追踪</a>
+                <a href="#" class="nav-item hover:scale-105">异常沙盒</a>
+            </div>
+        </div>
+        <div class="flex items-center space-x-6">
+            <div class="hidden md:flex flex-col items-end">
+                <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">Status</span>
+                <span class="text-xs font-black text-emerald-500 mt-1.5 flex items-center">
+                    <span class="size-2 bg-emerald-500 rounded-full animate-ping mr-2 opacity-75"></span> 
+                    <span class="relative">SECURE NODE</span>
+                </span>
+            </div>
+            <div class="size-12 rounded-2xl overflow-hidden ring-[6px] ring-white/50 shadow-2xl transition-transform hover:scale-110">
+                <img src="https://ui-avatars.com/api/?name=Admin&background=6366f1&color=fff" alt="Avatar">
+            </div>
+        </div>
+    </nav>
+
+    <!-- 核心视图 -->
+    <main class="pt-40 pb-32 px-8 max-w-7xl mx-auto relative">
+        
+        <!-- 艺术感标题 -->
+        <div class="relative mb-20">
+            <div class="absolute -left-12 -top-12 size-40 bg-indigo-200 rounded-full blur-[80px] opacity-30"></div>
+            <h1 class="text-7xl font-black tracking-tighter text-slate-900 leading-[0.95]">
+                重塑 <span class="text-indigo-600">工业溯源</span><br>
+                <span class="text-slate-300">数字化认知层</span>
+            </h1>
+            <p class="text-xl text-slate-500 mt-8 max-w-2xl font-semibold leading-relaxed">
+                超越传统的后台管理，这是一套具备“神经元”感知的数字孪生系统。
+            </p>
+        </div>
+
+        <!-- 3D Bento Layout -->
+        <div class="grid grid-cols-12 gap-8">
+            
+            <!-- 主核心卡片 -->
+            <div class="col-span-12 lg:col-span-8 premium-card rounded-[48px] p-12 relative overflow-hidden group">
+                <div class="relative z-10">
+                    <div class="flex justify-between items-center">
+                        <span class="px-4 py-1.5 bg-indigo-600 text-white text-[10px] font-black rounded-full uppercase tracking-[0.15em]">Neural Flow Live</span>
+                        <div class="flex -space-x-2">
+                            <div class="size-8 rounded-full border-2 border-white bg-slate-200"></div>
+                            <div class="size-8 rounded-full border-2 border-white bg-slate-300"></div>
+                            <div class="size-8 rounded-full border-2 border-white bg-indigo-400"></div>
+                        </div>
+                    </div>
+                    <h3 class="text-3xl font-black text-slate-900 mt-10 tracking-tight">全球节点吞吐量</h3>
+                    <div class="mt-12 flex items-baseline">
+                        <span class="text-[120px] font-black leading-none stat-value">1.42<span class="text-4xl ml-2 font-bold opacity-50">M</span></span>
+                        <div class="ml-10">
+                            <div class="text-emerald-500 font-black text-2xl">↑ 32%</div>
+                            <div class="text-slate-400 font-bold text-xs uppercase tracking-widest">Efficiency</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 抽象几何修饰 -->
+                <div class="absolute -right-20 -bottom-20 size-[400px] bg-gradient-to-br from-indigo-100 to-emerald-50 rounded-full opacity-30 blur-3xl group-hover:scale-110 transition-transform"></div>
+            </div>
+
+            <!-- 右侧垂直卡片组 -->
+            <div class="col-span-12 lg:col-span-4 space-y-8">
+                <div class="premium-card rounded-[40px] p-10 flex flex-col justify-between h-[280px]">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Active Trace</p>
+                        <h4 class="text-5xl font-black mt-4 text-slate-900">8,204</h4>
+                    </div>
+                    <div class="flex items-center text-xs font-bold text-indigo-600">
+                        <span>查看活跃地图</span>
+                        <svg class="size-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+                    </div>
+                </div>
+                <div class="premium-card rounded-[40px] p-10 bg-slate-900 text-white border-none shadow-indigo-200">
+                    <div class="size-12 rounded-2xl bg-indigo-600 flex items-center justify-center mb-6">
+                        <svg class="size-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    </div>
+                    <h4 class="text-xl font-black">区块链校验已就绪</h4>
+                    <p class="text-slate-400 text-xs mt-3 leading-relaxed font-medium">所有的溯源码均已通过去中心化哈希校验，确保物理实物与数字信息的唯一对应。</p>
+                </div>
+            </div>
+
+            <!-- 数据明细区域 -->
+            <div class="col-span-12 premium-card rounded-[56px] p-12 mt-4">
+                <div class="flex justify-between items-center mb-16">
+                    <h3 class="text-4xl font-black text-slate-900 tracking-tighter">配件全生命周期矩阵</h3>
+                    <div class="bg-slate-100 p-1.5 rounded-2xl flex space-x-1">
+                        <button class="px-6 py-2.5 bg-white shadow-sm rounded-xl text-xs font-black">列表视图</button>
+                        <button class="px-6 py-2.5 text-slate-400 rounded-xl text-xs font-black">时序视图</button>
+                    </div>
+                </div>
+                
+                <div class="space-y-6">
+                    <!-- 表格行模拟 -->
+                    <div class="flex items-center justify-between p-8 rounded-[32px] hover:bg-white hover:shadow-xl transition-all border border-transparent hover:border-slate-100 group">
+                        <div class="flex items-center space-x-8">
+                            <div class="size-16 rounded-3xl bg-indigo-50 flex items-center justify-center text-indigo-600 font-mono font-black text-lg shadow-inner">#01</div>
+                            <div>
+                                <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Identifier</p>
+                                <p class="text-lg font-black text-slate-900">HYD-AX-9920</p>
+                            </div>
+                        </div>
+                        <div class="hidden md:block">
+                            <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Current Node</p>
+                            <p class="text-lg font-bold text-indigo-600">华东数字化车间</p>
+                        </div>
+                        <div class="text-right">
+                            <button class="px-8 py-3.5 bg-indigo-600 text-white rounded-2xl text-xs font-black shadow-lg shadow-indigo-100 transition-transform group-hover:scale-105 active:scale-95">审计详情</button>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between p-8 rounded-[32px] hover:bg-white hover:shadow-xl transition-all border border-transparent hover:border-slate-100 group">
+                        <div class="flex items-center space-x-8">
+                            <div class="size-16 rounded-3xl bg-emerald-50 flex items-center justify-center text-emerald-600 font-mono font-black text-lg shadow-inner">#02</div>
+                            <div>
+                                <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Identifier</p>
+                                <p class="text-lg font-black text-slate-900">GR-BX-8841</p>
+                            </div>
+                        </div>
+                        <div class="hidden md:block">
+                            <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Current Node</p>
+                            <p class="text-lg font-bold text-emerald-600">已入库 - 4号精密仓</p>
+                        </div>
+                        <div class="text-right">
+                            <button class="px-8 py-3.5 bg-slate-900 text-white rounded-2xl text-xs font-black shadow-lg shadow-slate-200 transition-transform group-hover:scale-110 active:scale-95 transition-all">审计详情</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+</body>
+</html>

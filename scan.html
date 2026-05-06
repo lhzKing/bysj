@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Scandi Traceability Scanner</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        /* --- 1. 北欧风格系统变量 (Scandi System) --- */
+        :root {
+            /* 基底色 */
+            --bg: #F9FAFB;        /* 极淡的冷灰白，清爽 */
+            --surface: #FFFFFF;    /* 纯白卡片 */
+            
+            /* 文字色 - 柔和的深灰，不刺眼 */
+            --text-main: #374151;  
+            --text-sub: #9CA3AF;   
+
+            /* 功能色 - 提取自自然的柔和色调 */
+            --color-inbound: #84A98C;  /* 鼠尾草绿 */
+            --color-outbound: #8ECAE6; /* 冰川蓝 */
+            --color-transfer: #E9C46A; /* 暖麦黄 */
+            --color-alert: #E76F51;    /* 陶土红 */
+
+            /* 质感 */
+            --radius-box: 24px;    /* 大圆角，亲和力 */
+            --radius-btn: 16px;    /* 按钮圆角 */
+            --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.03); /* 漂浮感阴影 */
+            --border-light: 1px solid #F3F4F6;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-width: 600px; /* 在大屏上限制宽度，保持精致感 */
+            margin: 0 auto;
+            width: 100%;
+            background-color: var(--bg);
+        }
+
+        /* --- 2. 顶部导航 (Header) --- */
+        .header {
+            padding: 24px 32px;
+            background: transparent; /* 融入背景 */
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end; /* 文字底部对齐 */
+            flex-shrink: 0;
+            z-index: 10;
+        }
+
+        .welcome-text {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .welcome-label {
+            font-size: 13px;
+            color: var(--text-sub);
+            margin-bottom: 6px;
+            font-weight: 400;
+        }
+
+        .app-name {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-main);
+            letter-spacing: -0.5px;
+        }
+
+        /* 角色标签 - 像便利贴 */
+        .role-pill {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 6px 16px;
+            border-radius: 20px;
+            background-color: #E5E7EB; /* 浅灰底 */
+            color: var(--text-main);
+            transition: all 0.3s ease;
+        }
+
+        /* --- 3. 取景器 (Viewport) --- */
+        .viewport {
+            flex: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            margin: 0 20px;
+            /* 加上白色卡片底，像一张照片 */
+            background: var(--surface);
+            border-radius: var(--radius-box);
+            box-shadow: var(--shadow-soft);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        /* 扫描框 - 更柔和 */
+        .scanner-frame {
+            width: 240px;
+            height: 240px;
+            position: relative;
+            border-radius: 32px; /* 很大的圆角 */
+            /* 虚线边框，像剪裁线 */
+            border: 2px dashed #E5E7EB; 
+        }
+
+        /* 扫描框四角 - 仅作为装饰点缀 */
+        .corner {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-color: var(--text-main);
+            border-style: solid;
+            border-radius: 4px;
+            opacity: 0.2; /* 非常淡 */
+        }
+        .tl { top: -2px; left: -2px; border-width: 4px 0 0 4px; border-top-left-radius: 12px; }
+        .tr { top: -2px; right: -2px; border-width: 4px 4px 0 0; border-top-right-radius: 12px; }
+        .bl { bottom: -2px; left: -2px; border-width: 0 0 4px 4px; border-bottom-left-radius: 12px; }
+        .br { bottom: -2px; right: -2px; border-width: 0 4px 4px 0; border-bottom-right-radius: 12px; }
+
+        /* 扫描线 - 柔和的光带 */
+        .scan-line {
+            position: absolute;
+            top: 0;
+            left: 5%;
+            width: 90%;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, var(--color-inbound), transparent);
+            opacity: 0.5;
+            filter: blur(4px);
+            animation: scan 3s infinite ease-in-out;
+        }
+
+        @keyframes scan {
+            0% { top: 10%; opacity: 0; }
+            50% { opacity: 0.8; }
+            100% { top: 90%; opacity: 0; }
+        }
+
+        .instruction {
+            margin-top: 30px;
+            font-size: 14px;
+            color: var(--text-sub);
+            font-weight: 400;
+        }
+
+        /* --- 4. 底部控制区 (Panel) --- */
+        .controls {
+            padding: 0 24px 40px 24px; /* 左右留白 */
+            flex-shrink: 0;
+        }
+
+        .grid-container {
+            display: grid;
+            gap: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .layout-single { grid-template-columns: 1fr; }
+        .layout-dual { grid-template-columns: 1fr 1fr; }
+        /* Admin 也可以是 2列，但我们会用颜色区分层级 */
+        .layout-admin { grid-template-columns: 1fr 1fr; }
+
+        /* --- 按钮组件 --- */
+        .btn {
+            height: 72px;
+            border: none;
+            border-radius: var(--radius-btn);
+            font-family: inherit;
+            cursor: pointer;
+            display: flex;
+            flex-direction: row; /* 图标文字横排，更像列表 */
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s;
+            position: relative;
+            background: var(--surface);
+            color: var(--text-main);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.02); /* 极轻阴影 */
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .btn:active {
+            transform: scale(0.96);
+        }
+        
+        /* 悬停效果 (PC端可见) */
+        @media (hover: hover) {
+            .btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+            }
+        }
+
+        .btn-icon {
+            font-size: 20px;
+            /* 去除 emoji 的杂色，如果用的是 SVG 最好，这里用滤镜稍微统一一下 */
+            filter: grayscale(0.2); 
+        }
+
+        /* 颜色变体：使用淡色背景 + 深色文字 */
+        
+        /* 入库 - 绿色系 */
+        .btn-inbound {
+            background-color: #EDF7ED; /* 极淡绿 */
+            color: #2E5C38;
+        }
+        .btn-inbound .btn-icon { filter: hue-rotate(0deg); } /* 保持原色 */
+
+        /* 出库 - 蓝色系 */
+        .btn-outbound {
+            background-color: #E8F4F8; /* 极淡蓝 */
+            color: #2B5F75;
+        }
+
+        /* 流转 - 黄色系 */
+        .btn-transfer {
+            background-color: #FEF9E7; /* 极淡黄 */
+            color: #8C6B1F;
+        }
+
+        /* 查询 - 纯白系 (默认) */
+        .btn-query {
+            background-color: var(--surface);
+            border: 1px solid #E5E7EB;
+        }
+
+        /* 异常 - 红色系 */
+        .btn-alert {
+            background-color: #FEF2F2;
+            color: #991B1B;
+            border: 1px dashed #FECACA;
+        }
+
+        .span-full {
+            grid-column: 1 / -1;
+        }
+
+        /* 仅仅只有一个大按钮时的特殊样式 */
+        .btn-hero {
+            background: var(--text-main); /* 深灰底 */
+            color: white;
+            box-shadow: 0 10px 30px rgba(55, 65, 81, 0.2);
+        }
+        .btn-hero .instruction-sub {
+            color: rgba(255,255,255,0.7);
+        }
+
+        /* --- 5. 调试/演示面板 --- */
+        .demo-switcher {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 6px;
+            border-radius: 30px;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            display: flex;
+            gap: 4px;
+            backdrop-filter: blur(8px);
+        }
+        
+        .role-dot {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-sub);
+            background: transparent;
+            transition: all 0.2s;
+        }
+        
+        .role-dot:hover { background: #f0f0f0; }
+        .role-dot.active {
+            background: var(--text-main);
+            color: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: white;
+            color: var(--text-main);
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .toast.show { 
+            opacity: 1; 
+            transform: translateX(-50%) translateY(0);
+        }
+        .toast::before {
+            content: '';
+            display: block;
+            width: 8px;
+            height: 8px;
+            background: #10B981; /* Success Green */
+            border-radius: 50%;
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <!-- 演示用：更隐蔽的角色切换球 -->
+    <div class="demo-switcher">
+        <button class="role-dot" :class="{active: currentRole === 'USER'}" @click="switchRole('USER')" title="User">U</button>
+        <button class="role-dot" :class="{active: currentRole === 'WAREHOUSE'}" @click="switchRole('WAREHOUSE')" title="Warehouse">W</button>
+        <button class="role-dot" :class="{active: currentRole === 'LOGISTICS'}" @click="switchRole('LOGISTICS')" title="Logistics">L</button>
+        <button class="role-dot" :class="{active: currentRole === 'ADMIN'}" @click="switchRole('ADMIN')" title="Admin">A</button>
+    </div>
+
+    <!-- 1. Header: 问候语风格 -->
+    <header class="header">
+        <div class="welcome-text">
+            <span class="welcome-label">Current Workspace</span>
+            <span class="app-name">Scan & Trace</span>
+        </div>
+        <div class="role-pill">{{ currentRoleText }}</div>
+    </header>
+
+    <!-- 2. Viewport: 像相框 -->
+    <main class="viewport">
+        <div class="scanner-frame">
+            <div class="corner tl"></div>
+            <div class="corner tr"></div>
+            <div class="corner bl"></div>
+            <div class="corner br"></div>
+            <div class="scan-line" :style="{ background: scanLineColor }"></div>
+        </div>
+        <p class="instruction">请将二维码置于框内</p>
+    </main>
+
+    <!-- 3. Controls: 柔和的按钮网格 -->
+    <footer class="controls">
+        <div class="grid-container" :class="gridClass">
+            
+            <!-- 生产赋码 -->
+            <button v-if="permissions.includes('trace:create')" class="btn btn-query" @click="handleAction('生产赋码')">
+                <span class="btn-icon">🏭</span>
+                <span>生产赋码</span>
+            </button>
+
+            <!-- 入库 -->
+            <button v-if="showInbound" class="btn btn-inbound" @click="handleAction('入库扫描')">
+                <span class="btn-icon">📦</span>
+                <span>入库登记</span>
+            </button>
+
+            <!-- 出库 -->
+            <button v-if="showOutbound" class="btn btn-outbound" @click="handleAction('出库扫描')">
+                <span class="btn-icon">📤</span>
+                <span>出库登记</span>
+            </button>
+
+            <!-- 流转 -->
+            <button v-if="showTransfer" class="btn btn-transfer" @click="handleAction('流转扫描')">
+                <span class="btn-icon">🚚</span>
+                <span>物流流转</span>
+            </button>
+
+            <!-- 通用查询 -->
+            <!-- 如果是唯一按钮，变成 Hero 样式 (深色背景)，否则是普通查询样式 -->
+            <button 
+                v-if="permissions.includes('trace:view')" 
+                class="btn" 
+                :class="isOnlyButton ? 'btn-hero span-full' : 'btn-query span-full'" 
+                @click="handleAction('扫码查询')"
+            >
+                <span class="btn-icon">🔍</span>
+                <span>扫码查询</span>
+            </button>
+            
+            <!-- 异常处理 -->
+            <button v-if="permissions.includes('sys:admin')" class="btn btn-alert span-full" @click="handleAction('异常上报')">
+                <span class="btn-icon">⚠️</span>
+                <span>异常上报</span>
+            </button>
+
+        </div>
+    </footer>
+
+    <!-- 极简 Toast -->
+    <div class="toast" :class="{show: toastVisible}">
+        {{ toastMsg }}
+    </div>
+</div>
+
+<script>
+    const { createApp, ref, computed } = Vue;
+
+    createApp({
+        setup() {
+            // --- 状态 ---
+            const currentRole = ref('WAREHOUSE');
+            const toastVisible = ref(false);
+            const toastMsg = ref('');
+
+            // --- 权限映射 ---
+            const rolePermissions = {
+                'USER': ['trace:view'],
+                'WAREHOUSE': ['trace:scan', 'trace:view'],
+                'LOGISTICS': ['trace:scan', 'trace:view'],
+                'ADMIN': ['trace:create', 'trace:scan', 'trace:view', 'sys:admin']
+            };
+
+            // --- 计算逻辑 ---
+            const permissions = computed(() => rolePermissions[currentRole.value] || []);
+            
+            const currentRoleText = computed(() => {
+                const map = {
+                    'USER': 'Guest',
+                    'WAREHOUSE': 'Storage',
+                    'LOGISTICS': 'Logistics',
+                    'ADMIN': 'Admin'
+                };
+                return map[currentRole.value];
+            });
+
+            // 按钮显隐逻辑 (保持不变)
+            const showInbound = computed(() => (currentRole.value === 'WAREHOUSE' || currentRole.value === 'ADMIN') && permissions.value.includes('trace:scan'));
+            const showOutbound = computed(() => (currentRole.value === 'WAREHOUSE' || currentRole.value === 'ADMIN') && permissions.value.includes('trace:scan'));
+            const showTransfer = computed(() => (currentRole.value === 'LOGISTICS' || currentRole.value === 'ADMIN') && permissions.value.includes('trace:scan'));
+
+            // 判断是否是界面上唯一的按钮
+            const isOnlyButton = computed(() => {
+                let count = 0;
+                if (permissions.value.includes('trace:create')) count++;
+                if (showInbound.value) count++;
+                if (showOutbound.value) count++;
+                if (showTransfer.value) count++;
+                if (permissions.value.includes('sys:admin')) count++;
+                return count === 0; 
+            });
+
+            const gridClass = computed(() => {
+                if (currentRole.value === 'USER') return 'layout-single';
+                return 'layout-dual';
+            });
+
+            // 动态改变扫描线的颜色，增加趣味性
+            const scanLineColor = computed(() => {
+                if (showInbound.value) return 'linear-gradient(90deg, transparent, var(--color-inbound), transparent)';
+                if (showTransfer.value) return 'linear-gradient(90deg, transparent, var(--color-transfer), transparent)';
+                return 'linear-gradient(90deg, transparent, var(--text-main), transparent)';
+            });
+
+            // --- 交互 ---
+            const switchRole = (role) => {
+                currentRole.value = role;
+                // 切换角色时不需要提示，因为界面变化已经很明显
+            };
+
+            const handleAction = (action) => {
+                toastMsg.value = `已启动：${action}`;
+                toastVisible.value = true;
+                setTimeout(() => {
+                    toastVisible.value = false;
+                }, 2000);
+            };
+
+            return {
+                currentRole,
+                currentRoleText,
+                permissions,
+                showInbound,
+                showOutbound,
+                showTransfer,
+                isOnlyButton,
+                gridClass,
+                switchRole,
+                handleAction,
+                toastVisible,
+                toastMsg,
+                scanLineColor
+            };
+        }
+    }).mount('#app');
+</script>
+
+</body>
+</html>

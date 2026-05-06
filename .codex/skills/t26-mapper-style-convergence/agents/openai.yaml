@@ -1,0 +1,4 @@
+﻿interface:
+  display_name: "T26 Mapper Style Convergence"
+  short_description: "Continue T26 mapper cleanup"
+  default_prompt: "Continue T26 mapper style convergence in d:\\bysj. Read docs/progress/MASTER.md first, keep scope narrow, run backend tests, and update progress docs plus the root task table."

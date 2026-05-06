@@ -1,0 +1,53 @@
+server:
+  port: ${TRACE_SERVER_PORT:8080}
+
+spring:
+  profiles:
+    default: dev
+  datasource:
+    driver-class-name: ${TRACE_DB_DRIVER:com.mysql.cj.jdbc.Driver}
+  data:
+    redis:
+      host: ${TRACE_REDIS_HOST:localhost}
+      port: ${TRACE_REDIS_PORT:6379}
+      database: ${TRACE_REDIS_DATABASE:0}
+      password: ${TRACE_REDIS_PASSWORD:}
+      timeout: ${TRACE_REDIS_TIMEOUT:3000ms}
+      lettuce:
+        pool:
+          max-active: ${TRACE_REDIS_POOL_MAX_ACTIVE:8}
+          max-idle: ${TRACE_REDIS_POOL_MAX_IDLE:8}
+          min-idle: ${TRACE_REDIS_POOL_MIN_IDLE:0}
+          max-wait: ${TRACE_REDIS_POOL_MAX_WAIT:-1ms}
+
+mybatis-plus:
+  mapper-locations: classpath:/mapper/*.xml
+  configuration:
+    # 显式声明 snake_case ↔ camelCase 自动映射；不要依赖 MyBatis-Plus 默认值兜底——
+    # 一旦未来上游默认变更或被某个依赖间接改写，所有 DB→实体 字段映射会静默失败。
+    map-underscore-to-camel-case: true
+
+jwt:
+  expiration: ${TRACE_JWT_EXPIRATION_HOURS:2}
+  remember-expiration: ${TRACE_JWT_REMEMBER_EXPIRATION_DAYS:1}
+
+cors:
+  allowed-origins: ${TRACE_CORS_ALLOWED_ORIGINS:http://localhost:5173,https://localhost:5173,http://localhost:3000,https://localhost:3000,http://127.0.0.1:5173,https://127.0.0.1:5173,http://127.0.0.1:3000,https://127.0.0.1:3000}
+  allowed-origin-patterns: ${TRACE_CORS_ALLOWED_ORIGIN_PATTERNS:https://192.168.*:5173,https://10.*:5173,https://172.*:5173,http://192.168.*:5173,http://10.*:5173,http://172.*:5173}
+  allow-credentials: ${TRACE_CORS_ALLOW_CREDENTIALS:true}
+
+logging:
+  level:
+    com.example.trace.security: ${TRACE_SECURITY_LOG_LEVEL:INFO}
+
+trace:
+  signature:
+    auto-generate: ${TRACE_SIGNATURE_AUTO_GENERATE:false}
+  demo-data:
+    enabled: ${TRACE_DEMO_DATA_ENABLED:false}
+    max-generate-count: ${TRACE_DEMO_DATA_MAX_GENERATE_COUNT:500}
+  batch:
+    # 每个 REQUIRES_NEW 子事务提交多少条 (log+snapshot)。默认 50，区间 [1, 500]。
+    # 调小可降低单事务内 INSERT 数（峰值连接占用更短）但增加事务次数；
+    # 调大反之。500 quantity 在默认 50 下为 10 个子事务。
+    commit-size: ${TRACE_BATCH_COMMIT_SIZE:50}

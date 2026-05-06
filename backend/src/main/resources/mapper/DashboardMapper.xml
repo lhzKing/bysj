@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.trace.mapper.DashboardMapper">
+
+    <!-- 通用时间范围条件片段 -->
+    <sql id="timeRangeCondition">
+        <choose>
+            <when test="range == 'today'">
+                AND DATE(event_time) = CURDATE()
+            </when>
+            <when test="range == '7d'">
+                AND event_time >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+            </when>
+            <when test="range == '30d'">
+                AND event_time >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+            </when>
+            <when test="range == '180d'">
+                AND event_time >= DATE_SUB(CURDATE(), INTERVAL 180 DAY)
+            </when>
+            <!-- 'all' 或其他值不添加时间限制 -->
+        </choose>
+    </sql>
+
+    <select id="selectKpi" resultType="map">
+        SELECT
+            (SELECT COUNT(DISTINCT trace_code) FROM trace_snapshot) AS total_traces,
+            <!-- Sargable today_new (T-P1-03): use a half-open range filter so MySQL can
+                 use idx_trace_snapshot_last_event_time. The previous form wrapped the
+                 column in DATE(...) which forced a full-table scan even on indexed
+                 snapshots. Both bounds are pre-computed by CURDATE / DATE_ADD, so the
+                 filter is index-friendly. -->
+            (SELECT COUNT(DISTINCT trace_code) FROM trace_snapshot
+                WHERE last_event_time >= CURDATE()
+                  AND last_event_time &lt; DATE_ADD(CURDATE(), INTERVAL 1 DAY)) AS today_new,
+            COUNT(*) AS total_logs,
+            SUM(CASE WHEN action_type = 'EXCEPTION' THEN 1 ELSE 0 END) AS exception_count
+        FROM trace_lifecycle_log
+        WHERE 1=1
+        <include refid="timeRangeCondition"/>
+    </select>
+
+    <select id="selectMapData" resultType="map">
+        SELECT
+            province AS name,
+            COUNT(*) AS value
+        FROM trace_lifecycle_log
+        WHERE province IS NOT NULL AND province != ''
+        <include refid="timeRangeCondition"/>
+        GROUP BY province
+        ORDER BY value DESC
+        <!-- T-P1-03: hard cap to bound dashboard payload — China has 34 province-level admin
+             units, so 50 is comfortably above worst-case real data while still preventing a
+             malformed/duplicated province list from blowing up the response. -->
+        LIMIT 50
+    </select>
+
+    <select id="selectTrend" resultType="map">
+        <choose>
+            <when test="range == 'today'">
+                SELECT
+                    HOUR(event_time) AS label,
+                    COUNT(*) AS count
+                FROM trace_lifecycle_log
+                WHERE DATE(event_time) = CURDATE()
+                GROUP BY HOUR(event_time)
+                ORDER BY label
+            </when>
+            <when test="range == '7d'">
+                SELECT
+                    event_date AS label,
+                    COUNT(*) AS count
+                FROM (
+                    SELECT DATE_FORMAT(event_time, '%m-%d') AS event_date
+                    FROM trace_lifecycle_log
+                    WHERE event_time >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                ) t
+                GROUP BY event_date
+                ORDER BY event_date
+            </when>
+            <otherwise>
+                SELECT
+                    event_date AS label,
+                    COUNT(*) AS count
+                FROM (
+                    SELECT DATE_FORMAT(event_time, '%Y-%m-%d') AS event_date
+                    FROM trace_lifecycle_log
+                    WHERE 1=1
+                    <choose>
+                        <when test="range == '30d'">
+                            AND event_time >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                        </when>
+                        <when test="range == '180d'">
+                            AND event_time >= DATE_SUB(CURDATE(), INTERVAL 180 DAY)
+                        </when>
+                    </choose>
+                ) t
+                GROUP BY event_date
+                ORDER BY event_date
+            </otherwise>
+        </choose>
+    </select>
+
+    <!-- 可用于详情页：传 traceCode 只看该件；不传则按时间范围过滤 -->
+    <select id="selectTopologyEdges" resultType="map">
+        SELECT
+            from_node AS source,
+            to_node AS target,
+            COUNT(*) AS edge_weight
+        FROM trace_lifecycle_log
+        WHERE from_node IS NOT NULL AND from_node != ''
+          AND to_node IS NOT NULL AND to_node != ''
+          <if test="traceCode != null and traceCode != ''">
+              AND trace_code = #{traceCode}
+          </if>
+          <if test="traceCode == null or traceCode == ''">
+              <include refid="timeRangeCondition"/>
+          </if>
+        GROUP BY from_node, to_node
+        <!-- T-P1-03: sort by frequency (most-used edges first) and hard cap. Without a cap the
+             unfiltered topology query could return tens of thousands of edges on a real-world
+             trace_lifecycle_log; rendering that on the frontend is both slow and useless. -->
+        ORDER BY edge_weight DESC
+        LIMIT 200
+    </select>
+
+</mapper>

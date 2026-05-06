@@ -1,0 +1,71 @@
+
+# RSA Keys (NEVER commit private keys)
+backend/keys/
+
+# Local runtime state and generated diagnostics
+runtime_state/
+
+# JVM crash diagnostics
+hs_err_pid*.log
+replay_pid*.log
+backend/hs_err_pid*.log
+backend/replay_pid*.log
+
+# Workspace disk-usage exports and large local reports
+WizTree_*.csv
+
+# Backend/frontend runtime logs
+backend/backend_runtime*.log
+frontend/vite_runtime*.log
+frontend/vite_t*.log
+
+# Frontend smoke-test screenshots and generated build/dependency output
+frontend/runtime_*.png
+frontend/dist/
+frontend/node_modules/
+
+# Local AI / agent runtime files
+.codex_tmp/
+.codex-vscode-debug/
+.claude/settings.local.json
+
+# Local environment overrides (examples remain trackable)
+.env
+.env.local
+.env.*.local
+
+# Build / dependency output
+backend/target/
+target/
+node_modules/
+dist/
+build/
+out/
+coverage/
+
+# IDE / OS local files
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Generated cleanup / audit reports
+cleanup_report_*.json
+vscode_cleanup_report_*.json
+
+# Directory junction aliases / duplicate views
+article/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Generated test run reports
+*.postman_test_run.json
+
+# Generic transient files
+*.tmp
+*.bak
+*.orig
+.cache/

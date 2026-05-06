@@ -1,0 +1,195 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --primary: #6366f1;
+    --primary-glow: rgba(99, 102, 241, 0.15);
+    --surface: #ffffff;
+    --bg: #fdfdff;
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100vh;
+  }
+
+  body {
+    @apply text-slate-900 antialiased overflow-x-hidden;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: var(--bg);
+    background-image: 
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(20, 184, 166, 0.08) 0px, transparent 50%);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.4);
+}
+
+.mesh-bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    opacity: 0.4;
+    filter: blur(100px);
+    background: 
+        radial-gradient(circle at 20% 30%, #e0e7ff 0%, transparent 40%),
+        radial-gradient(circle at 80% 70%, #ccfbf1 0%, transparent 40%);
+    pointer-events: none;
+}
+
+.grid-accent {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-image: radial-gradient(rgba(99, 102, 241, 0.1) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+/* Glassmorphism 2.0 核心样式 */
+.premium-card {
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 
+        0 10px 40px -6px rgba(0, 0, 0, 0.02), 
+        0 20px 80px -12px rgba(99, 102, 241, 0.08);
+    transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.hover-lift {
+    transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.hover-lift:hover {
+    transform: translateY(-6px) scale(1.01);
+    background: rgba(255, 255, 255, 0.8);
+    border-color: rgba(99, 102, 241, 0.3);
+    box-shadow: 0 30px 100px -15px rgba(99, 102, 241, 0.15);
+}
+
+/* 导航岛专属样式（完全静态，杜绝抖动） */
+.nav-island {
+    background: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.05);
+}
+
+.nav-island:hover {
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 15px 50px -10px rgba(99, 102, 241, 0.1);
+}
+
+/* 彻底解决原生 select 下拉框在 Chrome/移动端的透明问题 */
+select option {
+    background-color: #ffffff !important;
+    color: #1e293b !important;
+    padding: 12px !important;
+}
+
+/* Fix PrimeVue Dialogs, Menus, Selects, and Toasts */
+.p-dialog, .p-popover, .p-select-panel, .p-menu {
+    background: rgba(255, 255, 255, 0.8) !important;
+    backdrop-filter: blur(32px) saturate(200%) !important;
+    -webkit-backdrop-filter: blur(32px) saturate(200%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.9) !important;
+    box-shadow: 0 40px 120px -15px rgba(99, 102, 241, 0.2) !important;
+    border-radius: 32px !important;
+    overflow: hidden;
+}
+
+.p-dialog-header {
+    background: transparent !important;
+    border: none !important;
+    padding: 32px 32px 16px 32px !important;
+}
+.p-dialog-content {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 32px 32px 32px !important;
+}
+.p-dialog-footer {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 32px 32px 32px !important;
+}
+
+.p-toast-message {
+    background: rgba(255, 255, 255, 0.9) !important;
+    backdrop-filter: blur(24px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.8) !important;
+    box-shadow: 0 20px 80px -12px rgba(99, 102, 241, 0.15) !important;
+    border-radius: 24px !important;
+    color: #0f172a !important;
+}
+.p-toast-message-content {
+    background: transparent !important;
+    border: none !important;
+    padding: 20px !important;
+    display: flex !important;
+    align-items: center !important;
+}
+.p-toast-message-icon, .p-toast-icon-close, .p-toast-message svg, .p-toast-detail svg {
+    display: none !important;
+}
+.p-toast-summary {
+    font-weight: 800 !important;
+    font-size: 16px !important;
+    color: #6366f1 !important;
+    margin-bottom: 4px !important;
+}
+.p-toast-detail {
+    color: #475569 !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+}
+
+.p-select-panel {
+    border-radius: 24px !important;
+    padding: 12px !important;
+}
+.p-select-list {
+    background: transparent !important;
+}
+.p-select-item {
+    padding: 12px 16px !important;
+    border-radius: 16px !important;
+    margin: 4px !important;
+    transition: all 0.2s !important;
+    font-weight: 600 !important;
+    color: #475569 !important;
+}
+.p-select-item:hover, .p-select-item.p-focus {
+    background: rgba(99, 102, 241, 0.1) !important;
+    color: #6366f1 !important;
+}
+
