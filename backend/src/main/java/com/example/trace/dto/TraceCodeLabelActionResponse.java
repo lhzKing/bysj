@@ -19,4 +19,5 @@ public class TraceCodeLabelActionResponse {
     private Long lifecycleLogId;
     private String eventTime;
     private String remark;
+    private String currentStatus;
 }

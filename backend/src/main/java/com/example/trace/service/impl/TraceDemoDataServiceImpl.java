@@ -263,7 +263,9 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
             boolean crossRegion = action == ActionType.TRANSFER || (action == ActionType.OUTBOUND && random.nextDouble() < 0.4);
             RegionDef nextRegion = crossRegion ? pickAnotherRegion(currentRegion) : currentRegion;
             String fromNode = currentNode;
-            String toNode = action == ActionType.EXCEPTION ? null : nextRegion.nodes().get(random.nextInt(nextRegion.nodes().size()));
+            String toNode = action == ActionType.EXCEPTION || action == ActionType.EXCEPTION_OPEN
+                    ? null
+                    : nextRegion.nodes().get(random.nextInt(nextRegion.nodes().size()));
 
             TraceLifecycleLog logEntry = createLog(
                     traceCode, spuId, action,
@@ -288,6 +290,9 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         snapshot.setCurrentStatus(currentStatus.getCode());
         snapshot.setCurrentNode(currentNode);
         snapshot.setCurrentOwner(getOperatorForAction(lastAction));
+        snapshot.setExceptionRestoreStatus(null);
+        snapshot.setExceptionRestoreNode(null);
+        snapshot.setExceptionRestoreOwner(null);
         snapshot.setProvince(ProvinceUtil.toFullName(currentRegion.province()));
         snapshot.setCity(currentRegion.city());
         snapshot.setLastEventTime(lastEventTime);
@@ -362,10 +367,11 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         }
 
         return switch (lastAction) {
-            case INBOUND -> random.nextDouble() < 0.08 ? ActionType.EXCEPTION : ActionType.OUTBOUND;
+            case INBOUND -> random.nextDouble() < 0.08 ? ActionType.EXCEPTION_OPEN : ActionType.OUTBOUND;
             case OUTBOUND -> ActionType.TRANSFER;
             case TRANSFER -> ActionType.INBOUND;
-            case EXCEPTION -> random.nextDouble() < 0.5 ? ActionType.CORRECTION : ActionType.INBOUND;
+            case EXCEPTION, EXCEPTION_OPEN -> random.nextDouble() < 0.5 ? ActionType.CORRECTION : ActionType.EXCEPTION_CLOSE;
+            case EXCEPTION_CLOSE -> ActionType.INBOUND;
             case CORRECTION -> isLastStep ? ActionType.INBOUND : ActionType.OUTBOUND;
             default -> ActionType.INBOUND;
         };
@@ -380,7 +386,7 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
                     PACK, UNPACK, PALLETIZE, UNPALLETIZE -> "producer";
             case INBOUND, OUTBOUND -> "warehouse";
             case TRANSFER -> "logistics";
-            case EXCEPTION, CORRECTION -> "warehouse";
+            case EXCEPTION, EXCEPTION_OPEN, EXCEPTION_CLOSE, CORRECTION -> "warehouse";
         };
     }
 

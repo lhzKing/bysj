@@ -205,7 +205,7 @@ class TraceAvailableActionServiceTest {
         assertThat(response.getRecommendedAction()).isEqualTo(ActionType.OUTBOUND);
         assertThat(response.getAvailableActions())
                 .extracting(TraceAvailableActionsResponse.AvailableAction::getActionType)
-                .containsExactly(ActionType.OUTBOUND, ActionType.EXCEPTION);
+                .containsExactly(ActionType.OUTBOUND, ActionType.EXCEPTION_OPEN);
         TraceAvailableActionsResponse.AvailableAction exceptionAction = response.getAvailableActions().get(1);
         assertThat(exceptionAction.isRequiresRemark()).isTrue();
         assertThat(exceptionAction.getNextStatus()).isEqualTo(TraceStatus.EXCEPTION);
@@ -217,12 +217,38 @@ class TraceAvailableActionServiceTest {
                 .thenReturn(snapshot("TRACE-ERROR", TraceStatus.EXCEPTION, "exception-node"));
         when(traceCodeStatusService.movementEligibility("TRACE-ERROR"))
                 .thenReturn(TraceCodeStatusService.MovementEligibility.allowed(TraceCodeStatus.EXCEPTION));
+        when(permissionService.getPermissionCodes(2L))
+                .thenReturn(Set.of("trace:view"));
 
         TraceAvailableActionsResponse response = service.availableActions("TRACE-ERROR", 2L);
 
         assertThat(response.getAvailableActions()).isEmpty();
         assertThat(response.getRecommendedAction()).isNull();
         assertThat(response.getNoActionReason()).contains("EXCEPTION");
+    }
+
+    @Test
+    void availableActions_shouldExposeExceptionCloseForExceptionHandler() {
+        when(traceSnapshotMapper.selectById("TRACE-ERROR"))
+                .thenReturn(snapshot("TRACE-ERROR", TraceStatus.EXCEPTION, "exception-node"));
+        when(traceCodeStatusService.movementEligibility("TRACE-ERROR"))
+                .thenReturn(TraceCodeStatusService.MovementEligibility.blocked(
+                        TraceCodeStatus.EXCEPTION,
+                        "异常冻结中"
+                ));
+        when(permissionService.getPermissionCodes(7L))
+                .thenReturn(Set.of("trace:view", "trace:exception:handle"));
+
+        TraceAvailableActionsResponse response = service.availableActions("TRACE-ERROR", 7L);
+
+        assertThat(response.getRecommendedAction()).isEqualTo(ActionType.EXCEPTION_CLOSE);
+        assertThat(response.getAvailableActions())
+                .extracting(TraceAvailableActionsResponse.AvailableAction::getActionType)
+                .containsExactly(ActionType.EXCEPTION_CLOSE);
+        assertThat(response.getAvailableActions().get(0).isRequiresRemark()).isTrue();
+        assertThat(response.getAvailableActions().get(0).getLabel()).isEqualTo("解除异常冻结");
+        assertThat(response.getAvailableActions().get(0).getNextStatus()).isEqualTo(TraceStatus.EXCEPTION);
+        assertThat(response.getNoActionReason()).isNull();
     }
 
     @Test

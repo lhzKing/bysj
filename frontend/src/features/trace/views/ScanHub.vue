@@ -290,6 +290,8 @@ function formatActionType(actionType) {
     OUTBOUND: '确认出库',
     TRANSFER: '确认流转',
     EXCEPTION: '上报异常',
+    EXCEPTION_OPEN: '异常冻结',
+    EXCEPTION_CLOSE: '解除冻结',
     CORRECTION: '审计纠错'
   }
   return labelMap[actionType] || actionType || '未知动作'
@@ -299,7 +301,7 @@ function actionIcon(actionType) {
   if (actionType === 'INBOUND') return PackageIn
   if (actionType === 'OUTBOUND') return PackageOut
   if (actionType === 'TRANSFER') return Truck
-  if (actionType === 'EXCEPTION') return AlertTriangle
+  if (actionType === 'EXCEPTION' || actionType === 'EXCEPTION_OPEN' || actionType === 'EXCEPTION_CLOSE') return AlertTriangle
   return Check
 }
 
@@ -307,22 +309,28 @@ function actionIconClass(actionType) {
   if (actionType === 'INBOUND') return 'bg-emerald-50 text-emerald-600'
   if (actionType === 'OUTBOUND') return 'bg-cyan-50 text-cyan-600'
   if (actionType === 'TRANSFER') return 'bg-amber-50 text-amber-600'
-  if (actionType === 'EXCEPTION') return 'bg-rose-50 text-rose-500'
+  if (actionType === 'EXCEPTION' || actionType === 'EXCEPTION_OPEN') return 'bg-rose-50 text-rose-500'
+  if (actionType === 'EXCEPTION_CLOSE') return 'bg-emerald-50 text-emerald-600'
   return 'bg-indigo-50 text-indigo-600'
 }
 
 function actionCardClass(action) {
   const recommended = isRecommendedAction(action)
   if (recommended) return 'premium-card border-2 border-indigo-300 bg-indigo-50/80 shadow-xl shadow-indigo-100'
-  if (action?.actionType === 'EXCEPTION') return 'premium-card border border-rose-100 hover:border-rose-300'
+  if (action?.actionType === 'EXCEPTION' || action?.actionType === 'EXCEPTION_OPEN') return 'premium-card border border-rose-100 hover:border-rose-300'
+  if (action?.actionType === 'EXCEPTION_CLOSE') return 'premium-card border border-emerald-100 hover:border-emerald-300'
   return 'premium-card border border-slate-200 hover:border-indigo-200'
 }
 
 async function handleAvailableAction(action) {
   const actionType = action?.actionType
   if (!actionType) return
-  if (actionType === 'EXCEPTION') {
+  if (actionType === 'EXCEPTION' || actionType === 'EXCEPTION_OPEN') {
     handleAlertAction()
+    return
+  }
+  if (actionType === 'EXCEPTION_CLOSE') {
+    toast.error('解除异常冻结请进入溯源详情的异常处理流程')
     return
   }
   if (actionType === 'CORRECTION') {

@@ -22,6 +22,14 @@ public class TraceSnapshot {
     private String currentNode;
     private String currentOwner;
 
+    /**
+     * Snapshot values captured when an exception hold is opened.
+     * They are restored and cleared by EXCEPTION_CLOSE.
+     */
+    private String exceptionRestoreStatus;
+    private String exceptionRestoreNode;
+    private String exceptionRestoreOwner;
+
     private String province;
     private String city;
 

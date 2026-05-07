@@ -9,7 +9,9 @@ import com.example.trace.dto.TraceCodeActivateRequest;
 import com.example.trace.dto.TraceCodeActivateResponse;
 import com.example.trace.dto.TraceCodeLabelActionRequest;
 import com.example.trace.dto.TraceCodeLabelActionResponse;
+import com.example.trace.dto.TraceCorrectionRequest;
 import com.example.trace.dto.TraceDetailResponse;
+import com.example.trace.dto.TraceExceptionCloseRequest;
 import com.example.trace.common.BizCode;
 import com.example.trace.common.BizException;
 import com.example.trace.entity.TraceAggregation;
@@ -25,6 +27,7 @@ import com.example.trace.service.impl.support.TraceChainVerifyService;
 import com.example.trace.service.impl.support.TraceCodeActivationService;
 import com.example.trace.service.impl.support.TraceCodeAssignmentService;
 import com.example.trace.service.impl.support.TraceCodeLabelService;
+import com.example.trace.service.impl.support.TraceExceptionWorkflowService;
 import com.example.trace.service.impl.support.TraceScanRetryExecutor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -61,6 +64,8 @@ class TraceServiceImplTest {
     @Mock
     private TraceCodeActivationService traceCodeActivationService;
     @Mock
+    private TraceExceptionWorkflowService traceExceptionWorkflowService;
+    @Mock
     private PermissionService permissionService;
     @Mock
     private TraceAggregationMapper traceAggregationMapper;
@@ -78,6 +83,7 @@ class TraceServiceImplTest {
                 traceAvailableActionService,
                 traceCodeLabelService,
                 traceCodeActivationService,
+                traceExceptionWorkflowService,
                 permissionService,
                 traceAggregationMapper
         );
@@ -148,6 +154,39 @@ class TraceServiceImplTest {
 
         assertThat(response).isSameAs(expected);
         verify(traceCodeActivationService).activateCode("trace-1", request, "tester");
+    }
+
+    @Test
+    void exceptionWorkflowActions_shouldDelegateToWorkflowService() {
+        TraceExceptionCloseRequest closeRequest = new TraceExceptionCloseRequest();
+        closeRequest.setRemark("质检完成");
+        TraceCodeLabelActionResponse closeExpected = TraceCodeLabelActionResponse.builder()
+                .traceCode("trace-1")
+                .actionType(ActionType.EXCEPTION_CLOSE)
+                .currentStatus("IN_STOCK")
+                .build();
+        when(traceExceptionWorkflowService.closeException("trace-1", closeRequest, 7L, "tester"))
+                .thenReturn(closeExpected);
+
+        TraceCorrectionRequest correctionRequest = new TraceCorrectionRequest();
+        correctionRequest.setCorrectionOf(9L);
+        correctionRequest.setRemark("修正目标节点");
+        TraceCodeLabelActionResponse correctionExpected = TraceCodeLabelActionResponse.builder()
+                .traceCode("trace-1")
+                .actionType(ActionType.CORRECTION)
+                .build();
+        when(traceExceptionWorkflowService.correctLifecycleLog("trace-1", correctionRequest, 7L, "tester"))
+                .thenReturn(correctionExpected);
+
+        TraceCodeLabelActionResponse closeResponse =
+                service.closeException("trace-1", closeRequest, 7L, "tester");
+        TraceCodeLabelActionResponse correctionResponse =
+                service.correctLifecycleLog("trace-1", correctionRequest, 7L, "tester");
+
+        assertThat(closeResponse).isSameAs(closeExpected);
+        assertThat(correctionResponse).isSameAs(correctionExpected);
+        verify(traceExceptionWorkflowService).closeException("trace-1", closeRequest, 7L, "tester");
+        verify(traceExceptionWorkflowService).correctLifecycleLog("trace-1", correctionRequest, 7L, "tester");
     }
 
     @Test

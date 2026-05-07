@@ -17,6 +17,8 @@ const routerPushMock = vi.fn()
 const routerBackMock = vi.fn()
 const getTraceDetailMock = vi.fn()
 const verifyTraceChainMock = vi.fn()
+const closeTraceExceptionMock = vi.fn()
+const createTraceCorrectionMock = vi.fn()
 let consoleErrorSpy
 
 vi.mock('vue-router', () => ({
@@ -35,7 +37,9 @@ vi.mock('@/core/stores/user', () => ({
 
 vi.mock('@/features/trace/api', () => ({
   getTraceDetail: (...args) => getTraceDetailMock(...args),
-  verifyTraceChain: (...args) => verifyTraceChainMock(...args)
+  verifyTraceChain: (...args) => verifyTraceChainMock(...args),
+  closeTraceException: (...args) => closeTraceExceptionMock(...args),
+  createTraceCorrection: (...args) => createTraceCorrectionMock(...args)
 }))
 
 const passthroughStub = {
@@ -50,7 +54,7 @@ const traceDetailResponse = (code, view = 'effective') => ({
   view,
   snapshot: {
     traceCode: code,
-    currentStatus: 'ACTIVE',
+    currentStatus: code === 'TRACE-EX' ? 'EXCEPTION' : 'ACTIVE',
     spuId: 1,
     province: 'Province',
     city: 'City',
@@ -126,6 +130,14 @@ const mountTraceDetail = () => mount(TraceDetail, {
       X: true,
       BaseCard: passthroughStub,
       ScanFlowDialog: true,
+      TraceExceptionCloseDialog: {
+        props: ['modelValue'],
+        template: '<div data-testid="exception-close-dialog" :data-open="modelValue"></div>'
+      },
+      TraceCorrectionDialog: {
+        props: ['modelValue'],
+        template: '<div data-testid="correction-dialog" :data-open="modelValue"></div>'
+      },
       TraceRouteMap: true,
       'el-button': passthroughStub,
       'el-dropdown': dropdownStub,
@@ -146,6 +158,8 @@ describe('TraceDetail route reuse and detail views', () => {
     routerBackMock.mockReset()
     getTraceDetailMock.mockReset()
     verifyTraceChainMock.mockReset()
+    closeTraceExceptionMock.mockReset()
+    createTraceCorrectionMock.mockReset()
 
     getTraceDetailMock.mockImplementation((code, view = 'effective') =>
       Promise.resolve(traceDetailResponse(code, view))
@@ -231,5 +245,23 @@ describe('TraceDetail route reuse and detail views', () => {
     expect(wrapper.text()).toContain('已被纠错覆盖')
     expect(wrapper.text()).toContain('本记录修正原始日志 #1')
     expect(wrapper.find('[data-corrected-original="true"]').exists()).toBe(true)
+  })
+
+  it('shows exception close and correction workflow entries for exception handlers', async () => {
+    routeMock.params.code = 'TRACE-EX'
+    currentUser.permissions = ['trace:view', 'trace:exception:handle']
+    const wrapper = mountTraceDetail()
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="trace-exception-close-button"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="trace-correction-button"]').exists()).toBe(true)
+
+    await wrapper.find('[data-testid="trace-exception-close-button"]').trigger('click')
+    await wrapper.find('[data-testid="trace-correction-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="exception-close-dialog"]').attributes('data-open')).toBe('true')
+    expect(wrapper.find('[data-testid="correction-dialog"]').attributes('data-open')).toBe('true')
   })
 })

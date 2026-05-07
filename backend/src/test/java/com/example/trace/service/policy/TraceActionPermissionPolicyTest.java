@@ -29,6 +29,9 @@ class TraceActionPermissionPolicyTest {
         assertThat(policy.canExecute(7L, ActionType.VOID_CODE)).isTrue();
         assertThat(policy.canExecute(7L, ActionType.ACTIVATE_CODE)).isTrue();
         assertThat(policy.canExecute(7L, ActionType.EXCEPTION)).isTrue();
+        assertThat(policy.canExecute(7L, ActionType.EXCEPTION_OPEN)).isTrue();
+        assertThat(policy.canExecute(7L, ActionType.EXCEPTION_CLOSE)).isTrue();
+        assertThat(policy.canExecute(7L, ActionType.CORRECTION)).isTrue();
         assertThat(policy.canExecute(7L, ActionType.OUTBOUND)).isFalse();
     }
 
@@ -38,6 +41,8 @@ class TraceActionPermissionPolicyTest {
 
         assertThat(policy.canExecute(8L, ActionType.OUTBOUND)).isTrue();
         assertThat(policy.canExecute(8L, ActionType.EXCEPTION)).isTrue();
+        assertThat(policy.canExecute(8L, ActionType.EXCEPTION_CLOSE)).isTrue();
+        assertThat(policy.canExecute(8L, ActionType.CORRECTION)).isTrue();
         assertThat(policy.canExecute(8L, ActionType.ACTIVATE_CODE)).isTrue();
     }
 
@@ -51,8 +56,9 @@ class TraceActionPermissionPolicyTest {
         assertThat(policy.filterExecutable(9L, List.of(
                 ActionType.OUTBOUND,
                 ActionType.INBOUND,
-                ActionType.EXCEPTION
-        ))).containsExactly(ActionType.OUTBOUND, ActionType.EXCEPTION);
+                ActionType.EXCEPTION,
+                ActionType.CORRECTION
+        ))).containsExactly(ActionType.OUTBOUND, ActionType.EXCEPTION, ActionType.CORRECTION);
     }
 
     @Test
@@ -62,6 +68,6 @@ class TraceActionPermissionPolicyTest {
         assertThat(policy.permissionHint(ActionType.ACTIVATE_CODE))
                 .isEqualTo("trace:code:activate or trace:scan");
         assertThat(policy.permissionHint(ActionType.CORRECTION))
-                .isEqualTo("trace:scan");
+                .isEqualTo("trace:exception:handle or trace:scan");
     }
 }

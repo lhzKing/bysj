@@ -90,24 +90,25 @@ public class TraceScanTransactionService implements TraceScanExecutor {
         String traceCode = request.getTraceCode();
         ActionType actionType = request.getActionType();
 
-        traceCodeStatusService.ensureLifecycleMovementAllowed(traceCode, actionType);
-        IdempotencyDecision idempotencyDecision = acquireIdempotency(traceCode, actionType, request.getIdempotencyKey());
-        if (idempotencyDecision.duplicateSucceeded()) {
-            return false;
-        }
-
+        validateRequiredRemark(actionType, request.getRemark());
         TraceSnapshot snapshot = traceSnapshotMapper.selectById(traceCode);
         if (snapshot == null) {
             throw new BizException(BizCode.TRACE_NOT_FOUND,
                     "未知溯源码，请先在生产环节赋码初始化: " + traceCode);
         }
 
+        IdempotencyDecision idempotencyDecision = acquireIdempotency(traceCode, actionType, request.getIdempotencyKey());
+        if (idempotencyDecision.duplicateSucceeded()) {
+            return false;
+        }
         validateCorrection(traceCode, actionType, request.getCorrectionOf());
         TraceStatus currentStatus = parseCurrentStatus(snapshot);
+        traceCodeStatusService.ensureLifecycleMovementAllowed(traceCode, actionType);
         TraceStatus newStatus = traceTransitionPolicy.resolveNextStatus(
                 currentStatus,
                 actionType,
-                request.getCorrectionOf()
+                request.getCorrectionOf(),
+                parseExceptionRestoreStatus(snapshot)
         );
         ResolvedRouteNodes routeNodes = authorizeAndResolveRouteNodes(
                 resolveRouteNodes(snapshot, request),
@@ -134,11 +135,27 @@ public class TraceScanTransactionService implements TraceScanExecutor {
         );
         traceLifecycleLogMapper.insert(traceLog);
 
+        if (isExceptionOpen(actionType)) {
+            snapshot.setExceptionRestoreStatus(currentStatus.getCode());
+            snapshot.setExceptionRestoreNode(snapshot.getCurrentNode());
+            snapshot.setExceptionRestoreOwner(snapshot.getCurrentOwner());
+        }
+
         snapshot.setCurrentStatus(newStatus.getCode());
 
-        if (routeNodes.toNode() != null && !routeNodes.toNode().isBlank()) {
+        if (!isExceptionOpen(actionType)
+                && actionType != ActionType.EXCEPTION_CLOSE
+                && routeNodes.toNode() != null
+                && !routeNodes.toNode().isBlank()) {
             snapshot.setCurrentNode(routeNodes.toNode());
             snapshot.setCurrentOwner(routeNodes.toNode());
+        }
+        if (actionType == ActionType.EXCEPTION_CLOSE) {
+            snapshot.setCurrentNode(snapshot.getExceptionRestoreNode());
+            snapshot.setCurrentOwner(snapshot.getExceptionRestoreOwner());
+            snapshot.setExceptionRestoreStatus(null);
+            snapshot.setExceptionRestoreNode(null);
+            snapshot.setExceptionRestoreOwner(null);
         }
         if (request.getProvince() != null && !request.getProvince().isBlank()) {
             snapshot.setProvince(ProvinceUtil.toFullName(request.getProvince()));
@@ -303,9 +320,63 @@ public class TraceScanTransactionService implements TraceScanExecutor {
                 throw new BizException(BizCode.PARAM_ERROR,
                         "跨链修正攻击检测：不能修正其他溯源码的日志");
             }
+            if (originalLog.getCorrectionOf() != null) {
+                throw new BizException(BizCode.PARAM_ERROR,
+                        "不能继续修正一条 CORRECTION 记录，请关联原始业务事件");
+            }
+            TraceLifecycleLog existingCorrection = traceLifecycleLogMapper.selectOne(
+                    new LambdaQueryWrapper<TraceLifecycleLog>()
+                            .eq(TraceLifecycleLog::getTraceCode, traceCode)
+                            .eq(TraceLifecycleLog::getCorrectionOf, correctionOf)
+                            .last("LIMIT 1")
+            );
+            if (existingCorrection != null) {
+                throw new BizException(BizCode.PARAM_ERROR,
+                        "该原始日志已存在纠错记录: correctionOf="
+                                + correctionOf
+                                + ", correctionLogId="
+                                + existingCorrection.getId());
+            }
         } else if (actionType == ActionType.CORRECTION) {
             throw new BizException(BizCode.PARAM_ERROR,
                     "CORRECTION 类型必须指定 correctionOf 参数");
+        }
+    }
+
+    private void validateRequiredRemark(ActionType actionType, String remark) {
+        if (actionType == null || !requiresBusinessReason(actionType)) {
+            return;
+        }
+        if (remark == null || remark.isBlank()) {
+            throw new BizException(BizCode.PARAM_ERROR,
+                    actionType.getCode() + " 必须填写原因说明");
+        }
+    }
+
+    private boolean requiresBusinessReason(ActionType actionType) {
+        return actionType == ActionType.EXCEPTION
+                || actionType == ActionType.EXCEPTION_OPEN
+                || actionType == ActionType.EXCEPTION_CLOSE
+                || actionType == ActionType.CORRECTION;
+    }
+
+    private boolean isExceptionOpen(ActionType actionType) {
+        return actionType == ActionType.EXCEPTION || actionType == ActionType.EXCEPTION_OPEN;
+    }
+
+    private TraceStatus parseExceptionRestoreStatus(TraceSnapshot snapshot) {
+        String restoreStatus = snapshot.getExceptionRestoreStatus();
+        if (restoreStatus == null || restoreStatus.isBlank()) {
+            return null;
+        }
+        try {
+            return TraceStatus.fromString(restoreStatus);
+        } catch (IllegalArgumentException e) {
+            throw new BizException(BizCode.INVALID_ACTION_TYPE,
+                    "异常恢复状态非法，无法解除冻结: traceCode="
+                            + snapshot.getTraceCode()
+                            + ", exceptionRestoreStatus="
+                            + restoreStatus);
         }
     }
 

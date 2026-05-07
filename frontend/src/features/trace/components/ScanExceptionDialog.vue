@@ -32,7 +32,7 @@
               <div class="text-sm">
                 <p class="font-black text-slate-900 mb-1 tracking-tight">Exception Report</p>
                 <p class="text-slate-600 font-medium leading-relaxed">
-                  为溯源码 "<span class="font-mono text-rose-600 font-bold">{{ traceCode }}</span>" 上报异常状态。请填写当前位置与异常描述，系统将记录为 EXCEPTION 类型事件。
+                  为溯源码 "<span class="font-mono text-rose-600 font-bold">{{ traceCode }}</span>" 上报异常状态。请填写当前位置与异常描述，系统将记录为 EXCEPTION_OPEN 类型事件并冻结常规流转。
                 </p>
               </div>
             </div>
@@ -162,7 +162,7 @@ const props = defineProps({
  * 与 ScanFlowDialog 的差异：
  * - 不含 fromNode/toNode（异常上报无"流转方向"语义）；
  * - 不含 correctionOf（CORRECTION 在独立入口处理，见 T-P1-08 follow-up）；
- * - actionType 固定为 'EXCEPTION'，由本组件内部封装，不通过 prop 暴露。
+ * - actionType 固定为 'EXCEPTION_OPEN'，由本组件内部封装，不通过 prop 暴露。
  */
 const emit = defineEmits(['update:modelValue', 'success'])
 
@@ -235,7 +235,7 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     const payload = {
-      actionType: 'EXCEPTION',
+      actionType: 'EXCEPTION_OPEN',
       province: formData.province,
       city: formData.city,
       remark: trimmedRemark,

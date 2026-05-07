@@ -12,7 +12,9 @@ import com.example.trace.dto.TraceCodeActivateRequest;
 import com.example.trace.dto.TraceCodeActivateResponse;
 import com.example.trace.dto.TraceCodeLabelActionRequest;
 import com.example.trace.dto.TraceCodeLabelActionResponse;
+import com.example.trace.dto.TraceCorrectionRequest;
 import com.example.trace.dto.TraceDetailResponse;
+import com.example.trace.dto.TraceExceptionCloseRequest;
 import com.example.trace.entity.TraceAggregation;
 import com.example.trace.entity.TraceSnapshot;
 import com.example.trace.enums.TraceAggregationRelationType;
@@ -26,6 +28,7 @@ import com.example.trace.service.impl.support.TraceChainVerifyService;
 import com.example.trace.service.impl.support.TraceCodeActivationService;
 import com.example.trace.service.impl.support.TraceCodeAssignmentService;
 import com.example.trace.service.impl.support.TraceCodeLabelService;
+import com.example.trace.service.impl.support.TraceExceptionWorkflowService;
 import com.example.trace.service.impl.support.TraceScanRetryExecutor;
 import org.springframework.stereotype.Service;
 
@@ -49,6 +52,7 @@ public class TraceServiceImpl implements TraceService {
     private final TraceAvailableActionService traceAvailableActionService;
     private final TraceCodeLabelService traceCodeLabelService;
     private final TraceCodeActivationService traceCodeActivationService;
+    private final TraceExceptionWorkflowService traceExceptionWorkflowService;
     private final PermissionService permissionService;
     private final TraceAggregationMapper traceAggregationMapper;
 
@@ -61,6 +65,7 @@ public class TraceServiceImpl implements TraceService {
             TraceAvailableActionService traceAvailableActionService,
             TraceCodeLabelService traceCodeLabelService,
             TraceCodeActivationService traceCodeActivationService,
+            TraceExceptionWorkflowService traceExceptionWorkflowService,
             PermissionService permissionService,
             TraceAggregationMapper traceAggregationMapper
     ) {
@@ -72,6 +77,7 @@ public class TraceServiceImpl implements TraceService {
         this.traceAvailableActionService = traceAvailableActionService;
         this.traceCodeLabelService = traceCodeLabelService;
         this.traceCodeActivationService = traceCodeActivationService;
+        this.traceExceptionWorkflowService = traceExceptionWorkflowService;
         this.permissionService = permissionService;
         this.traceAggregationMapper = traceAggregationMapper;
     }
@@ -120,6 +126,26 @@ public class TraceServiceImpl implements TraceService {
             String operator
     ) {
         return traceCodeActivationService.activateCode(traceCode, request, operator);
+    }
+
+    @Override
+    public TraceCodeLabelActionResponse closeException(
+            String traceCode,
+            TraceExceptionCloseRequest request,
+            Long operatorUserId,
+            String operator
+    ) {
+        return traceExceptionWorkflowService.closeException(traceCode, request, operatorUserId, operator);
+    }
+
+    @Override
+    public TraceCodeLabelActionResponse correctLifecycleLog(
+            String traceCode,
+            TraceCorrectionRequest request,
+            Long operatorUserId,
+            String operator
+    ) {
+        return traceExceptionWorkflowService.correctLifecycleLog(traceCode, request, operatorUserId, operator);
     }
 
     @Override

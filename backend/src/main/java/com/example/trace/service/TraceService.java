@@ -9,7 +9,9 @@ import com.example.trace.dto.TraceCodeActivateRequest;
 import com.example.trace.dto.TraceCodeActivateResponse;
 import com.example.trace.dto.TraceCodeLabelActionRequest;
 import com.example.trace.dto.TraceCodeLabelActionResponse;
+import com.example.trace.dto.TraceCorrectionRequest;
 import com.example.trace.dto.TraceDetailResponse;
+import com.example.trace.dto.TraceExceptionCloseRequest;
 
 public interface TraceService {
 
@@ -42,6 +44,26 @@ public interface TraceService {
      * 单品码扫码激活/复核 - 记录 ACTIVATE_CODE 审计事件并允许后续真实流转。
      */
     TraceCodeActivateResponse activateCode(String traceCode, TraceCodeActivateRequest request, String operator);
+
+    /**
+     * 解除异常冻结，恢复到冻结前快照状态。
+     */
+    TraceCodeLabelActionResponse closeException(
+            String traceCode,
+            TraceExceptionCloseRequest request,
+            Long operatorUserId,
+            String operator
+    );
+
+    /**
+     * 红冲蓝补式审计纠错：追加 CORRECTION 记录，不删除原日志。
+     */
+    TraceCodeLabelActionResponse correctLifecycleLog(
+            String traceCode,
+            TraceCorrectionRequest request,
+            Long operatorUserId,
+            String operator
+    );
 
     /**
      * 溯源详情 - 查询溯源链。

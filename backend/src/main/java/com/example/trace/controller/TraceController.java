@@ -11,7 +11,9 @@ import com.example.trace.dto.ScanTraceRequest;
 import com.example.trace.dto.TraceAvailableActionsResponse;
 import com.example.trace.dto.TraceCodeLabelActionRequest;
 import com.example.trace.dto.TraceCodeLabelActionResponse;
+import com.example.trace.dto.TraceCorrectionRequest;
 import com.example.trace.dto.TraceDetailResponse;
+import com.example.trace.dto.TraceExceptionCloseRequest;
 import com.example.trace.service.policy.TraceActionPermissionPolicy;
 import com.example.trace.service.TraceService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,7 +33,7 @@ import java.util.Map;
  * - trace:code:print（打印、重打、作废标签）
  * - trace:scan（超级扫码权限，可执行所有扫码动作）
  * - trace:inbound / trace:outbound / trace:transfer（细粒度扫码权限）
- * - trace:exception:handle（异常上报）
+ * - trace:exception:handle（异常上报、解除冻结、审计纠错）
  * - trace:view（溯源查询）
  */
 @RestController
@@ -102,6 +104,50 @@ public class TraceController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.created(null, "流转记录成功"));
+    }
+
+    /**
+     * 解除异常冻结。
+     * POST /api/traces/{traceCode}/exception/close
+     */
+    @PostMapping("/{traceCode}/exception/close")
+    @RequirePermission({"trace:exception:handle", "trace:scan"})
+    public ResponseEntity<ApiResponse<TraceCodeLabelActionResponse>> closeException(
+            @PathVariable String traceCode,
+            @RequestBody @Valid TraceExceptionCloseRequest request,
+            HttpServletRequest httpReq
+    ) {
+        TraceCodeLabelActionResponse response = traceService.closeException(
+                traceCode,
+                request,
+                (Long) httpReq.getAttribute(ATTR_USER_ID),
+                operator(httpReq)
+        );
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.created(response, "异常冻结已解除"));
+    }
+
+    /**
+     * 红冲蓝补式审计纠错。
+     * POST /api/traces/{traceCode}/corrections
+     */
+    @PostMapping("/{traceCode}/corrections")
+    @RequirePermission({"trace:exception:handle", "trace:scan"})
+    public ResponseEntity<ApiResponse<TraceCodeLabelActionResponse>> correctLifecycleLog(
+            @PathVariable String traceCode,
+            @RequestBody @Valid TraceCorrectionRequest request,
+            HttpServletRequest httpReq
+    ) {
+        TraceCodeLabelActionResponse response = traceService.correctLifecycleLog(
+                traceCode,
+                request,
+                (Long) httpReq.getAttribute(ATTR_USER_ID),
+                operator(httpReq)
+        );
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.created(response, "审计纠错已提交"));
     }
 
     /**

@@ -36,7 +36,7 @@
                 WHERE last_event_time >= CURDATE()
                   AND last_event_time &lt; DATE_ADD(CURDATE(), INTERVAL 1 DAY)) AS today_new,
             COUNT(*) AS total_logs,
-            SUM(CASE WHEN action_type = 'EXCEPTION' THEN 1 ELSE 0 END) AS exception_count
+            SUM(CASE WHEN action_type IN ('EXCEPTION','EXCEPTION_OPEN') THEN 1 ELSE 0 END) AS exception_count
         FROM trace_lifecycle_log
         WHERE 1=1
         <include refid="timeRangeCondition"/>

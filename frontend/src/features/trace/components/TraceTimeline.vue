@@ -27,7 +27,9 @@ const actionMap = {
   UNPACK: { label: '拆箱', color: 'bg-amber-50 text-amber-600 border-amber-200', icon: PackageOpen },
   PALLETIZE: { label: '托盘绑定', color: 'bg-cyan-50 text-cyan-600 border-cyan-200', icon: Boxes },
   UNPALLETIZE: { label: '托盘解绑', color: 'bg-amber-50 text-amber-600 border-amber-200', icon: PackageOpen },
-  EXCEPTION: { label: '异常', color: 'bg-rose-50 text-rose-600 border-rose-200', icon: XCircle },
+  EXCEPTION: { label: '异常冻结', color: 'bg-rose-50 text-rose-600 border-rose-200', icon: XCircle },
+  EXCEPTION_OPEN: { label: '异常开启', color: 'bg-rose-50 text-rose-600 border-rose-200', icon: XCircle },
+  EXCEPTION_CLOSE: { label: '异常关闭', color: 'bg-emerald-50 text-emerald-600 border-emerald-200', icon: CheckCircle2 },
   CORRECTION: { label: '修正', color: 'bg-amber-50 text-amber-600 border-amber-200', icon: User }
 }
 

@@ -67,6 +67,7 @@ class TraceScanTransactionServiceTest {
         request.setTraceCode("trace-1");
         request.setActionType(ActionType.CORRECTION);
         request.setCorrectionOf(10L);
+        request.setRemark("修正关联了错误链路");
 
         TraceSnapshot snapshot = new TraceSnapshot();
         snapshot.setTraceCode("trace-1");
@@ -85,6 +86,37 @@ class TraceScanTransactionServiceTest {
                 .extracting(ex -> ((BizException) ex).getCode())
                 .isEqualTo(BizCode.PARAM_ERROR);
 
+        verify(traceLifecycleLogMapper, never()).insert(any(TraceLifecycleLog.class));
+        verify(traceSnapshotMapper, never()).updateById(any(TraceSnapshot.class));
+    }
+
+    @Test
+    void execute_shouldRejectCorrectionWithoutBusinessReason() {
+        TraceLogFactory logFactory = new TraceLogFactory(signatureUtil);
+        TraceScanTransactionService service = new TraceScanTransactionService(
+                traceSnapshotMapper,
+                traceLifecycleLogMapper,
+                traceScanIdempotencyMapper,
+                logFactory,
+                traceTransitionPolicy,
+                traceCodeStatusService
+        );
+
+        ScanTraceRequest request = new ScanTraceRequest();
+        request.setTraceCode("trace-1");
+        request.setActionType(ActionType.CORRECTION);
+        request.setCorrectionOf(10L);
+        request.setRemark("   ");
+
+        assertThatThrownBy(() -> service.execute(request, "tester"))
+                .isInstanceOf(BizException.class)
+                .satisfies(error -> {
+                    BizException exception = (BizException) error;
+                    assertThat(exception.getCode()).isEqualTo(BizCode.PARAM_ERROR);
+                    assertThat(exception.getMessage()).contains("CORRECTION").contains("原因");
+                });
+
+        verify(traceSnapshotMapper, never()).selectById("trace-1");
         verify(traceLifecycleLogMapper, never()).insert(any(TraceLifecycleLog.class));
         verify(traceSnapshotMapper, never()).updateById(any(TraceSnapshot.class));
     }
@@ -154,6 +186,114 @@ class TraceScanTransactionServiceTest {
         assertThat(updatedSnapshot.getCurrentOwner()).isEqualTo("warehouse-B");
         assertThat(updatedSnapshot.getLastLogId()).isEqualTo(456L);
         assertThat(updatedSnapshot.getLastHash()).isNotBlank();
+    }
+
+    @Test
+    void execute_shouldOpenExceptionHoldAndCaptureRestoreSnapshot() {
+        TraceLogFactory logFactory = new TraceLogFactory(signatureUtil);
+        TraceScanTransactionService service = new TraceScanTransactionService(
+                traceSnapshotMapper,
+                traceLifecycleLogMapper,
+                traceScanIdempotencyMapper,
+                logFactory,
+                traceTransitionPolicy,
+                traceCodeStatusService
+        );
+
+        ScanTraceRequest request = new ScanTraceRequest();
+        request.setTraceCode("trace-1");
+        request.setActionType(ActionType.EXCEPTION_OPEN);
+        request.setFromNode("warehouse-A");
+        request.setRemark("外包装破损，冻结待检");
+
+        TraceSnapshot snapshot = new TraceSnapshot();
+        snapshot.setTraceCode("trace-1");
+        snapshot.setSpuId(1L);
+        snapshot.setCurrentStatus("IN_STOCK");
+        snapshot.setCurrentNode("warehouse-A");
+        snapshot.setCurrentOwner("warehouse-A");
+        snapshot.setLastHash("hash-0");
+        snapshot.setVersion(0);
+        when(traceSnapshotMapper.selectById("trace-1")).thenReturn(snapshot);
+        when(signatureUtil.getKeyId()).thenReturn("default");
+        when(signatureUtil.getKeyVersion()).thenReturn(1);
+        when(signatureUtil.sign(any())).thenReturn("signed-scan");
+        doAnswer(invocation -> {
+            TraceLifecycleLog log = invocation.getArgument(0);
+            log.setId(801L);
+            return 1;
+        }).when(traceLifecycleLogMapper).insert(any(TraceLifecycleLog.class));
+        when(traceSnapshotMapper.updateById(any(TraceSnapshot.class))).thenReturn(1);
+
+        service.execute(request, "scanner");
+
+        ArgumentCaptor<TraceLifecycleLog> logCaptor = ArgumentCaptor.forClass(TraceLifecycleLog.class);
+        verify(traceLifecycleLogMapper).insert(logCaptor.capture());
+        assertThat(logCaptor.getValue().getActionType()).isEqualTo(ActionType.EXCEPTION_OPEN.getCode());
+        assertThat(logCaptor.getValue().getRemark()).isEqualTo("外包装破损，冻结待检");
+
+        ArgumentCaptor<TraceSnapshot> snapshotCaptor = ArgumentCaptor.forClass(TraceSnapshot.class);
+        verify(traceSnapshotMapper).updateById(snapshotCaptor.capture());
+        TraceSnapshot updatedSnapshot = snapshotCaptor.getValue();
+        assertThat(updatedSnapshot.getCurrentStatus()).isEqualTo("EXCEPTION");
+        assertThat(updatedSnapshot.getCurrentNode()).isEqualTo("warehouse-A");
+        assertThat(updatedSnapshot.getCurrentOwner()).isEqualTo("warehouse-A");
+        assertThat(updatedSnapshot.getExceptionRestoreStatus()).isEqualTo("IN_STOCK");
+        assertThat(updatedSnapshot.getExceptionRestoreNode()).isEqualTo("warehouse-A");
+        assertThat(updatedSnapshot.getExceptionRestoreOwner()).isEqualTo("warehouse-A");
+    }
+
+    @Test
+    void execute_shouldCloseExceptionHoldAndRestoreCapturedSnapshot() {
+        TraceLogFactory logFactory = new TraceLogFactory(signatureUtil);
+        TraceScanTransactionService service = new TraceScanTransactionService(
+                traceSnapshotMapper,
+                traceLifecycleLogMapper,
+                traceScanIdempotencyMapper,
+                logFactory,
+                traceTransitionPolicy,
+                traceCodeStatusService
+        );
+
+        ScanTraceRequest request = new ScanTraceRequest();
+        request.setTraceCode("trace-1");
+        request.setActionType(ActionType.EXCEPTION_CLOSE);
+        request.setFromNode("exception-desk");
+        request.setRemark("复核无误，解除冻结");
+
+        TraceSnapshot snapshot = new TraceSnapshot();
+        snapshot.setTraceCode("trace-1");
+        snapshot.setSpuId(1L);
+        snapshot.setCurrentStatus("EXCEPTION");
+        snapshot.setCurrentNode("exception-desk");
+        snapshot.setCurrentOwner("exception-desk");
+        snapshot.setExceptionRestoreStatus("IN_STOCK");
+        snapshot.setExceptionRestoreNode("warehouse-A");
+        snapshot.setExceptionRestoreOwner("warehouse-A");
+        snapshot.setLastHash("hash-0");
+        snapshot.setVersion(1);
+        when(traceSnapshotMapper.selectById("trace-1")).thenReturn(snapshot);
+        when(signatureUtil.getKeyId()).thenReturn("default");
+        when(signatureUtil.getKeyVersion()).thenReturn(1);
+        when(signatureUtil.sign(any())).thenReturn("signed-scan");
+        doAnswer(invocation -> {
+            TraceLifecycleLog log = invocation.getArgument(0);
+            log.setId(802L);
+            return 1;
+        }).when(traceLifecycleLogMapper).insert(any(TraceLifecycleLog.class));
+        when(traceSnapshotMapper.updateById(any(TraceSnapshot.class))).thenReturn(1);
+
+        service.execute(request, "scanner");
+
+        ArgumentCaptor<TraceSnapshot> snapshotCaptor = ArgumentCaptor.forClass(TraceSnapshot.class);
+        verify(traceSnapshotMapper).updateById(snapshotCaptor.capture());
+        TraceSnapshot updatedSnapshot = snapshotCaptor.getValue();
+        assertThat(updatedSnapshot.getCurrentStatus()).isEqualTo("IN_STOCK");
+        assertThat(updatedSnapshot.getCurrentNode()).isEqualTo("warehouse-A");
+        assertThat(updatedSnapshot.getCurrentOwner()).isEqualTo("warehouse-A");
+        assertThat(updatedSnapshot.getExceptionRestoreStatus()).isNull();
+        assertThat(updatedSnapshot.getExceptionRestoreNode()).isNull();
+        assertThat(updatedSnapshot.getExceptionRestoreOwner()).isNull();
     }
 
     @Test
@@ -345,6 +485,13 @@ class TraceScanTransactionServiceTest {
         existing.setIdempotencyKey("scan-key-001");
         existing.setLifecycleLogId(456L);
         existing.setStatus(TraceScanIdempotency.STATUS_SUCCEEDED);
+        TraceSnapshot snapshot = new TraceSnapshot();
+        snapshot.setTraceCode("trace-1");
+        snapshot.setSpuId(1L);
+        snapshot.setCurrentStatus("INIT");
+        snapshot.setCurrentNode("factory-A");
+        snapshot.setLastHash("hash-0");
+        when(traceSnapshotMapper.selectById("trace-1")).thenReturn(snapshot);
         when(traceScanIdempotencyMapper.insert(any(TraceScanIdempotency.class)))
                 .thenThrow(new DuplicateKeyException("duplicate"));
         when(traceScanIdempotencyMapper.selectOne(any())).thenReturn(existing);
@@ -352,7 +499,8 @@ class TraceScanTransactionServiceTest {
         boolean created = service.executeAndReturnCreated(request, "scanner");
 
         assertThat(created).isFalse();
-        verify(traceSnapshotMapper, never()).selectById("trace-1");
+        verify(traceScanIdempotencyMapper).selectOne(any());
+        verify(traceCodeStatusService, never()).ensureLifecycleMovementAllowed(any(), any());
         verify(traceLifecycleLogMapper, never()).insert(any(TraceLifecycleLog.class));
         verify(traceSnapshotMapper, never()).updateById(any(TraceSnapshot.class));
         verify(traceScanIdempotencyMapper, never()).updateById(any(TraceScanIdempotency.class));
@@ -384,13 +532,19 @@ class TraceScanTransactionServiceTest {
         when(traceScanIdempotencyMapper.insert(any(TraceScanIdempotency.class)))
                 .thenThrow(new DuplicateKeyException("duplicate"));
         when(traceScanIdempotencyMapper.selectOne(any())).thenReturn(existing);
+        TraceSnapshot snapshot = new TraceSnapshot();
+        snapshot.setTraceCode("trace-1");
+        snapshot.setSpuId(1L);
+        snapshot.setCurrentStatus("INIT");
+        snapshot.setCurrentNode("factory-A");
+        snapshot.setLastHash("hash-0");
+        when(traceSnapshotMapper.selectById("trace-1")).thenReturn(snapshot);
 
         assertThatThrownBy(() -> service.execute(request, "scanner"))
                 .isInstanceOf(BizException.class)
                 .satisfies(ex -> assertThat(((BizException) ex).getCode())
                         .isEqualTo(BizCode.CONCURRENT_CONFLICT));
 
-        verify(traceSnapshotMapper, never()).selectById("trace-1");
         verify(traceLifecycleLogMapper, never()).insert(any(TraceLifecycleLog.class));
         verify(traceSnapshotMapper, never()).updateById(any(TraceSnapshot.class));
     }
@@ -412,6 +566,13 @@ class TraceScanTransactionServiceTest {
         request.setActionType(ActionType.INBOUND);
         request.setIdempotencyKey("scan-key-001");
 
+        TraceSnapshot snapshot = new TraceSnapshot();
+        snapshot.setTraceCode("trace-generated");
+        snapshot.setSpuId(1L);
+        snapshot.setCurrentStatus("INIT");
+        snapshot.setCurrentNode("factory-A");
+        snapshot.setLastHash("hash-0");
+        when(traceSnapshotMapper.selectById("trace-generated")).thenReturn(snapshot);
         doThrow(new BizException(BizCode.INVALID_ACTION_TYPE, "code status GENERATED is not activated"))
                 .when(traceCodeStatusService)
                 .ensureLifecycleMovementAllowed("trace-generated", ActionType.INBOUND);
@@ -421,8 +582,6 @@ class TraceScanTransactionServiceTest {
                 .satisfies(ex -> assertThat(((BizException) ex).getCode())
                         .isEqualTo(BizCode.INVALID_ACTION_TYPE));
 
-        verify(traceScanIdempotencyMapper, never()).insert(any(TraceScanIdempotency.class));
-        verify(traceSnapshotMapper, never()).selectById("trace-generated");
         verify(traceLifecycleLogMapper, never()).insert(any(TraceLifecycleLog.class));
         verify(traceSnapshotMapper, never()).updateById(any(TraceSnapshot.class));
     }
@@ -641,6 +800,55 @@ class TraceScanTransactionServiceTest {
                 .isInstanceOf(BizException.class)
                 .satisfies(ex -> assertThat(((BizException) ex).getCode())
                         .isEqualTo(BizCode.INVALID_ACTION_TYPE));
+
+        verify(traceLifecycleLogMapper, never()).insert(any(TraceLifecycleLog.class));
+        verify(traceSnapshotMapper, never()).updateById(any(TraceSnapshot.class));
+    }
+
+    @Test
+    void execute_shouldRejectSecondCorrectionForSameOriginalLog() {
+        TraceLogFactory logFactory = new TraceLogFactory(signatureUtil);
+        TraceScanTransactionService service = new TraceScanTransactionService(
+                traceSnapshotMapper,
+                traceLifecycleLogMapper,
+                traceScanIdempotencyMapper,
+                logFactory,
+                traceTransitionPolicy,
+                traceCodeStatusService
+        );
+
+        ScanTraceRequest request = new ScanTraceRequest();
+        request.setTraceCode("trace-1");
+        request.setActionType(ActionType.CORRECTION);
+        request.setCorrectionOf(10L);
+        request.setRemark("修正节点录入错误");
+
+        TraceSnapshot snapshot = new TraceSnapshot();
+        snapshot.setTraceCode("trace-1");
+        snapshot.setSpuId(1L);
+        snapshot.setCurrentStatus("IN_STOCK");
+        snapshot.setLastHash("hash-0");
+        when(traceSnapshotMapper.selectById("trace-1")).thenReturn(snapshot);
+
+        TraceLifecycleLog originalLog = new TraceLifecycleLog();
+        originalLog.setId(10L);
+        originalLog.setTraceCode("trace-1");
+        when(traceLifecycleLogMapper.selectById(10L)).thenReturn(originalLog);
+
+        TraceLifecycleLog existingCorrection = new TraceLifecycleLog();
+        existingCorrection.setId(11L);
+        existingCorrection.setTraceCode("trace-1");
+        existingCorrection.setActionType(ActionType.CORRECTION.getCode());
+        existingCorrection.setCorrectionOf(10L);
+        when(traceLifecycleLogMapper.selectOne(any())).thenReturn(existingCorrection);
+
+        assertThatThrownBy(() -> service.execute(request, "scanner"))
+                .isInstanceOf(BizException.class)
+                .satisfies(ex -> {
+                    BizException bizException = (BizException) ex;
+                    assertThat(bizException.getCode()).isEqualTo(BizCode.PARAM_ERROR);
+                    assertThat(bizException.getMessage()).contains("已存在纠错记录");
+                });
 
         verify(traceLifecycleLogMapper, never()).insert(any(TraceLifecycleLog.class));
         verify(traceSnapshotMapper, never()).updateById(any(TraceSnapshot.class));

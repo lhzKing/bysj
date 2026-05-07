@@ -143,6 +143,19 @@ public class TraceCodeStatusService {
     }
 
     public void ensureLifecycleMovementAllowed(String traceCode, ActionType actionType) {
+        if (actionType == ActionType.EXCEPTION_CLOSE) {
+            TraceCode code = traceCodeMapper.selectById(traceCode);
+            if (code == null) {
+                return;
+            }
+            TraceCodeStatus status = parseStatus(code);
+            if (status == TraceCodeStatus.EXCEPTION) {
+                return;
+            }
+            throw new BizException(BizCode.INVALID_ACTION_TYPE,
+                    "只有异常冻结单品码允许解除异常冻结: traceCode="
+                            + traceCode + ", status=" + status.name());
+        }
         if (!isLifecycleMovement(actionType)) {
             return;
         }
@@ -195,7 +208,10 @@ public class TraceCodeStatusService {
     public boolean isLifecycleMovement(ActionType actionType) {
         return actionType == ActionType.INBOUND
                 || actionType == ActionType.OUTBOUND
-                || actionType == ActionType.TRANSFER;
+                || actionType == ActionType.TRANSFER
+                || actionType == ActionType.EXCEPTION
+                || actionType == ActionType.EXCEPTION_OPEN
+                || actionType == ActionType.EXCEPTION_CLOSE;
     }
 
     private void validateCreateCommand(CreateCommand command) {

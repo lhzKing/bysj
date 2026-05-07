@@ -96,6 +96,20 @@ class TraceCodeStatusServiceTest {
     }
 
     @Test
+    void ensureLifecycleMovementAllowed_shouldGuardExceptionOpenButAllowExceptionCloseOnFrozenCode() {
+        when(traceCodeMapper.selectById("TRACE-GEN"))
+                .thenReturn(code("TRACE-GEN", TraceCodeStatus.GENERATED));
+        assertThatThrownBy(() -> service.ensureLifecycleMovementAllowed("TRACE-GEN", ActionType.EXCEPTION_OPEN))
+                .isInstanceOf(BizException.class)
+                .satisfies(error -> assertThat(((BizException) error).getCode())
+                        .isEqualTo(BizCode.INVALID_ACTION_TYPE));
+
+        when(traceCodeMapper.selectById("TRACE-EX"))
+                .thenReturn(code("TRACE-EX", TraceCodeStatus.EXCEPTION));
+        service.ensureLifecycleMovementAllowed("TRACE-EX", ActionType.EXCEPTION_CLOSE);
+    }
+
+    @Test
     void markActivated_shouldMoveGeneratedOrPrintedCodeToActivated() {
         TraceCode code = code("TRACE-PRINTED", TraceCodeStatus.PRINTED);
         when(traceCodeMapper.selectById("TRACE-PRINTED")).thenReturn(code);

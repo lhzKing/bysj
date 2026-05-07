@@ -287,6 +287,10 @@ CREATE TABLE trace_snapshot (
   current_node VARCHAR(64) COMMENT 'current node',
   current_owner VARCHAR(64) COMMENT 'current owner',
 
+  exception_restore_status VARCHAR(32) NULL COMMENT 'pre-exception lifecycle status restored by EXCEPTION_CLOSE',
+  exception_restore_node VARCHAR(64) NULL COMMENT 'pre-exception current node restored by EXCEPTION_CLOSE',
+  exception_restore_owner VARCHAR(64) NULL COMMENT 'pre-exception current owner restored by EXCEPTION_CLOSE',
+
   province VARCHAR(32) COMMENT 'province',
   city VARCHAR(32) COMMENT 'city',
 
@@ -310,7 +314,7 @@ CREATE TABLE trace_lifecycle_log (
   trace_code VARCHAR(64) NOT NULL COMMENT 'trace code',
   spu_id BIGINT NOT NULL COMMENT 'related SPU',
 
-  action_type VARCHAR(32) NOT NULL COMMENT 'INIT/PRINT_CODE/REPRINT_CODE/ACTIVATE_CODE/VOID_CODE/PACK/UNPACK/PALLETIZE/UNPALLETIZE/INBOUND/OUTBOUND/TRANSFER/EXCEPTION/CORRECTION',
+  action_type VARCHAR(32) NOT NULL COMMENT 'INIT/PRINT_CODE/REPRINT_CODE/ACTIVATE_CODE/VOID_CODE/PACK/UNPACK/PALLETIZE/UNPALLETIZE/INBOUND/OUTBOUND/TRANSFER/EXCEPTION/EXCEPTION_OPEN/EXCEPTION_CLOSE/CORRECTION',
 
   from_node VARCHAR(64) COMMENT 'source node',
   to_node VARCHAR(64) COMMENT 'target node',

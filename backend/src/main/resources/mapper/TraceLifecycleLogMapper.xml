@@ -58,14 +58,15 @@
         LIMIT 1
     </select>
 
-    <!-- 红冲蓝补：如果某条日志被修正，则原日志在“有效视图”中隐藏 -->
+    <!-- 红冲蓝补：如果某条日志被修正，则原日志在“有效视图”中隐藏。
+         但 CORRECTION 记录自身即便被二次纠错防御性关联，也不能隐藏。 -->
     <select id="selectEffectiveHistory" resultType="com.example.trace.entity.TraceLifecycleLog">
         SELECT
             <include refid="TraceLifecycleLogColumnsWithAlias"/>
         FROM trace_lifecycle_log l
         LEFT JOIN trace_lifecycle_log c ON c.correction_of = l.id
         WHERE l.trace_code = #{traceCode}
-          AND c.id IS NULL
+          AND (l.action_type = 'CORRECTION' OR c.id IS NULL)
         ORDER BY l.event_time ASC, l.id ASC
     </select>
 

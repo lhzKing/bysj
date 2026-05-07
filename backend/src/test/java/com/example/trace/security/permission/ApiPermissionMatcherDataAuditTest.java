@@ -192,6 +192,12 @@ class ApiPermissionMatcherDataAuditTest {
         }
 
         @Test
+        void traceExceptionAndCorrectionWorkflowActionsAreAnnotationOnly() {
+            assertThat(matchingCodes("POST", "/api/traces/TRACE-001/exception/close")).isEmpty();
+            assertThat(matchingCodes("POST", "/api/traces/TRACE-001/corrections")).isEmpty();
+        }
+
+        @Test
         void traceCodeActivationMatchesCodeActivatePermission() {
             assertThat(matchingCodes("POST", "/api/trace-codes/TRACE-001/activate"))
                 .containsExactly("trace:code:activate");

@@ -112,14 +112,14 @@ describe('ScanHub permission model', () => {
       recommendedAction: 'OUTBOUND',
       availableActions: [
         { actionType: 'OUTBOUND', label: '确认出库', nextStatus: 'IN_TRANSIT', nextStatusLabel: '运输中', requiresRemark: false, permissionHint: 'trace:outbound or trace:scan' },
-        { actionType: 'EXCEPTION', label: '上报异常', nextStatus: 'EXCEPTION', nextStatusLabel: '异常', requiresRemark: true, permissionHint: 'trace:scan' }
+        { actionType: 'EXCEPTION_OPEN', label: '上报异常并冻结', nextStatus: 'EXCEPTION', nextStatusLabel: '异常', requiresRemark: true, permissionHint: 'trace:exception:handle or trace:scan' }
       ]
     })
     currentUser.permissions = ['trace:scan', 'trace:view']
     const wrapper = await openActionMatrix()
 
     expect(wrapper.text()).toContain('确认出库')
-    expect(wrapper.text()).toContain('上报异常')
+    expect(wrapper.text()).toContain('上报异常并冻结')
     expect(wrapper.text()).toContain('推荐')
     expect(wrapper.text()).not.toContain('确认入库')
     expect(wrapper.find('[data-test="recommended-action-badge"]').exists()).toBe(true)
@@ -198,7 +198,7 @@ describe('ScanHub permission model', () => {
     expect(dialog.attributes('data-action')).toBe('outbound')
   })
 
-  it('opens exception dialog only when backend returns EXCEPTION as executable', async () => {
+  it('opens exception dialog only when backend returns EXCEPTION_OPEN as executable', async () => {
     getTraceAvailableActionsMock.mockResolvedValueOnce({
       traceCode: 'TRACE-001',
       currentStatus: 'IN_STOCK',
@@ -206,13 +206,13 @@ describe('ScanHub permission model', () => {
       currentNode: '北京仓库',
       recommendedAction: 'OUTBOUND',
       availableActions: [
-        { actionType: 'EXCEPTION', label: '上报异常', nextStatus: 'EXCEPTION', nextStatusLabel: '异常', requiresRemark: true }
+        { actionType: 'EXCEPTION_OPEN', label: '上报异常并冻结', nextStatus: 'EXCEPTION', nextStatusLabel: '异常', requiresRemark: true }
       ]
     })
     currentUser.permissions = ['trace:scan']
     const wrapper = await openActionMatrix()
 
-    await wrapper.find('[data-test="available-action-EXCEPTION"]').trigger('click')
+    await wrapper.find('[data-test="available-action-EXCEPTION_OPEN"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.find('[data-test="scan-exception-dialog-stub"]').attributes('data-open')).toBe('true')

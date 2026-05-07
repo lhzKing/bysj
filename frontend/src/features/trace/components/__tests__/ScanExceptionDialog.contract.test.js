@@ -63,7 +63,7 @@ describe('ScanExceptionDialog contract', () => {
     createEventMock.mockResolvedValue({})
   })
 
-  it('submits camelCase EXCEPTION payload without fromNode/toNode/correctionOf', async () => {
+  it('submits camelCase EXCEPTION_OPEN payload without fromNode/toNode/correctionOf', async () => {
     const wrapper = mountDialog()
     await flushPromises()
     await nextTick()
@@ -82,7 +82,7 @@ describe('ScanExceptionDialog contract', () => {
 
     expect(createEventMock).toHaveBeenCalledTimes(1)
     expect(createEventMock).toHaveBeenCalledWith('TRACE-001', {
-      actionType: 'EXCEPTION',
+      actionType: 'EXCEPTION_OPEN',
       province,
       city,
       remark: '外包装破损',

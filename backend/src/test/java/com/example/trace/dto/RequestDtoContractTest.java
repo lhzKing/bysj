@@ -55,6 +55,12 @@ class RequestDtoContractTest {
         TraceAggregationReleaseRequest aggregationRelease = mapper.readValue("""
                 {"remark":"拆箱复核"}
                 """, TraceAggregationReleaseRequest.class);
+        TraceExceptionCloseRequest exceptionClose = mapper.readValue("""
+                {"remark":"复核无误","event_time":"2026-05-07T12:10:00","idempotency_key":"CLOSE-001"}
+                """, TraceExceptionCloseRequest.class);
+        TraceCorrectionRequest correction = mapper.readValue("""
+                {"correction_of":18,"remark":"更正错误节点","from_node":"Node-A","to_node":"Node-B","event_time":"2026-05-07T12:20:00","idempotency_key":"CORR-001"}
+                """, TraceCorrectionRequest.class);
 
         assertThat(produce.getPartCode()).isEqualTo("P-001");
         assertThat(produce.getBatchNo()).isEqualTo("ASSIGN-001");
@@ -104,6 +110,14 @@ class RequestDtoContractTest {
         assertThat(aggregationBind.getRelationType()).isEqualTo(com.example.trace.enums.TraceAggregationRelationType.CARTON);
         assertThat(aggregationBind.getRemark()).isEqualTo("装箱");
         assertThat(aggregationRelease.getRemark()).isEqualTo("拆箱复核");
+        assertThat(exceptionClose.getRemark()).isEqualTo("复核无误");
+        assertThat(exceptionClose.getEventTime()).isEqualTo("2026-05-07T12:10:00");
+        assertThat(exceptionClose.getIdempotencyKey()).isEqualTo("CLOSE-001");
+        assertThat(correction.getCorrectionOf()).isEqualTo(18L);
+        assertThat(correction.getRemark()).isEqualTo("更正错误节点");
+        assertThat(correction.getFromNode()).isEqualTo("Node-A");
+        assertThat(correction.getToNode()).isEqualTo("Node-B");
+        assertThat(correction.getIdempotencyKey()).isEqualTo("CORR-001");
     }
 
     @Test
@@ -232,6 +246,13 @@ class RequestDtoContractTest {
         assertThat(jsonAliases(TraceAggregationBindRequest.class, "relationType")).isEmpty();
         assertThat(jsonAliases(TraceAggregationBindRequest.class, "remark")).isEmpty();
         assertThat(jsonAliases(TraceAggregationReleaseRequest.class, "remark")).isEmpty();
+        assertThat(jsonAliases(TraceExceptionCloseRequest.class, "eventTime")).isEmpty();
+        assertThat(jsonAliases(TraceExceptionCloseRequest.class, "idempotencyKey")).isEmpty();
+        assertThat(jsonAliases(TraceCorrectionRequest.class, "correctionOf")).isEmpty();
+        assertThat(jsonAliases(TraceCorrectionRequest.class, "fromNode")).isEmpty();
+        assertThat(jsonAliases(TraceCorrectionRequest.class, "toNode")).isEmpty();
+        assertThat(jsonAliases(TraceCorrectionRequest.class, "eventTime")).isEmpty();
+        assertThat(jsonAliases(TraceCorrectionRequest.class, "idempotencyKey")).isEmpty();
 
         assertThat(jsonAliases(PartCreateRequest.class, "partCode")).containsExactly("partCode");
         assertThat(jsonAliases(PartCreateRequest.class, "partName")).containsExactly("partName");

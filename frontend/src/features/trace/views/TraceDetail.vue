@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ScanFlowDialog from '@/features/trace/components/ScanFlowDialog.vue'
+import TraceCorrectionDialog from '@/features/trace/components/TraceCorrectionDialog.vue'
+import TraceExceptionCloseDialog from '@/features/trace/components/TraceExceptionCloseDialog.vue'
 import TraceRouteMap from '@/features/trace/components/TraceRouteMap.vue'
 import TraceSummary from '@/features/trace/components/TraceSummary.vue'
 import TraceTimeline from '@/features/trace/components/TraceTimeline.vue'
@@ -9,7 +11,7 @@ import TraceVerificationPanel from '@/features/trace/components/TraceVerificatio
 import { getTraceDetail, verifyTraceChain } from '@/features/trace/api'
 import { useUserStore } from '@/core/stores/user'
 import { PERMISSIONS } from '@/shared/constants'
-import { ArrowLeft, Boxes, Loader2, Package as PackageIn, PackageOpen as PackageOut, Navigation } from 'lucide-vue-next'
+import { ArrowLeft, Boxes, FilePenLine, Loader2, Package as PackageIn, PackageOpen as PackageOut, Navigation, ShieldCheck } from 'lucide-vue-next'
 import dayjs from 'dayjs'
 
 const route = useRoute()
@@ -29,10 +31,17 @@ const switchingView = ref(false)
 const verification = ref(null)
 const verifying = ref(false)
 const showScanDialog = ref(false)
+const showExceptionCloseDialog = ref(false)
+const showCorrectionDialog = ref(false)
 const selectedActionType = ref('transfer')
 const isMenuOpen = ref(false)
 
 const canViewAudit = computed(() => userStore.hasPermission(PERMISSIONS.TRACE.AUDIT_VIEW))
+const canHandleException = computed(() =>
+  userStore.hasPermission(PERMISSIONS.TRACE.EXCEPTION_HANDLE)
+    || userStore.hasPermission(PERMISSIONS.TRACE.SCAN)
+)
+const isExceptionHeld = computed(() => snapshot.value?.currentStatus === 'EXCEPTION')
 const historyCount = computed(() => history.value.length)
 const aggregationHistoryCount = computed(() => aggregationHistory.value.length)
 const correctedLogIds = computed(() => new Set(
@@ -152,6 +161,14 @@ const handleActionSelect = (actionType) => {
   showScanDialog.value = true
 }
 
+const openExceptionCloseDialog = () => {
+  showExceptionCloseDialog.value = true
+}
+
+const openCorrectionDialog = () => {
+  showCorrectionDialog.value = true
+}
+
 const formatAggregationTime = (value) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '至今')
 
 const aggregationStatusClass = (item) => item?.active
@@ -263,6 +280,26 @@ watch(
                 </div>
               </Transition>
             </div>
+
+            <button
+              v-if="canHandleException && isExceptionHeld"
+              type="button"
+              class="h-12 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold transition-all shadow-md shadow-emerald-100 flex items-center active:scale-95"
+              data-testid="trace-exception-close-button"
+              @click="openExceptionCloseDialog"
+            >
+              <ShieldCheck class="mr-2 h-4 w-4" /> 解除冻结
+            </button>
+
+            <button
+              v-if="canHandleException"
+              type="button"
+              class="h-12 px-6 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold transition-all shadow-md shadow-amber-100 flex items-center active:scale-95"
+              data-testid="trace-correction-button"
+              @click="openCorrectionDialog"
+            >
+              <FilePenLine class="mr-2 h-4 w-4" /> 审计纠错
+            </button>
 
             <!-- 验证状态 -->
             <TraceVerificationPanel v-if="verification" :verification="verification" />
@@ -402,6 +439,18 @@ watch(
       v-model="showScanDialog" 
       :trace-code="traceCode"
       :action-type="selectedActionType"
+      @success="handleScanSuccess"
+    />
+
+    <TraceExceptionCloseDialog
+      v-model="showExceptionCloseDialog"
+      :trace-code="traceCode"
+      @success="handleScanSuccess"
+    />
+
+    <TraceCorrectionDialog
+      v-model="showCorrectionDialog"
+      :trace-code="traceCode"
       @success="handleScanSuccess"
     />
   </div>

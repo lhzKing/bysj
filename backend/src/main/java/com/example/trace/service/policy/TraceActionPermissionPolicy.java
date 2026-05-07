@@ -76,7 +76,7 @@ public class TraceActionPermissionPolicy {
             case INBOUND -> TRACE_INBOUND;
             case OUTBOUND -> TRACE_OUTBOUND;
             case TRANSFER -> TRACE_TRANSFER;
-            case EXCEPTION -> TRACE_EXCEPTION_HANDLE;
+            case EXCEPTION, EXCEPTION_OPEN, EXCEPTION_CLOSE, CORRECTION -> TRACE_EXCEPTION_HANDLE;
             default -> null;
         };
     }

@@ -80,7 +80,8 @@ public enum TraceStatus {
             case OUTBOUND -> IN_TRANSIT;
             case INBOUND -> IN_STOCK;
             case TRANSFER -> TRANSFERRED;
-            case EXCEPTION -> EXCEPTION;
+            case EXCEPTION, EXCEPTION_OPEN -> EXCEPTION;
+            case EXCEPTION_CLOSE -> currentStatus;
             case CORRECTION -> currentStatus; // 修正不改变状态
         };
     }

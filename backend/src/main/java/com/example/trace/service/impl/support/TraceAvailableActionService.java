@@ -79,7 +79,7 @@ public class TraceAvailableActionService {
         );
         TraceCodeStatusService.MovementEligibility codeEligibility =
                 traceCodeStatusService.movementEligibility(traceCode);
-        if (codeEligibility.blocked()) {
+        if (codeEligibility.blocked() && currentStatus != TraceStatus.EXCEPTION) {
             return TraceAvailableActionsResponse.builder()
                     .traceCode(snapshot.getTraceCode())
                     .currentStatus(currentStatus)
@@ -122,7 +122,9 @@ public class TraceAvailableActionService {
             TraceStatus currentStatus,
             ActionType actionType
     ) {
-        TraceStatus nextStatus = traceTransitionPolicy.resolveNextStatus(currentStatus, actionType, null);
+        TraceStatus nextStatus = actionType == ActionType.EXCEPTION_CLOSE
+                ? TraceStatus.EXCEPTION
+                : traceTransitionPolicy.resolveNextStatus(currentStatus, actionType, null);
         return TraceAvailableActionsResponse.AvailableAction.builder()
                 .actionType(actionType)
                 .label(labelOf(currentStatus, actionType))
@@ -183,7 +185,10 @@ public class TraceAvailableActionService {
     ) {
         return availableActions.stream()
                 .map(TraceAvailableActionsResponse.AvailableAction::getActionType)
-                .filter(actionType -> actionType != ActionType.EXCEPTION && actionType != ActionType.CORRECTION)
+                .filter(actionType -> actionType != ActionType.EXCEPTION
+                        && actionType != ActionType.EXCEPTION_OPEN
+                        && actionType != ActionType.EXCEPTION_CLOSE
+                        && actionType != ActionType.CORRECTION)
                 .findFirst()
                 .or(() -> availableActions.stream()
                         .map(TraceAvailableActionsResponse.AvailableAction::getActionType)
@@ -226,13 +231,17 @@ public class TraceAvailableActionService {
                     : "确认入库";
             case OUTBOUND -> "确认出库";
             case TRANSFER -> "确认流转/交接";
-            case EXCEPTION -> "上报异常";
+            case EXCEPTION, EXCEPTION_OPEN -> "上报异常并冻结";
+            case EXCEPTION_CLOSE -> "解除异常冻结";
             case CORRECTION -> "提交审计纠错";
             case INIT -> "初始化";
         };
     }
 
     private boolean requiresRemark(ActionType actionType) {
-        return actionType == ActionType.EXCEPTION || actionType == ActionType.CORRECTION;
+        return actionType == ActionType.EXCEPTION
+                || actionType == ActionType.EXCEPTION_OPEN
+                || actionType == ActionType.EXCEPTION_CLOSE
+                || actionType == ActionType.CORRECTION;
     }
 }

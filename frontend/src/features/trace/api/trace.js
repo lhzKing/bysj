@@ -25,6 +25,26 @@ export function createEvent(traceCode, data) {
 }
 
 /**
+ * Close an exception hold and restore the pre-freeze snapshot state.
+ * @param {string} traceCode
+ * @param {{ remark: string, eventTime?: string, idempotencyKey?: string }} data
+ * @returns {Promise<Object>}
+ */
+export function closeTraceException(traceCode, data) {
+  return request.post(`/traces/${traceCode}/exception/close`, data)
+}
+
+/**
+ * Append an auditable correction record for an existing lifecycle log.
+ * @param {string} traceCode
+ * @param {{ correctionOf: number|string, remark: string, fromNode?: string, toNode?: string, province?: string, city?: string, eventTime?: string, idempotencyKey?: string }} data
+ * @returns {Promise<Object>}
+ */
+export function createTraceCorrection(traceCode, data) {
+  return request.post(`/traces/${traceCode}/corrections`, data)
+}
+
+/**
  * Get trace detail and event history.
  * @param {string} traceCode
  * @param {'effective'|'audit'} view

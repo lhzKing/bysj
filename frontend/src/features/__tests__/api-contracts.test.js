@@ -21,7 +21,9 @@ import { getRoles, getRole, createRole, assignPermissions } from '@/features/use
 import { createPart } from '@/features/part/api/parts'
 import {
   activateTraceCode,
+  closeTraceException,
   completeTraceFlowTask,
+  createTraceCorrection,
   createTrace,
   createTraceFlowTask,
   getTraceAvailableActions,
@@ -174,6 +176,8 @@ describe('feature api contracts', () => {
     await getTraceBatch(9)
     await getTraceBatchCodes(9)
     await getTraceNodes()
+    await closeTraceException('TRACE-001', { remark: '复核无误' })
+    await createTraceCorrection('TRACE-001', { correctionOf: 18, remark: '更正节点' })
 
     expect(request.post).toHaveBeenNthCalledWith(1, '/traces/TRACE-001/print', { remark: 'print' })
     expect(request.post).toHaveBeenNthCalledWith(2, '/traces/TRACE-001/reprint', { remark: 'reprint' })
@@ -185,6 +189,13 @@ describe('feature api contracts', () => {
     expect(request.get).toHaveBeenNthCalledWith(1, '/trace-batches/9')
     expect(request.get).toHaveBeenNthCalledWith(2, '/trace-batches/9/codes')
     expect(request.get).toHaveBeenNthCalledWith(3, '/trace-nodes/selectable')
+    expect(request.post).toHaveBeenNthCalledWith(5, '/traces/TRACE-001/exception/close', {
+      remark: '复核无误'
+    })
+    expect(request.post).toHaveBeenNthCalledWith(6, '/traces/TRACE-001/corrections', {
+      correctionOf: 18,
+      remark: '更正节点'
+    })
   })
 
   it('keeps warehouse logistics flow-task api endpoints explicit', async () => {

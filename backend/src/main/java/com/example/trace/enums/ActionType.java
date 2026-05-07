@@ -24,7 +24,9 @@ public enum ActionType {
     INBOUND("INBOUND", "入库", "货物进入仓库/节点"),
     OUTBOUND("OUTBOUND", "出库", "货物离开仓库/节点"),
     TRANSFER("TRANSFER", "流转", "节点间转移"),
-    EXCEPTION("EXCEPTION", "异常", "异常状态记录"),
+    EXCEPTION("EXCEPTION", "异常冻结", "兼容旧异常上报动作，等价于 EXCEPTION_OPEN"),
+    EXCEPTION_OPEN("EXCEPTION_OPEN", "异常开启", "开启异常冻结，暂停常规入库/出库/流转"),
+    EXCEPTION_CLOSE("EXCEPTION_CLOSE", "异常关闭", "解除异常冻结并恢复到冻结前状态"),
     CORRECTION("CORRECTION", "修正", "红冲蓝补修正记录");
 
     private final String code;
@@ -70,7 +72,7 @@ public enum ActionType {
         }
 
         throw new IllegalArgumentException(
-            String.format("非法的 ActionType: '%s'，允许的值: INIT, PRINT_CODE, REPRINT_CODE, ACTIVATE_CODE, VOID_CODE, PACK, UNPACK, PALLETIZE, UNPALLETIZE, INBOUND, OUTBOUND, TRANSFER, EXCEPTION, CORRECTION", value)
+            String.format("非法的 ActionType: '%s'，允许的值: INIT, PRINT_CODE, REPRINT_CODE, ACTIVATE_CODE, VOID_CODE, PACK, UNPACK, PALLETIZE, UNPALLETIZE, INBOUND, OUTBOUND, TRANSFER, EXCEPTION, EXCEPTION_OPEN, EXCEPTION_CLOSE, CORRECTION", value)
         );
     }
 

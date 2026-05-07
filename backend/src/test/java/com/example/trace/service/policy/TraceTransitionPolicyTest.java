@@ -46,6 +46,31 @@ class TraceTransitionPolicyTest {
     }
 
     @Test
+    void resolveNextStatus_shouldOpenAndCloseExceptionHoldWithRestoreStatus() {
+        assertThat(policy.resolveNextStatus(TraceStatus.IN_STOCK, ActionType.EXCEPTION_OPEN, null))
+                .isEqualTo(TraceStatus.EXCEPTION);
+        assertThat(policy.resolveNextStatus(
+                TraceStatus.EXCEPTION,
+                ActionType.EXCEPTION_CLOSE,
+                null,
+                TraceStatus.IN_STOCK
+        )).isEqualTo(TraceStatus.IN_STOCK);
+    }
+
+    @Test
+    void resolveNextStatus_shouldRejectExceptionCloseWithoutRestoreStatus() {
+        assertThatThrownBy(() -> policy.resolveNextStatus(
+                TraceStatus.EXCEPTION,
+                ActionType.EXCEPTION_CLOSE,
+                null,
+                null
+        ))
+                .isInstanceOf(BizException.class)
+                .satisfies(error -> assertThat(((BizException) error).getCode())
+                        .isEqualTo(BizCode.INVALID_ACTION_TYPE));
+    }
+
+    @Test
     void resolveNextStatus_shouldKeepStatusForCorrection() {
         assertThat(policy.resolveNextStatus(TraceStatus.EXCEPTION, ActionType.CORRECTION, 100L))
                 .isEqualTo(TraceStatus.EXCEPTION);
@@ -64,7 +89,7 @@ class TraceTransitionPolicyTest {
     @Test
     void allowedActions_shouldExposeStateSpecificNormalActions() {
         assertThat(policy.allowedActions(TraceStatus.IN_TRANSIT))
-                .containsExactly(ActionType.INBOUND, ActionType.TRANSFER, ActionType.EXCEPTION);
-        assertThat(policy.allowedActions(TraceStatus.EXCEPTION)).isEmpty();
+                .containsExactly(ActionType.INBOUND, ActionType.TRANSFER, ActionType.EXCEPTION_OPEN);
+        assertThat(policy.allowedActions(TraceStatus.EXCEPTION)).containsExactly(ActionType.EXCEPTION_CLOSE);
     }
 }

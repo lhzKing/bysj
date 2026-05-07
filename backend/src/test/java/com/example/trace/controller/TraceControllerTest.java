@@ -9,7 +9,9 @@ import com.example.trace.dto.ScanTraceRequest;
 import com.example.trace.dto.TraceAvailableActionsResponse;
 import com.example.trace.dto.TraceCodeLabelActionRequest;
 import com.example.trace.dto.TraceCodeLabelActionResponse;
+import com.example.trace.dto.TraceCorrectionRequest;
 import com.example.trace.dto.TraceDetailResponse;
+import com.example.trace.dto.TraceExceptionCloseRequest;
 import com.example.trace.entity.TraceLifecycleLog;
 import com.example.trace.entity.TraceSnapshot;
 import com.example.trace.enums.ActionType;
@@ -142,6 +144,44 @@ class TraceControllerTest {
         assertThat(voided.getBody().getData()).isSameAs(voidResponse);
         verify(traceService).reprintCode("TRACE-LABEL", request, "operator-a");
         verify(traceService).voidCode("TRACE-LABEL", request, "operator-a");
+    }
+
+    @Test
+    void exceptionWorkflowEndpoints_shouldDelegateOperatorContextToService() {
+        MockHttpServletRequest httpRequest = requestWithRoleId(2L);
+        TraceExceptionCloseRequest closeRequest = new TraceExceptionCloseRequest();
+        closeRequest.setRemark("复核完成");
+        TraceCodeLabelActionResponse closeResponse = TraceCodeLabelActionResponse.builder()
+                .traceCode("TRACE-EX")
+                .actionType(ActionType.EXCEPTION_CLOSE)
+                .currentStatus("IN_STOCK")
+                .build();
+        when(traceService.closeException("TRACE-EX", closeRequest, 77L, "operator-a"))
+                .thenReturn(closeResponse);
+
+        TraceCorrectionRequest correctionRequest = new TraceCorrectionRequest();
+        correctionRequest.setCorrectionOf(18L);
+        correctionRequest.setRemark("更正节点");
+        TraceCodeLabelActionResponse correctionResponse = TraceCodeLabelActionResponse.builder()
+                .traceCode("TRACE-EX")
+                .actionType(ActionType.CORRECTION)
+                .build();
+        when(traceService.correctLifecycleLog("TRACE-EX", correctionRequest, 77L, "operator-a"))
+                .thenReturn(correctionResponse);
+
+        ResponseEntity<ApiResponse<TraceCodeLabelActionResponse>> close =
+                traceController.closeException("TRACE-EX", closeRequest, httpRequest);
+        ResponseEntity<ApiResponse<TraceCodeLabelActionResponse>> correction =
+                traceController.correctLifecycleLog("TRACE-EX", correctionRequest, httpRequest);
+
+        assertThat(close.getStatusCode().value()).isEqualTo(201);
+        assertThat(close.getBody()).isNotNull();
+        assertThat(close.getBody().getData()).isSameAs(closeResponse);
+        assertThat(correction.getStatusCode().value()).isEqualTo(201);
+        assertThat(correction.getBody()).isNotNull();
+        assertThat(correction.getBody().getData()).isSameAs(correctionResponse);
+        verify(traceService).closeException("TRACE-EX", closeRequest, 77L, "operator-a");
+        verify(traceService).correctLifecycleLog("TRACE-EX", correctionRequest, 77L, "operator-a");
     }
 
     @Test
