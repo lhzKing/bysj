@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { renderWithPrime } from '@/test/renderWithPrime'
-import PrimeLoadingSkeleton from '@/shared/components/prime/PrimeLoadingSkeleton.vue'
 import BaseButton from '@/shared/components/ui/BaseButton.vue'
 import BaseInput from '@/shared/components/ui/BaseInput.vue'
 import LoadingSkeleton from '@/shared/components/ui/LoadingSkeleton.vue'
@@ -135,21 +133,26 @@ describe('BaseInput', () => {
   })
 })
 
-// LoadingSkeleton 仍是 prime 包装层（F07/F08 时迁移），保留对其 type/rows/count API 的兜底契约。
-describe('LoadingSkeleton (legacy compat)', () => {
-  it('keeps LoadingSkeleton type and rows API', () => {
-    const wrapper = renderWithPrime(LoadingSkeleton, {
+// LoadingSkeleton 在 F07 已切到原生 Linear 实现；保留对其 type/rows/count API 的兜底契约。
+describe('LoadingSkeleton', () => {
+  it('renders rows for type=table', () => {
+    const wrapper = mount(LoadingSkeleton, {
       props: { type: 'table', rows: 2 }
     })
-    const primeSkeleton = wrapper.findComponent(PrimeLoadingSkeleton)
-    expect(primeSkeleton.exists()).toBe(true)
-    expect(primeSkeleton.props('rows')).toBe(2)
+    expect(wrapper.findAll('[data-test="skeleton-row"]')).toHaveLength(2)
+    expect(wrapper.find('[data-skeleton-type="table"]').exists()).toBe(true)
   })
 
-  it('keeps legacy LoadingSkeleton count API for card layouts', () => {
-    const wrapper = renderWithPrime(LoadingSkeleton, {
+  it('renders cards for type=card with count', () => {
+    const wrapper = mount(LoadingSkeleton, {
       props: { type: 'card', count: 3 }
     })
     expect(wrapper.findAll('[data-test="skeleton-card"]')).toHaveLength(3)
+  })
+
+  it('falls back to default skeleton', () => {
+    const wrapper = mount(LoadingSkeleton)
+    expect(wrapper.find('[data-skeleton-type="default"]').exists()).toBe(true)
+    expect(wrapper.findAll('.skel-bar').length).toBeGreaterThan(0)
   })
 })
