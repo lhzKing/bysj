@@ -2,94 +2,111 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<title>扫码中心 · 三种风格预览</title>
+<title>trace. 风格选型 · 完整系统预览</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif; background: #0b1220; color: #fff; overflow: hidden; }
-  .topbar {
-    height: 56px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between;
-    background: #0f172a; border-bottom: 1px solid #1e293b;
-  }
-  .brand { display: flex; align-items: center; gap: 10px; font-size: 14px; }
-  .brand strong { font-weight: 700; }
-  .brand .meta { color: #64748b; font-size: 12px; }
-  .tabs { display: flex; gap: 4px; background: #1e293b; padding: 4px; border-radius: 10px; }
-  .tab {
-    padding: 7px 14px; font-size: 13px; font-weight: 600; color: #94a3b8; cursor: pointer;
-    border-radius: 7px; transition: all .15s; border: none; background: transparent; font-family: inherit;
-  }
-  .tab:hover { color: #e2e8f0; }
-  .tab.active { background: #fff; color: #0f172a; }
-  .tab .num { font-family: ui-monospace, 'JetBrains Mono', monospace; font-size: 10.5px; opacity: .6; margin-right: 6px; }
-  .actions { display: flex; gap: 8px; align-items: center; }
-  .btn-link {
-    padding: 6px 12px; font-size: 12px; color: #94a3b8; border: 1px solid #334155; border-radius: 6px;
-    background: transparent; cursor: pointer; text-decoration: none; transition: all .15s;
-  }
-  .btn-link:hover { color: #e2e8f0; border-color: #475569; }
-  .stage { height: calc(100vh - 56px); background: #fff; }
-  iframe { width: 100%; height: 100%; border: 0; display: block; }
-  .hidden { display: none !important; }
-  .hint {
-    position: fixed; bottom: 16px; right: 16px; z-index: 99;
-    background: rgba(15, 23, 42, .92); backdrop-filter: blur(12px);
-    color: #cbd5e1; font-size: 12px; padding: 10px 14px; border-radius: 10px; border: 1px solid #1e293b;
-    max-width: 320px; line-height: 1.55;
-  }
-  .hint b { color: #fff; }
-  .hint kbd { font-family: ui-monospace, monospace; background: #1e293b; padding: 1px 6px; border-radius: 4px; font-size: 11px; }
-  .close-hint { float: right; margin-left: 12px; cursor: pointer; color: #64748b; }
-  .close-hint:hover { color: #fff; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  :root{--canvas:#fafafa;--surface:#fff;--surface-2:#f4f4f5;--hairline:#e6e6e8;--ink:#18181b;--ink-muted:#3f3f46;--ink-subtle:#71717a;--ink-tertiary:#a1a1aa;--primary:#5e6ad2;}
+  html,body{height:100%;font-family:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:var(--canvas);color:var(--ink);overflow:hidden;-webkit-font-smoothing:antialiased;}
+  .topbar{height:52px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;background:var(--surface);border-bottom:1px solid var(--hairline);}
+  .brand{display:flex;align-items:center;gap:8px;font-size:13.5px;}
+  .brand .logo{width:22px;height:22px;border-radius:6px;background:var(--primary);display:grid;place-items:center;}
+  .brand .logo svg{color:#fff;}
+  .brand strong{font-weight:600;letter-spacing:-0.01em;color:var(--ink);}
+  .brand .meta{color:var(--ink-subtle);font-size:12px;margin-left:12px;}
+  .tabs{display:flex;gap:1px;background:var(--surface-2);padding:3px;border-radius:8px;}
+  .tab{padding:6px 12px;font-size:12.5px;font-weight:500;color:var(--ink-subtle);cursor:pointer;border-radius:5px;transition:all .15s;border:none;background:transparent;font-family:inherit;display:inline-flex;align-items:center;gap:6px;}
+  .tab:hover{color:var(--ink);}
+  .tab.active{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.06);}
+  .tab .num{font-family:ui-monospace,'JetBrains Mono',monospace;font-size:10.5px;color:var(--ink-tertiary);}
+  .tab.active .num{color:var(--primary);}
+  .actions{display:flex;gap:6px;align-items:center;}
+  .btn-link{padding:5px 10px;font-size:12px;color:var(--ink-subtle);border:1px solid var(--hairline);border-radius:6px;background:transparent;cursor:pointer;text-decoration:none;transition:all .15s;font-family:inherit;display:inline-flex;align-items:center;gap:4px;}
+  .btn-link:hover{color:var(--ink);border-color:var(--ink-subtle);}
+  .legacy-group{display:flex;gap:1px;align-items:center;font-size:11px;color:var(--ink-tertiary);margin-left:12px;}
+  .legacy-group .lbl{padding:0 6px;text-transform:uppercase;letter-spacing:0.04em;font-weight:500;}
+  .legacy-group a{color:var(--ink-subtle);padding:3px 7px;border-radius:5px;text-decoration:none;font-size:11.5px;}
+  .legacy-group a:hover{background:var(--surface-2);color:var(--ink);}
+  .stage{height:calc(100vh - 52px);background:var(--canvas);}
+  iframe{width:100%;height:100%;border:0;display:block;background:var(--canvas);}
+  .hidden{display:none!important;}
+  .hint{position:fixed;bottom:14px;right:14px;z-index:99;background:var(--surface);border:1px solid var(--hairline);border-radius:10px;color:var(--ink-muted);font-size:12px;padding:11px 14px;box-shadow:0 4px 16px -4px rgba(0,0,0,.06);max-width:340px;line-height:1.55;}
+  .hint b{color:var(--ink);font-weight:600;}
+  .hint kbd{font-family:ui-monospace,monospace;background:var(--surface-2);border:1px solid var(--hairline);padding:1px 5px;border-radius:4px;font-size:11px;color:var(--ink-muted);}
+  .close-hint{float:right;margin-left:12px;cursor:pointer;color:var(--ink-tertiary);font-size:14px;line-height:1;}
+  .close-hint:hover{color:var(--ink);}
 </style>
 </head>
 <body>
 
 <div class="topbar">
   <div class="brand">
-    <strong>扫码中心 · 风格选型预览</strong>
-    <span class="meta">三种风格 · 同一组数据 · 同一组状态</span>
+    <span class="logo">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+    </span>
+    <strong>trace.</strong>
+    <span class="meta">基于 Linear 设计系统 · 完整 5 页预览</span>
   </div>
 
   <div class="tabs" role="tablist">
-    <button class="tab active" data-target="industrial"><span class="num">01</span>工业克制</button>
-    <button class="tab" data-target="saas"><span class="num">02</span>现代 SaaS</button>
-    <button class="tab" data-target="glass"><span class="num">03</span>收敛毛玻璃</button>
+    <button class="tab active" data-target="login"><span class="num">01</span>登录</button>
+    <button class="tab" data-target="dashboard"><span class="num">02</span>仪表盘</button>
+    <button class="tab" data-target="scan"><span class="num">03</span>扫码工位</button>
+    <button class="tab" data-target="traces"><span class="num">04</span>追溯查询</button>
+    <button class="tab" data-target="detail"><span class="num">05</span>追溯详情</button>
   </div>
 
   <div class="actions">
-    <a class="btn-link" id="open-new" href="scan-hub-industrial.html" target="_blank">新窗口打开 ↗</a>
+    <a class="btn-link" id="open-new" href="linear-login.html" target="_blank">
+      新窗口 ↗
+    </a>
+    <div class="legacy-group">
+      <span class="lbl">历史</span>
+      <a href="scan-hub-cal-editorial.html" target="_blank" title="Cal.com Editorial">cal-A</a>
+      <a href="scan-hub-cal-workspace.html" target="_blank" title="Cal.com Workspace">cal-B</a>
+      <a href="scan-hub-cal-shell.html" target="_blank" title="Cal.com App Shell">cal-C</a>
+      <a href="scan-hub-industrial.html" target="_blank" title="工业克制">v1·1</a>
+      <a href="scan-hub-saas.html" target="_blank" title="现代 SaaS">v1·2</a>
+      <a href="scan-hub-glass.html" target="_blank" title="收敛毛玻璃">v1·3</a>
+    </div>
   </div>
 </div>
 
 <div class="stage">
-  <iframe id="frame-industrial" src="scan-hub-industrial.html"></iframe>
-  <iframe id="frame-saas" class="hidden" src="scan-hub-saas.html"></iframe>
-  <iframe id="frame-glass" class="hidden" src="scan-hub-glass.html"></iframe>
+  <iframe id="frame-login" src="linear-login.html"></iframe>
+  <iframe id="frame-dashboard" class="hidden" src="linear-dashboard.html"></iframe>
+  <iframe id="frame-scan" class="hidden" src="linear-scan.html"></iframe>
+  <iframe id="frame-traces" class="hidden" src="linear-traces.html"></iframe>
+  <iframe id="frame-detail" class="hidden" src="linear-trace-detail.html"></iframe>
 </div>
 
 <div class="hint" id="hint">
   <span class="close-hint" onclick="document.getElementById('hint').remove()">×</span>
   <b>使用说明</b><br>
-  顶部三个 Tab 切换风格 · 按 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> 也能切换。<br>
-  右上角"新窗口打开"可在独立标签页对比。
+  顶部 5 个 Tab 按真实使用顺序排列：登录 → 仪表盘 → 扫码 → 列表 → 详情。<br>
+  按 <kbd>1</kbd>–<kbd>5</kbd> 切换。基于 <a style="color:var(--primary);" href="../../DESIGN.md">DESIGN.md</a>（Linear 设计系统，已替换原 Cal.com 版本）。<br>
+  右上角"历史"是之前评估过的 6 版样式。
 </div>
 
 <script>
   const tabs = document.querySelectorAll('.tab');
   const frames = {
-    industrial: document.getElementById('frame-industrial'),
-    saas: document.getElementById('frame-saas'),
-    glass: document.getElementById('frame-glass'),
+    login: document.getElementById('frame-login'),
+    dashboard: document.getElementById('frame-dashboard'),
+    scan: document.getElementById('frame-scan'),
+    traces: document.getElementById('frame-traces'),
+    detail: document.getElementById('frame-detail'),
   };
   const links = {
-    industrial: 'scan-hub-industrial.html',
-    saas: 'scan-hub-saas.html',
-    glass: 'scan-hub-glass.html',
+    login: 'linear-login.html',
+    dashboard: 'linear-dashboard.html',
+    scan: 'linear-scan.html',
+    traces: 'linear-traces.html',
+    detail: 'linear-trace-detail.html',
   };
   const openNew = document.getElementById('open-new');
 
-  function activate(target) {
+  function activate(target){
     tabs.forEach(t => t.classList.toggle('active', t.dataset.target === target));
     Object.entries(frames).forEach(([k, f]) => f.classList.toggle('hidden', k !== target));
     openNew.setAttribute('href', links[target]);
@@ -97,10 +114,10 @@
 
   tabs.forEach(t => t.addEventListener('click', () => activate(t.dataset.target)));
 
+  const order = ['login','dashboard','scan','traces','detail'];
   document.addEventListener('keydown', (e) => {
-    if (e.key === '1') activate('industrial');
-    if (e.key === '2') activate('saas');
-    if (e.key === '3') activate('glass');
+    const n = parseInt(e.key, 10);
+    if (n >= 1 && n <= 5) activate(order[n-1]);
   });
 </script>
 

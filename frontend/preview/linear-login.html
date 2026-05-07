@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>登录 — trace.</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --canvas:#fafafa;
+    --surface-1:#ffffff;
+    --surface-2:#f4f4f5;
+    --hairline:#e6e6e8;
+    --hairline-strong:#d4d4d8;
+    --ink:#18181b;
+    --ink-muted:#3f3f46;
+    --ink-subtle:#71717a;
+    --ink-tertiary:#a1a1aa;
+    --primary:#5e6ad2;
+    --primary-hover:#828fff;
+    --primary-focus:#5e69d1;
+    --success:#27a644;
+    --error:#e5484d;
+  }
+  html,body{background:var(--canvas);color:var(--ink-muted);min-height:100vh;}
+  body{font-family:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;-webkit-font-smoothing:antialiased;}
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace;}
+  .display{font-weight:600;color:var(--ink);letter-spacing:-0.6px;}
+  .d-md{font-size:28px;line-height:1.2;letter-spacing:-0.6px;}
+  .d-sm{font-size:22px;line-height:1.25;letter-spacing:-0.4px;font-weight:500;color:var(--ink);}
+  .body-sm{font-size:14px;line-height:1.5;}
+  .caption{font-size:12px;line-height:1.4;color:var(--ink-subtle);}
+  .eyebrow{font-size:13px;font-weight:500;letter-spacing:0.4px;text-transform:uppercase;color:var(--ink-subtle);}
+  .input{height:36px;padding:0 12px;border-radius:8px;background:var(--surface-1);border:1px solid var(--hairline);font-size:14px;color:var(--ink);width:100%;outline:none;transition:border-color .15s,box-shadow .15s;}
+  .input:focus{border-color:var(--primary-focus);box-shadow:0 0 0 3px rgba(94,106,210,.15);}
+  .label{font-size:13px;font-weight:500;color:var(--ink);margin-bottom:6px;display:block;}
+  .btn-primary{height:36px;padding:0 14px;border-radius:8px;background:var(--primary);color:#fff;font-size:14px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:7px;transition:background .15s;}
+  .btn-primary:hover{background:var(--primary-hover);}
+  .btn-secondary{height:36px;padding:0 14px;border-radius:8px;background:var(--surface-1);color:var(--ink);border:1px solid var(--hairline);font-size:14px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:7px;transition:border-color .15s;}
+  .btn-secondary:hover{border-color:var(--ink-subtle);}
+  .text-link{color:var(--primary);font-size:13px;font-weight:500;}
+  .text-link:hover{color:var(--primary-hover);}
+  .login-card{background:var(--surface-1);border:1px solid var(--hairline);border-radius:12px;padding:32px;}
+  .check{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-subtle);}
+  .checkbox{width:14px;height:14px;border-radius:4px;border:1px solid var(--hairline-strong);}
+  .footer-link{color:var(--ink-subtle);font-size:13px;}
+  .footer-link:hover{color:var(--ink);}
+  /* faint blue tint background like Linear's "faint blue tint" but inverted to light */
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(60% 50% at 50% 0%,rgba(94,106,210,.04),transparent 70%);}
+</style>
+</head>
+<body>
+
+<div class="min-h-screen flex flex-col">
+  <!-- top brand -->
+  <header class="px-8 py-6 flex items-center justify-between">
+    <a class="display text-[20px] flex items-center gap-2.5">
+      <span class="w-7 h-7 rounded-lg bg-[var(--primary)] grid place-items-center">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+      </span>
+      trace.
+    </a>
+    <a class="footer-link">需要帮助？</a>
+  </header>
+
+  <!-- center login -->
+  <main class="flex-1 flex items-center justify-center px-6 -mt-12">
+    <div class="w-full max-w-[400px]">
+      <div class="text-center mb-7">
+        <h1 class="display d-md mb-2">登录到 trace.</h1>
+        <p class="body-sm text-[var(--ink-subtle)]">输入工号与密码访问溯源系统</p>
+      </div>
+
+      <div class="login-card space-y-4">
+        <div>
+          <label class="label">工号 / 用户名</label>
+          <input class="input" type="text" placeholder="superadmin" autofocus />
+        </div>
+        <div>
+          <div class="flex items-baseline justify-between">
+            <label class="label">密码</label>
+            <a class="text-link !text-[12px]">忘记密码？</a>
+          </div>
+          <input class="input" type="password" placeholder="••••••••" />
+        </div>
+        <label class="check pt-1 cursor-pointer">
+          <span class="checkbox"></span>
+          14 天内保持登录
+        </label>
+        <button class="btn-primary w-full !h-10 mt-2">登录</button>
+
+        <div class="relative py-2">
+          <div class="border-t border-[var(--hairline)]"></div>
+          <span class="absolute inset-0 flex justify-center -top-2.5"><span class="bg-[var(--surface-1)] px-3 text-[12px] text-[var(--ink-subtle)]">或</span></span>
+        </div>
+
+        <button class="btn-secondary w-full !h-10">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          使用 USB 安全密钥登录
+        </button>
+      </div>
+
+      <p class="text-center mt-6 text-[13px] text-[var(--ink-subtle)]">
+        没有账号？<a class="text-link">联系管理员注册</a>
+      </p>
+
+      <!-- 第三方验签入口 -->
+      <div class="mt-12 pt-6 border-t border-[var(--hairline)]">
+        <div class="eyebrow mb-3 text-center">外部审计 · 无需登录</div>
+        <div class="flex items-center justify-center gap-4 text-[13px]">
+          <a class="footer-link inline-flex items-center gap-1.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            通过追溯码自助验签
+          </a>
+          <span class="text-[var(--ink-tertiary)]">·</span>
+          <a class="footer-link inline-flex items-center gap-1.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            下载 RSA 公钥
+          </a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- footer -->
+  <footer class="px-8 py-6 flex items-center justify-between text-[12px] text-[var(--ink-subtle)]">
+    <span>© 2026 工业零配件溯源 · 内部系统</span>
+    <span class="mono">v2.4.1</span>
+  </footer>
+</div>
+
+</body>
+</html>

@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+// Tailwind 配置直接引用 src/style.css 中暴露的 Linear-light CSS 变量。
+// 颜色映射 var() 形式，便于业务页面用 bg-canvas / text-ink / border-hairline 等语义类。
 export default {
   content: [
     "./index.html",
@@ -7,43 +9,69 @@ export default {
   theme: {
     extend: {
       colors: {
+        // surface ladder
+        canvas: 'var(--canvas)',
+        'surface-1': 'var(--surface-1)',
+        'surface-2': 'var(--surface-2)',
+        'surface-3': 'var(--surface-3)',
+        hairline: {
+          DEFAULT: 'var(--hairline)',
+          strong: 'var(--hairline-strong)'
+        },
+        // ink ladder
+        ink: {
+          DEFAULT: 'var(--ink)',
+          muted: 'var(--ink-muted)',
+          subtle: 'var(--ink-subtle)',
+          tertiary: 'var(--ink-tertiary)'
+        },
+        // lavender accent
         primary: {
-          DEFAULT: '#6366f1',
-          glow: 'rgba(99, 102, 241, 0.15)'
+          DEFAULT: 'var(--primary)',
+          hover: 'var(--primary-hover)',
+          focus: 'var(--primary-focus)',
+          soft: 'var(--primary-soft)'
         },
-        surface: {
-          DEFAULT: '#ffffff',
-          glass: 'rgba(255, 255, 255, 0.6)'
+        // semantic
+        success: {
+          DEFAULT: 'var(--success)',
+          soft: 'var(--success-soft)'
         },
-        bg: {
-          light: '#fdfdff',
-          DEFAULT: '#fdfdff'
+        warn: {
+          DEFAULT: 'var(--warn)',
+          soft: 'var(--warn-soft)'
         },
-        accent: {
-          green: '#10B981',
-          blue: '#3B82F6',
-          indigo: '#6366f1',
-          emerald: '#10b981',
+        error: {
+          DEFAULT: 'var(--error)',
+          soft: 'var(--error-soft)'
         },
-        text: {
-          primary: '#0f172a',
-          secondary: '#64748b',
-          muted: '#94a3b8',
-        }
+        // dark surface（仅供 QRScanner 使用）
+        'dark-canvas': 'var(--dark-canvas)',
+        'dark-surface-1': 'var(--dark-surface-1)',
+        'dark-surface-2': 'var(--dark-surface-2)',
+        'dark-hairline': 'var(--dark-hairline)',
+        'dark-ink': 'var(--dark-ink)',
+        'dark-ink-subtle': 'var(--dark-ink-subtle)'
       },
       fontFamily: {
-        sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'monospace'],
+        sans: ['Inter', '-apple-system', '"PingFang SC"', '"Microsoft YaHei"', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', '"SF Mono"', 'Menlo', 'monospace']
       },
       borderRadius: {
-        '4xl': '32px',
-        '5xl': '40px',
-        '6xl': '48px',
-        '7xl': '56px',
+        // Linear 圆角阶梯：4 / 6 / 8 / 12 / 16
+        xs: '4px',
+        sm: '6px',
+        md: '8px',
+        lg: '12px',
+        xl: '16px'
       },
-      boxShadow: {
-        'glass': '0 10px 40px -6px rgba(0, 0, 0, 0.02), 0 20px 80px -12px rgba(99, 102, 241, 0.08)',
-        'glass-hover': '0 30px 100px -15px rgba(99, 102, 241, 0.15)',
+      // 间距阶梯：4 / 8 / 12 / 16 / 24 / 32 / 48
+      spacing: {
+        xxs: '4px',
+        xxl: '48px'
+      },
+      ringColor: {
+        focus: 'var(--primary-ring)'
       }
     },
   },

@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>扫码 — trace.</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--canvas:#fff;--soft:#f8f9fa;--card:#f5f5f5;--strong:#e5e7eb;--hairline:#e5e7eb;--dark:#101010;--dark-elev:#1a1a1a;--ink:#111;--body:#374151;--muted:#6b7280;--muted-soft:#898989;--on-dark-soft:#a1a1aa;--success:#10b981;--error:#ef4444;}
+  html,body{background:var(--canvas);color:var(--body);}
+  body{font-family:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;-webkit-font-smoothing:antialiased;}
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace;}
+  .display{font-family:'Inter',sans-serif;font-weight:600;color:var(--ink);}
+  .d-lg{font-size:48px;line-height:1.08;letter-spacing:-1.5px;}
+  .d-md{font-size:36px;line-height:1.12;letter-spacing:-1px;}
+  .t-md{font-size:18px;line-height:1.4;font-weight:600;color:var(--ink);}
+  .t-sm{font-size:16px;line-height:1.4;font-weight:600;color:var(--ink);}
+  .b-md{font-size:16px;line-height:1.5;color:var(--body);}
+  .b-sm{font-size:14px;line-height:1.5;color:var(--body);}
+  .cap{font-size:13px;line-height:1.4;font-weight:500;color:var(--muted);}
+  .btn{height:40px;padding:0 20px;border-radius:8px;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:8px;line-height:1;transition:background .15s,border-color .15s;}
+  .btn-primary{background:var(--ink);color:#fff;}
+  .btn-primary:hover{background:#242424;}
+  .btn-secondary{background:var(--canvas);color:var(--ink);border:1px solid var(--hairline);}
+  .btn-secondary:hover{border-color:var(--ink);}
+  .btn-text{padding:0;background:transparent;color:var(--ink);font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:4px;}
+  .btn-text:hover{text-decoration:underline;text-underline-offset:4px;}
+  .pill-group{background:var(--soft);padding:4px;border-radius:9999px;display:inline-flex;gap:2px;}
+  .pill-tab{padding:6px 14px;font-size:13px;font-weight:500;color:var(--muted);border-radius:9999px;cursor:pointer;}
+  .pill-tab.active{background:var(--canvas);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.06);}
+  .feature-card{background:var(--card);border-radius:12px;padding:32px;}
+  .product-card{background:var(--canvas);border:1px solid var(--hairline);border-radius:12px;}
+  .hero-mockup{background:var(--canvas);border:1px solid var(--hairline);border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px -8px rgba(0,0,0,.08);overflow:hidden;}
+  .hl-b{border-bottom:1px solid var(--hairline);}
+  .hl-t{border-top:1px solid var(--hairline);}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:9999px;}
+  .dot-success{background:var(--success);}
+  .dot-error{background:var(--error);}
+  .avatar{width:36px;height:36px;border-radius:9999px;display:grid;place-items:center;font-size:13px;font-weight:600;}
+  .kbd{font-family:'JetBrains Mono';font-size:11px;color:var(--muted);background:var(--soft);border:1px solid var(--hairline);padding:1px 6px;border-radius:4px;}
+  .f-link{color:var(--on-dark-soft);transition:color .15s;}
+  .f-link:hover{color:#fff;}
+</style>
+</head>
+<body>
+
+<nav class="hl-b sticky top-0 z-40 bg-white/95 backdrop-blur">
+  <div class="max-w-[1200px] mx-auto h-16 px-6 flex items-center justify-between">
+    <div class="flex items-center gap-9">
+      <a class="display text-[20px] tracking-[-0.02em] flex items-center gap-2">
+        <span class="w-6 h-6 rounded-md bg-[var(--ink)] grid place-items-center">
+          <span class="w-1.5 h-1.5 rounded-full bg-white"></span>
+        </span>
+        trace.
+      </a>
+      <div class="hidden md:flex items-center gap-1 text-[14px] font-medium">
+        <a class="px-3 py-1.5 text-[var(--ink)]">扫码</a>
+        <a class="px-3 py-1.5 text-[var(--muted)] hover:text-[var(--ink)]">追溯</a>
+        <a class="px-3 py-1.5 text-[var(--muted)] hover:text-[var(--ink)]">配件</a>
+        <a class="px-3 py-1.5 text-[var(--muted)] hover:text-[var(--ink)]">报表</a>
+        <a class="px-3 py-1.5 text-[var(--muted)] hover:text-[var(--ink)]">成员</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <div class="pill-group hidden md:inline-flex">
+        <span class="pill-tab active">A 装配线</span>
+        <span class="pill-tab">B 装配线</span>
+        <span class="pill-tab">仓储</span>
+      </div>
+      <div class="w-px h-6 bg-[var(--hairline)] hidden md:block"></div>
+      <a class="text-[14px] font-medium text-[var(--ink)] hidden md:inline">退出</a>
+      <div class="avatar bg-[var(--card)] text-[var(--ink)]">张</div>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-[1200px] mx-auto px-6">
+
+  <section class="grid grid-cols-12 gap-10 items-center pt-24 pb-24">
+    <div class="col-span-12 lg:col-span-7">
+      <div class="cap mb-5">工位 04 · 张建国</div>
+      <h1 class="display d-lg mb-6">扫一次<br>登记入库、出库或流转。</h1>
+      <p class="b-md max-w-md mb-8">将零件二维码对准摄像头取景框。每一次扫码以 RSA 数字签名上链，记录写入后不可篡改。也支持 USB 扫码枪与手动输入。</p>
+      <div class="flex items-center gap-3">
+        <button class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+          启动摄像头
+        </button>
+        <button class="btn btn-secondary">手动输入</button>
+      </div>
+      <div class="cap mt-6">系统就绪 · 公钥已加载 · 后端 12 ms</div>
+    </div>
+
+    <div class="col-span-12 lg:col-span-5">
+      <div class="hero-mockup">
+        <div class="px-5 py-3 hl-b flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="dot dot-success"></span>
+            <span class="text-[12px] font-medium text-[var(--ink)]">已识别</span>
+            <span class="text-[12px] text-[var(--muted)]">· 14:32</span>
+          </div>
+          <span class="text-[11px] text-[var(--muted-soft)]">最近一条</span>
+        </div>
+        <div class="p-5">
+          <div class="cap mb-1.5">追溯码</div>
+          <div class="mono text-[18px] font-semibold text-[var(--ink)] mb-4">TC-260505-A8F3K2</div>
+          <div class="t-sm mb-1">M8×60 内六角圆柱头螺栓 · 8.8 级</div>
+          <div class="cap mb-5">苏州精工紧固件 · 批次 B260428-039</div>
+
+          <div class="grid grid-cols-2 gap-2 mb-4">
+            <div class="rounded-md border border-[var(--hairline)] px-3 py-2.5">
+              <div class="text-[11px] text-[var(--muted)]">当前位置</div>
+              <div class="text-[13px] font-medium text-[var(--ink)] mt-0.5">2# 立体仓 C-08-12</div>
+            </div>
+            <div class="rounded-md border border-[var(--hairline)] px-3 py-2.5">
+              <div class="text-[11px] text-[var(--muted)]">链上节点</div>
+              <div class="text-[13px] font-medium text-[var(--ink)] mt-0.5 flex items-center gap-1">
+                <span class="dot dot-success"></span>4 / 4 通过
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <button class="h-9 rounded-md bg-[var(--ink)] text-white text-[13px] font-semibold">入库</button>
+            <button class="h-9 rounded-md border border-[var(--hairline)] text-[13px] font-semibold text-[var(--ink)]">出库</button>
+            <button class="h-9 rounded-md border border-[var(--hairline)] text-[13px] font-semibold text-[var(--ink)]">流转</button>
+          </div>
+        </div>
+      </div>
+      <div class="cap mt-4 text-center">扫码完成后的登记面板</div>
+    </div>
+  </section>
+
+  <section class="py-24 hl-t">
+    <div class="cap mb-3">登记动作</div>
+    <h2 class="display d-md mb-12 max-w-2xl">扫一次，三种登记同时可达。</h2>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="feature-card">
+        <div class="w-10 h-10 bg-white rounded-lg grid place-items-center mb-7">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+        </div>
+        <h3 class="t-md mb-2">入库登记</h3>
+        <p class="b-sm mb-6">来料检验通过后扫码入到指定货位，系统自动校验并写入哈希链。</p>
+        <a class="btn-text">查看入库流程
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+
+      <div class="feature-card">
+        <div class="w-10 h-10 bg-white rounded-lg grid place-items-center mb-7">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0l-4 4m4-4l4 4M5 3h14"/></svg>
+        </div>
+        <h3 class="t-md mb-2">出库登记</h3>
+        <p class="b-sm mb-6">领料、发货时扫码记录持有方变更。同批次可批量出库，工单关联可选。</p>
+        <a class="btn-text">查看出库流程
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+
+      <div class="feature-card">
+        <div class="w-10 h-10 bg-white rounded-lg grid place-items-center mb-7">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="7" width="15" height="10" rx="1"/><path d="M16 10h4l3 3v4h-7zM5 21a2 2 0 100-4 2 2 0 000 4zM18 21a2 2 0 100-4 2 2 0 000 4z"/></svg>
+        </div>
+        <h3 class="t-md mb-2">物流流转</h3>
+        <p class="b-sm mb-6">车间间转运、外协加工、客户交付——所有节点都能追溯到底。</p>
+        <a class="btn-text">查看流转流程
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="py-24 hl-t">
+    <div class="grid grid-cols-12 gap-10 items-end mb-12">
+      <div class="col-span-12 lg:col-span-7">
+        <div class="cap mb-3">扫描中</div>
+        <h2 class="display d-md">将追溯码对准取景框。</h2>
+      </div>
+      <div class="col-span-12 lg:col-span-5">
+        <p class="b-md">支持手机摄像头、USB 摄像头与 USB 扫码枪三种输入。识别成功后自动进入登记面板。</p>
+      </div>
+    </div>
+
+    <div class="product-card overflow-hidden">
+      <div class="px-6 h-12 hl-b flex items-center justify-between">
+        <div class="flex items-center gap-3 text-[13px]">
+          <span class="flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-[var(--error)]"></span>
+            <span class="font-semibold text-[var(--ink)]">实时取景</span>
+          </span>
+          <span class="text-[var(--muted)] mono text-[12px]">USB Camera #2 · 1280×720 · 30 fps</span>
+        </div>
+        <div class="flex items-center gap-3 text-[12px] text-[var(--muted)]">
+          <span><span class="kbd">Esc</span> 取消</span>
+          <span><span class="kbd">Space</span> 切换设备</span>
+        </div>
+      </div>
+
+      <div class="relative aspect-[16/9] bg-[#0a0a0a]">
+        <div class="absolute inset-0 opacity-50" style="background:radial-gradient(circle at 30% 35%,rgba(140,150,180,.3),transparent 45%),radial-gradient(circle at 70% 65%,rgba(40,50,70,.5),transparent 45%);"></div>
+        <div class="absolute inset-0 grid place-items-center">
+          <div class="relative w-[36%] aspect-square">
+            <div class="absolute top-0 left-0 w-5 h-5 border-l border-t border-white/85"></div>
+            <div class="absolute top-0 right-0 w-5 h-5 border-r border-t border-white/85"></div>
+            <div class="absolute bottom-0 left-0 w-5 h-5 border-l border-b border-white/85"></div>
+            <div class="absolute bottom-0 right-0 w-5 h-5 border-r border-b border-white/85"></div>
+          </div>
+        </div>
+        <div class="absolute left-5 bottom-4 text-[11.5px] text-white/55 mono">就绪 · 等待识别</div>
+      </div>
+
+      <div class="px-6 h-12 hl-t flex items-center justify-between text-[12px] text-[var(--muted)]">
+        <span>建议距离 15–20 cm　避免反光</span>
+        <span>本次会话 SCN-260505-1432-04</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="py-24 hl-t">
+    <div class="cap mb-3">已识别</div>
+    <h2 class="display d-md mb-12">选择一项登记动作。</h2>
+
+    <div class="product-card p-6 mb-6 flex items-center justify-between">
+      <div class="flex items-center gap-5">
+        <div class="cap">追溯码</div>
+        <div class="mono text-[22px] font-semibold text-[var(--ink)] tracking-tight">TC-260505-A8F3K2</div>
+      </div>
+      <div class="flex items-center gap-6 text-[13px]">
+        <span class="flex items-center gap-1.5">
+          <span class="dot dot-success"></span>
+          <span class="text-[var(--ink)] font-medium">链上 4 / 4 验签通过</span>
+        </span>
+        <button class="btn btn-secondary !h-9 !px-3">复制</button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-12 gap-6">
+      <div class="col-span-12 lg:col-span-7 product-card p-8">
+        <div class="t-md mb-1">M8×60 内六角圆柱头螺栓 · 8.8 级</div>
+        <div class="cap mb-7 mono">SPU-GB70.1-M8X60-8.8</div>
+
+        <dl class="grid grid-cols-2 gap-y-5 gap-x-8 text-[14px]">
+          <div><dt class="text-[var(--muted)] mb-1.5">批次</dt><dd class="font-medium text-[var(--ink)] mono">B260428-039</dd></div>
+          <div><dt class="text-[var(--muted)] mb-1.5">生产厂</dt><dd class="font-medium text-[var(--ink)]">苏州精工紧固件</dd></div>
+          <div><dt class="text-[var(--muted)] mb-1.5">下线时间</dt><dd class="font-medium text-[var(--ink)] mono">2026-04-28 09:14</dd></div>
+          <div><dt class="text-[var(--muted)] mb-1.5">当前位置</dt><dd class="font-medium text-[var(--ink)]">2# 立体仓 C-08-12</dd></div>
+          <div><dt class="text-[var(--muted)] mb-1.5">持有方</dt><dd class="font-medium text-[var(--ink)]">本厂 · A 装配线</dd></div>
+          <div><dt class="text-[var(--muted)] mb-1.5">累计流转</dt><dd class="font-medium text-[var(--ink)]">4 次</dd></div>
+        </dl>
+
+        <div class="hl-t mt-8 pt-6">
+          <div class="cap mb-4">流转记录</div>
+          <ol class="space-y-3 text-[13.5px]">
+            <li class="flex items-baseline gap-4"><span class="cap mono w-24 flex-shrink-0">04-28 14:02</span><span class="font-medium text-[var(--ink)]">入库 · 2# 立体仓</span><span class="text-[var(--muted)]">王师傅</span></li>
+            <li class="flex items-baseline gap-4"><span class="cap mono w-24 flex-shrink-0">04-28 11:38</span><span class="font-medium text-[var(--ink)]">物流到达</span><span class="text-[var(--muted)]">顺丰</span></li>
+            <li class="flex items-baseline gap-4"><span class="cap mono w-24 flex-shrink-0">04-28 09:42</span><span class="font-medium text-[var(--ink)]">出厂</span><span class="text-[var(--muted)]">苏州精工</span></li>
+            <li class="flex items-baseline gap-4"><span class="cap mono w-24 flex-shrink-0">04-28 09:14</span><span class="font-medium text-[var(--ink)]">下线赋码</span><span class="text-[var(--muted)]">三号产线</span></li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="col-span-12 lg:col-span-5 product-card p-8">
+        <div class="cap mb-5">登记动作</div>
+
+        <div class="space-y-2">
+          <button class="btn btn-primary !w-full !h-12 !justify-between !text-[15px]">
+            <span class="flex items-center gap-3">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+              入库登记
+            </span>
+            <span class="kbd !bg-white/10 !border-white/20 !text-white/70">F1</span>
+          </button>
+          <button class="btn btn-secondary !w-full !h-12 !justify-between !text-[15px]">
+            <span class="flex items-center gap-3">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0l-4 4m4-4l4 4M5 3h14"/></svg>
+              出库登记
+            </span>
+            <span class="kbd">F2</span>
+          </button>
+          <button class="btn btn-secondary !w-full !h-12 !justify-between !text-[15px]">
+            <span class="flex items-center gap-3">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="7" width="15" height="10" rx="1"/><path d="M16 10h4l3 3v4h-7zM5 21a2 2 0 100-4 2 2 0 000 4zM18 21a2 2 0 100-4 2 2 0 000 4z"/></svg>
+              物流流转
+            </span>
+            <span class="kbd">F3</span>
+          </button>
+          <button class="btn btn-secondary !w-full !h-12 !justify-between !text-[15px]">
+            <span class="flex items-center gap-3">
+              <span class="dot dot-error"></span>
+              <span>异常上报</span>
+            </span>
+            <span class="kbd">F4</span>
+          </button>
+        </div>
+
+        <div class="hl-t mt-7 pt-6">
+          <a class="btn-text">
+            查看全链路审计详情
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </a>
+          <p class="b-sm mt-3 text-[var(--muted)]">所有动作以仓管员身份记录上链。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pb-24">
+    <div class="rounded-[12px] bg-[var(--card)] px-12 py-16 text-center">
+      <h2 class="display d-md mb-4">每一次扫码，都不可篡改。</h2>
+      <p class="b-md max-w-xl mx-auto mb-8">基于哈希链 + RSA 数字签名 + 乐观锁，三重保证写入即终态。第三方可凭公钥独立验签，无需信任本系统。</p>
+      <div class="flex items-center justify-center gap-3">
+        <button class="btn btn-primary">下载公钥</button>
+        <a class="btn btn-secondary">查看接入文档</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="bg-[var(--dark)] text-white">
+  <div class="max-w-[1200px] mx-auto px-6 py-16">
+    <div class="grid grid-cols-12 gap-8 mb-14">
+      <div class="col-span-12 md:col-span-4">
+        <div class="display text-[22px] tracking-[-0.03em] mb-3 flex items-center gap-2">
+          <span class="w-6 h-6 rounded-md bg-white grid place-items-center">
+            <span class="w-1.5 h-1.5 rounded-full bg-[var(--dark)]"></span>
+          </span>
+          trace.
+        </div>
+        <p class="b-sm text-[var(--on-dark-soft)] max-w-xs">基于哈希链 + RSA 数字签名的工业零配件供应链溯源系统。</p>
+      </div>
+      <div class="col-span-6 md:col-span-2">
+        <div class="text-[13px] font-semibold mb-4 text-white">产品</div>
+        <ul class="space-y-3 text-[13px]">
+          <li><a class="f-link">扫码登记</a></li>
+          <li><a class="f-link">追溯查询</a></li>
+          <li><a class="f-link">配件库</a></li>
+          <li><a class="f-link">报表</a></li>
+        </ul>
+      </div>
+      <div class="col-span-6 md:col-span-2">
+        <div class="text-[13px] font-semibold mb-4 text-white">技术</div>
+        <ul class="space-y-3 text-[13px]">
+          <li><a class="f-link">哈希链原理</a></li>
+          <li><a class="f-link">RSA 公钥下载</a></li>
+          <li><a class="f-link">API 文档</a></li>
+          <li><a class="f-link">开放协议</a></li>
+        </ul>
+      </div>
+      <div class="col-span-12 md:col-span-4">
+        <div class="text-[13px] font-semibold mb-4 text-white">本工位</div>
+        <p class="text-[13px] text-[var(--on-dark-soft)]">A 装配线 · 工位 04</p>
+        <p class="text-[13px] text-[var(--on-dark-soft)] mt-1.5">张建国 · 仓管员</p>
+        <p class="text-[13px] text-[var(--on-dark-soft)] mt-1.5">登录于 14:21</p>
+      </div>
+    </div>
+    <div class="border-t border-[var(--dark-elev)] pt-6 flex items-center justify-between text-[13px] text-[var(--muted-soft)]">
+      <span>© 2026 工业零配件溯源</span>
+      <span>本厂内部使用 · 不外发</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

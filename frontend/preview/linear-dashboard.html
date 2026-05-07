@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>仪表盘 — trace.</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{--canvas:#fafafa;--surface-1:#fff;--surface-2:#f4f4f5;--surface-3:#ebebec;--hairline:#e6e6e8;--hairline-strong:#d4d4d8;--ink:#18181b;--ink-muted:#3f3f46;--ink-subtle:#71717a;--ink-tertiary:#a1a1aa;--primary:#5e6ad2;--primary-hover:#828fff;--primary-soft:#eef0fb;--success:#27a644;--success-soft:#e7f6ea;--warn:#d97706;--warn-soft:#fef3e6;--error:#e5484d;--error-soft:#fdecec;}
+  html,body{background:var(--canvas);color:var(--ink-muted);min-height:100vh;}
+  body{font-family:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;-webkit-font-smoothing:antialiased;font-size:14px;}
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace;}
+  .display{font-weight:600;color:var(--ink);}
+  .d-md{font-size:28px;line-height:1.2;letter-spacing:-0.6px;}
+  .d-sm{font-size:22px;line-height:1.25;letter-spacing:-0.4px;font-weight:500;}
+  .d-num{font-size:32px;line-height:1.1;letter-spacing:-1px;font-weight:600;color:var(--ink);}
+  .body{font-size:14px;color:var(--ink-muted);}
+  .body-sm{font-size:13px;color:var(--ink-muted);}
+  .caption{font-size:12px;color:var(--ink-subtle);}
+  .eyebrow{font-size:12px;font-weight:500;letter-spacing:0.4px;text-transform:uppercase;color:var(--ink-subtle);}
+  .card{background:var(--surface-1);border:1px solid var(--hairline);border-radius:12px;}
+  .pill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:9999px;font-size:11.5px;font-weight:500;line-height:1;}
+  .pill-mute{background:var(--surface-2);color:var(--ink-muted);}
+  .pill-success{background:var(--success-soft);color:var(--success);}
+  .pill-warn{background:var(--warn-soft);color:var(--warn);}
+  .pill-error{background:var(--error-soft);color:var(--error);}
+  .pill-primary{background:var(--primary-soft);color:var(--primary);}
+  .btn-primary{height:32px;padding:0 12px;border-radius:8px;background:var(--primary);color:#fff;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:background .15s;line-height:1;}
+  .btn-primary:hover{background:var(--primary-hover);}
+  .btn-secondary{height:32px;padding:0 12px;border-radius:8px;background:var(--surface-1);color:var(--ink);border:1px solid var(--hairline);font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:border-color .15s;line-height:1;}
+  .btn-secondary:hover{border-color:var(--ink-subtle);}
+  .text-link{color:var(--primary);font-size:13px;font-weight:500;}
+  .text-link:hover{color:var(--primary-hover);}
+  .kbd{font-family:'JetBrains Mono';font-size:11px;color:var(--ink-tertiary);background:var(--surface-2);border:1px solid var(--hairline);padding:1px 5px;border-radius:4px;}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:9999px;flex-shrink:0;}
+  .dot-success{background:var(--success);}
+  .dot-warn{background:var(--warn);}
+  .dot-error{background:var(--error);}
+  .dot-mute{background:var(--ink-tertiary);}
+  /* sidebar */
+  .sidebar{width:240px;position:fixed;top:0;bottom:0;left:0;background:var(--surface-1);border-right:1px solid var(--hairline);display:flex;flex-direction:column;z-index:40;}
+  .nav-item{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:6px;font-size:13.5px;font-weight:500;color:var(--ink-muted);cursor:pointer;line-height:1;height:30px;}
+  .nav-item:hover{background:var(--surface-2);color:var(--ink);}
+  .nav-item.active{background:var(--surface-2);color:var(--ink);}
+  .nav-item svg{flex-shrink:0;color:var(--ink-subtle);}
+  .nav-item.active svg{color:var(--primary);}
+  .nav-section{font-size:11px;font-weight:500;letter-spacing:0.4px;text-transform:uppercase;color:var(--ink-tertiary);padding:0 10px;margin:14px 0 4px 0;}
+  /* topbar */
+  .main{margin-left:240px;}
+  .topbar{height:48px;background:var(--surface-1);border-bottom:1px solid var(--hairline);position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;padding:0 24px;}
+  .topbar-trail{display:flex;align-items:center;gap:8px;font-size:13px;}
+  .topbar-trail .seg{color:var(--ink-subtle);}
+  .topbar-trail .sep{color:var(--ink-tertiary);}
+  .topbar-trail .now{color:var(--ink);font-weight:500;}
+  /* table */
+  .tbl{width:100%;border-collapse:collapse;font-size:13px;}
+  .tbl th{text-align:left;font-weight:500;color:var(--ink-subtle);font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;padding:10px 16px;border-bottom:1px solid var(--hairline);background:transparent;}
+  .tbl td{padding:11px 16px;border-bottom:1px solid var(--hairline);color:var(--ink);}
+  .tbl tr:last-child td{border-bottom:0;}
+  .tbl tr.row{cursor:pointer;}
+  .tbl tr.row:hover td{background:var(--surface-2);}
+  /* spark / chart placeholders */
+  .spark{height:80px;display:flex;align-items:flex-end;gap:3px;}
+  .spark span{flex:1;background:var(--primary);opacity:.7;border-radius:2px 2px 0 0;}
+  /* hover lift */
+  .lift{transition:border-color .15s;}
+  .lift:hover{border-color:var(--ink-subtle);}
+</style>
+</head>
+<body>
+
+<!-- ============ Sidebar ============ -->
+<aside class="sidebar">
+  <div class="px-4 py-4 flex items-center gap-2.5 border-b border-[var(--hairline)]">
+    <span class="w-7 h-7 rounded-lg bg-[var(--primary)] grid place-items-center">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+    </span>
+    <span class="display text-[16px]">trace.</span>
+  </div>
+
+  <div class="px-3 py-3 flex-1 overflow-y-auto">
+    <div class="space-y-0.5">
+      <div class="nav-item active">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 14l4-4 4 4 5-5"/></svg>
+        仪表盘
+        <span class="ml-auto kbd">G D</span>
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+        扫码工位
+        <span class="ml-auto kbd">G S</span>
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        追溯查询
+        <span class="ml-auto kbd">G T</span>
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+        配件库
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        异常处理
+        <span class="ml-auto pill pill-error !h-[18px] !px-1.5 !text-[10.5px]">3</span>
+      </div>
+    </div>
+
+    <div class="nav-section">管理</div>
+    <div class="space-y-0.5">
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 19a4 4 0 00-8 0M10 11a4 4 0 100-8 4 4 0 000 8zM18 21v-2a4 4 0 00-3-3.87M14 3.13a4 4 0 010 7.75"/></svg>
+        成员
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1l9 4v6c0 5.55-3.84 10.74-9 12-5.16-1.26-9-6.45-9-12V5l9-4z"/></svg>
+        角色与权限
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 005 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 005 9 1.65 1.65 0 004.67 7.18l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.6 1.65 1.65 0 0010 3.09V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9c0 .39.39.71.78.85.39.14.81.14 1.21.15H21a2 2 0 010 4h-.09c-.4 0-.82.01-1.21.15-.39.14-.78.46-.78.85"/></svg>
+        系统设置
+      </div>
+    </div>
+
+    <div class="nav-section">最近</div>
+    <div class="space-y-0.5">
+      <div class="nav-item !h-auto !py-1.5 flex-col !items-start !gap-0">
+        <span class="mono text-[11.5px] text-[var(--ink-muted)]">TC-260505-A8F3K2</span>
+        <span class="text-[11px] text-[var(--ink-tertiary)]">M8×60 内六角</span>
+      </div>
+      <div class="nav-item !h-auto !py-1.5 flex-col !items-start !gap-0">
+        <span class="mono text-[11.5px] text-[var(--ink-muted)]">TC-260505-A8F3J9</span>
+        <span class="text-[11px] text-[var(--ink-tertiary)]">SKF-6204</span>
+      </div>
+      <div class="nav-item !h-auto !py-1.5 flex-col !items-start !gap-0">
+        <span class="mono text-[11.5px] text-[var(--ink-muted)]">TC-260505-A8F3J7</span>
+        <span class="text-[11px] text-[var(--ink-tertiary)]">阀芯 DN25</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="px-3 py-3 border-t border-[var(--hairline)] flex items-center gap-2.5">
+    <div class="w-7 h-7 rounded-full bg-[var(--surface-2)] grid place-items-center text-[11.5px] font-semibold text-[var(--ink)]">张</div>
+    <div class="flex-1 min-w-0">
+      <div class="text-[12.5px] font-semibold text-[var(--ink)] truncate leading-none">张建国</div>
+      <div class="text-[11px] text-[var(--ink-tertiary)] truncate mt-1 leading-none">车间主任 · A 线</div>
+    </div>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[var(--ink-tertiary)]"><path d="M9 6l6 6-6 6"/></svg>
+  </div>
+</aside>
+
+<!-- ============ Main ============ -->
+<div class="main">
+
+  <!-- topbar -->
+  <header class="topbar">
+    <div class="topbar-trail">
+      <span class="seg">trace.</span>
+      <span class="sep">/</span>
+      <span class="now">仪表盘</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <button class="btn-secondary">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        搜索追溯码
+        <span class="kbd ml-1">⌘ K</span>
+      </button>
+      <button class="btn-secondary !w-8 !p-0 grid place-items-center">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="px-6 py-6 space-y-6">
+
+    <!-- Page header -->
+    <div class="flex items-end justify-between">
+      <div>
+        <h1 class="display d-md mb-1.5">总览</h1>
+        <p class="body-sm text-[var(--ink-subtle)]">2026 年 5 月 5 日 · 周三 · 14:32</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="flex items-center gap-0 border border-[var(--hairline)] rounded-md overflow-hidden">
+          <button class="px-2.5 h-8 text-[12.5px] font-medium text-[var(--ink-subtle)] hover:bg-[var(--surface-2)]">今日</button>
+          <button class="px-2.5 h-8 text-[12.5px] font-medium text-[var(--ink)] bg-[var(--surface-2)] border-x border-[var(--hairline)]">本周</button>
+          <button class="px-2.5 h-8 text-[12.5px] font-medium text-[var(--ink-subtle)] hover:bg-[var(--surface-2)]">本月</button>
+        </div>
+        <button class="btn-secondary">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          导出
+        </button>
+      </div>
+    </div>
+
+    <!-- 4-up stat row -->
+    <section class="grid grid-cols-4 gap-4">
+      <div class="card p-5 lift">
+        <div class="caption mb-2">今日扫码</div>
+        <div class="d-num">243</div>
+        <div class="flex items-center gap-1.5 mt-2 text-[12px]">
+          <span class="text-[var(--success)] font-medium">↑ 12%</span>
+          <span class="text-[var(--ink-tertiary)]">较昨日</span>
+        </div>
+      </div>
+      <div class="card p-5 lift">
+        <div class="caption mb-2">在库零件</div>
+        <div class="d-num">14,832</div>
+        <div class="flex items-center gap-1.5 mt-2 text-[12px]">
+          <span class="text-[var(--ink-subtle)]">SPU 共 124 种</span>
+        </div>
+      </div>
+      <div class="card p-5 lift">
+        <div class="caption mb-2">流转中</div>
+        <div class="d-num">87</div>
+        <div class="flex items-center gap-1.5 mt-2 text-[12px]">
+          <span class="text-[var(--ink-subtle)]">最远 1432 km</span>
+        </div>
+      </div>
+      <div class="card p-5 lift">
+        <div class="caption mb-2">异常待处理</div>
+        <div class="d-num !text-[var(--error)]">3</div>
+        <div class="flex items-center gap-1.5 mt-2 text-[12px]">
+          <span class="text-[var(--error)] font-medium">2 项 SLA 超时</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2-up：扫码趋势 + 工位分布 -->
+    <section class="grid grid-cols-3 gap-4">
+      <div class="card col-span-2 p-5">
+        <div class="flex items-baseline justify-between mb-5">
+          <h2 class="display d-sm">扫码量 · 本周</h2>
+          <div class="flex items-center gap-3 text-[12px]">
+            <span class="flex items-center gap-1.5"><span class="w-2 h-0.5 bg-[var(--primary)]"></span>入库</span>
+            <span class="flex items-center gap-1.5"><span class="w-2 h-0.5 bg-[var(--ink-tertiary)]"></span>出库</span>
+            <span class="flex items-center gap-1.5"><span class="w-2 h-0.5 bg-[var(--error)]"></span>异常</span>
+          </div>
+        </div>
+        <!-- 简易折线图（用 SVG 画） -->
+        <svg viewBox="0 0 600 180" class="w-full h-[180px]">
+          <defs>
+            <linearGradient id="g1" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stop-color="#5e6ad2" stop-opacity="0.15"/>
+              <stop offset="100%" stop-color="#5e6ad2" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <!-- grid -->
+          <line x1="0" y1="40" x2="600" y2="40" stroke="#f4f4f5"/>
+          <line x1="0" y1="90" x2="600" y2="90" stroke="#f4f4f5"/>
+          <line x1="0" y1="140" x2="600" y2="140" stroke="#f4f4f5"/>
+          <!-- 入库 line + area -->
+          <path d="M0,120 L100,90 L200,100 L300,60 L400,80 L500,40 L600,55" fill="none" stroke="#5e6ad2" stroke-width="1.5"/>
+          <path d="M0,120 L100,90 L200,100 L300,60 L400,80 L500,40 L600,55 L600,180 L0,180 Z" fill="url(#g1)"/>
+          <!-- 出库 line -->
+          <path d="M0,140 L100,130 L200,135 L300,110 L400,120 L500,95 L600,100" fill="none" stroke="#a1a1aa" stroke-width="1.5" stroke-dasharray="3,3"/>
+          <!-- 异常 line -->
+          <path d="M0,168 L100,170 L200,165 L300,168 L400,166 L500,160 L600,162" fill="none" stroke="#e5484d" stroke-width="1.5"/>
+          <!-- x labels -->
+          <g font-family="JetBrains Mono" font-size="10" fill="#a1a1aa">
+            <text x="0" y="178" text-anchor="start">周一</text>
+            <text x="100" y="178" text-anchor="middle">周二</text>
+            <text x="200" y="178" text-anchor="middle">周三</text>
+            <text x="300" y="178" text-anchor="middle">周四</text>
+            <text x="400" y="178" text-anchor="middle">周五</text>
+            <text x="500" y="178" text-anchor="middle">周六</text>
+            <text x="600" y="178" text-anchor="end">周日</text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="card p-5">
+        <div class="flex items-baseline justify-between mb-4">
+          <h2 class="display d-sm">工位分布</h2>
+          <a class="text-link !text-[12px]">详情</a>
+        </div>
+        <ul class="space-y-3.5 text-[13px]">
+          <li>
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="font-medium text-[var(--ink)]">A 装配线 · 04</span>
+              <span class="mono text-[12px] text-[var(--ink-subtle)]">142</span>
+            </div>
+            <div class="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden">
+              <div class="h-full bg-[var(--primary)]" style="width:78%"></div>
+            </div>
+          </li>
+          <li>
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="font-medium text-[var(--ink)]">B 装配线 · 02</span>
+              <span class="mono text-[12px] text-[var(--ink-subtle)]">89</span>
+            </div>
+            <div class="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden">
+              <div class="h-full bg-[var(--primary)]" style="width:48%"></div>
+            </div>
+          </li>
+          <li>
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="font-medium text-[var(--ink)]">立体仓 · 01</span>
+              <span class="mono text-[12px] text-[var(--ink-subtle)]">12</span>
+            </div>
+            <div class="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden">
+              <div class="h-full bg-[var(--primary)]" style="width:6%"></div>
+            </div>
+          </li>
+          <li>
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="font-medium text-[var(--ink)]">外协 · 苏州精工</span>
+              <span class="mono text-[12px] text-[var(--ink-subtle)]">0</span>
+            </div>
+            <div class="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden">
+              <div class="h-full bg-[var(--ink-tertiary)]" style="width:0%"></div>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 异常待处理 -->
+    <section class="card overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-[var(--hairline)] flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <h2 class="display d-sm">异常待处理</h2>
+          <span class="pill pill-error">3 项</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="btn-secondary">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+            筛选
+          </button>
+          <a class="text-link">查看全部 →</a>
+        </div>
+      </div>
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th class="!pl-5">追溯码</th>
+            <th>配件</th>
+            <th>异常类型</th>
+            <th>上报</th>
+            <th>SLA</th>
+            <th class="!pr-5">状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="row">
+            <td class="!pl-5"><span class="mono text-[12.5px] text-[var(--ink)]">TC-260505-A8F3J7</span></td>
+            <td>电磁阀阀芯 DN25</td>
+            <td>外壳磕碰</td>
+            <td><span class="text-[var(--ink-subtle)]">14:09 · 张建国</span></td>
+            <td><span class="pill pill-error">超时 1h 23m</span></td>
+            <td class="!pr-5"><span class="pill pill-mute"><span class="dot dot-error"></span>未受理</span></td>
+          </tr>
+          <tr class="row">
+            <td class="!pl-5"><span class="mono text-[12.5px] text-[var(--ink)]">TC-260504-Z2R5K1</span></td>
+            <td>液压油缸密封圈</td>
+            <td>批次混料</td>
+            <td><span class="text-[var(--ink-subtle)]">昨日 16:42 · 王师傅</span></td>
+            <td><span class="pill pill-warn">12h 内</span></td>
+            <td class="!pr-5"><span class="pill pill-mute"><span class="dot dot-warn"></span>调查中</span></td>
+          </tr>
+          <tr class="row">
+            <td class="!pl-5"><span class="mono text-[12.5px] text-[var(--ink)]">TC-260504-Z2R4S8</span></td>
+            <td>不锈钢法兰 DN50</td>
+            <td>追溯码不可读</td>
+            <td><span class="text-[var(--ink-subtle)]">昨日 11:17 · 李工</span></td>
+            <td><span class="pill pill-warn">2h 内</span></td>
+            <td class="!pr-5"><span class="pill pill-mute"><span class="dot dot-warn"></span>调查中</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+  </main>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>追溯查询 — trace.</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{--canvas:#fafafa;--surface-1:#fff;--surface-2:#f4f4f5;--surface-3:#ebebec;--hairline:#e6e6e8;--hairline-strong:#d4d4d8;--ink:#18181b;--ink-muted:#3f3f46;--ink-subtle:#71717a;--ink-tertiary:#a1a1aa;--primary:#5e6ad2;--primary-hover:#828fff;--primary-soft:#eef0fb;--success:#27a644;--success-soft:#e7f6ea;--warn:#d97706;--warn-soft:#fef3e6;--error:#e5484d;--error-soft:#fdecec;}
+  html,body{background:var(--canvas);color:var(--ink-muted);min-height:100vh;}
+  body{font-family:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;-webkit-font-smoothing:antialiased;font-size:14px;}
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace;}
+  .display{font-weight:600;color:var(--ink);}
+  .d-md{font-size:28px;line-height:1.2;letter-spacing:-0.6px;}
+  .body-sm{font-size:13px;color:var(--ink-muted);}
+  .caption{font-size:12px;color:var(--ink-subtle);}
+  .card{background:var(--surface-1);border:1px solid var(--hairline);border-radius:12px;}
+  .pill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:9999px;font-size:11.5px;font-weight:500;line-height:1;}
+  .pill-mute{background:var(--surface-2);color:var(--ink-muted);}
+  .pill-success{background:var(--success-soft);color:var(--success);}
+  .pill-warn{background:var(--warn-soft);color:var(--warn);}
+  .pill-error{background:var(--error-soft);color:var(--error);}
+  .pill-primary{background:var(--primary-soft);color:var(--primary);}
+  .btn-primary{height:32px;padding:0 12px;border-radius:8px;background:var(--primary);color:#fff;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px;line-height:1;}
+  .btn-primary:hover{background:var(--primary-hover);}
+  .btn-secondary{height:32px;padding:0 12px;border-radius:8px;background:var(--surface-1);color:var(--ink);border:1px solid var(--hairline);font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px;line-height:1;}
+  .btn-secondary:hover{border-color:var(--ink-subtle);}
+  .text-link{color:var(--primary);font-size:13px;font-weight:500;}
+  .text-link:hover{color:var(--primary-hover);}
+  .kbd{font-family:'JetBrains Mono';font-size:11px;color:var(--ink-tertiary);background:var(--surface-2);border:1px solid var(--hairline);padding:1px 5px;border-radius:4px;}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:9999px;flex-shrink:0;}
+  .dot-success{background:var(--success);}
+  .dot-warn{background:var(--warn);}
+  .dot-error{background:var(--error);}
+  .dot-mute{background:var(--ink-tertiary);}
+  .sidebar{width:240px;position:fixed;top:0;bottom:0;left:0;background:var(--surface-1);border-right:1px solid var(--hairline);display:flex;flex-direction:column;z-index:40;}
+  .nav-item{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:6px;font-size:13.5px;font-weight:500;color:var(--ink-muted);cursor:pointer;line-height:1;height:30px;}
+  .nav-item:hover{background:var(--surface-2);color:var(--ink);}
+  .nav-item.active{background:var(--surface-2);color:var(--ink);}
+  .nav-item svg{flex-shrink:0;color:var(--ink-subtle);}
+  .nav-item.active svg{color:var(--primary);}
+  .nav-section{font-size:11px;font-weight:500;letter-spacing:0.4px;text-transform:uppercase;color:var(--ink-tertiary);padding:0 10px;margin:14px 0 4px 0;}
+  .main{margin-left:240px;}
+  .topbar{height:48px;background:var(--surface-1);border-bottom:1px solid var(--hairline);position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;padding:0 24px;}
+  .topbar-trail{display:flex;align-items:center;gap:8px;font-size:13px;}
+  .topbar-trail .seg{color:var(--ink-subtle);}
+  .topbar-trail .sep{color:var(--ink-tertiary);}
+  .topbar-trail .now{color:var(--ink);font-weight:500;}
+  /* table */
+  .tbl{width:100%;border-collapse:collapse;font-size:13px;}
+  .tbl th{text-align:left;font-weight:500;color:var(--ink-subtle);font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;padding:10px 14px;border-bottom:1px solid var(--hairline);background:transparent;cursor:pointer;}
+  .tbl th:hover{color:var(--ink);}
+  .tbl th .arrow{display:inline-block;margin-left:4px;color:var(--ink-tertiary);font-size:9px;}
+  .tbl td{padding:10px 14px;border-bottom:1px solid var(--hairline);color:var(--ink);}
+  .tbl tr:last-child td{border-bottom:0;}
+  .tbl tbody tr{cursor:pointer;}
+  .tbl tbody tr:hover td{background:var(--surface-2);}
+  /* filter bar */
+  .filter-input{height:32px;background:var(--surface-1);border:1px solid var(--hairline);border-radius:8px;padding:0 10px;font-size:13px;color:var(--ink);}
+  .filter-input:focus{outline:none;border-color:var(--primary-focus,#5e69d1);}
+  .filter-chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:8px;background:var(--surface-1);border:1px solid var(--hairline);font-size:13px;color:var(--ink-muted);font-weight:500;cursor:pointer;}
+  .filter-chip:hover{border-color:var(--ink-subtle);}
+  .filter-chip.has-val{color:var(--ink);background:var(--surface-2);border-color:var(--hairline-strong);}
+  .filter-chip svg{color:var(--ink-tertiary);}
+  /* search */
+  .search-box{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;background:var(--surface-1);border:1px solid var(--hairline);border-radius:8px;width:280px;}
+  .search-box input{flex:1;border:0;background:transparent;font-size:13px;color:var(--ink);outline:none;}
+  .search-box input::placeholder{color:var(--ink-tertiary);}
+  /* checkbox */
+  .checkbox{width:14px;height:14px;border-radius:4px;border:1px solid var(--hairline-strong);background:var(--surface-1);cursor:pointer;}
+  .checkbox.checked{background:var(--primary);border-color:var(--primary);position:relative;}
+  .checkbox.checked::after{content:"";position:absolute;left:3px;top:0px;width:5px;height:9px;border:solid white;border-width:0 1.5px 1.5px 0;transform:rotate(45deg);}
+  /* pagination */
+  .pg-btn{width:28px;height:28px;border-radius:6px;display:grid;place-items:center;font-size:12.5px;font-weight:500;color:var(--ink-muted);cursor:pointer;}
+  .pg-btn:hover{background:var(--surface-2);color:var(--ink);}
+  .pg-btn.active{background:var(--surface-2);color:var(--ink);}
+  .pg-btn.disabled{color:var(--ink-tertiary);cursor:not-allowed;}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="px-4 py-4 flex items-center gap-2.5 border-b border-[var(--hairline)]">
+    <span class="w-7 h-7 rounded-lg bg-[var(--primary)] grid place-items-center">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+    </span>
+    <span class="display text-[16px]">trace.</span>
+  </div>
+  <div class="px-3 py-3 flex-1 overflow-y-auto">
+    <div class="space-y-0.5">
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 14l4-4 4 4 5-5"/></svg>
+        仪表盘<span class="ml-auto kbd">G D</span>
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+        扫码工位<span class="ml-auto kbd">G S</span>
+      </div>
+      <div class="nav-item active">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        追溯查询<span class="ml-auto kbd">G T</span>
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+        配件库
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+        异常处理<span class="ml-auto pill pill-error !h-[18px] !px-1.5 !text-[10.5px]">3</span>
+      </div>
+    </div>
+    <div class="nav-section">视图</div>
+    <div class="space-y-0.5">
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 14l4-4 4 4 5-5"/></svg>
+        全部追溯码
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+        在库
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="7" width="15" height="10" rx="1"/><path d="M16 10h4l3 3v4h-7zM5 21a2 2 0 100-4 2 2 0 000 4zM18 21a2 2 0 100-4 2 2 0 000 4z"/></svg>
+        流转中
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 9l-3 3 3 3"/></svg>
+        已出库
+      </div>
+    </div>
+  </div>
+  <div class="px-3 py-3 border-t border-[var(--hairline)] flex items-center gap-2.5">
+    <div class="w-7 h-7 rounded-full bg-[var(--surface-2)] grid place-items-center text-[11.5px] font-semibold text-[var(--ink)]">张</div>
+    <div class="flex-1 min-w-0">
+      <div class="text-[12.5px] font-semibold text-[var(--ink)] truncate leading-none">张建国</div>
+      <div class="text-[11px] text-[var(--ink-tertiary)] truncate mt-1 leading-none">车间主任</div>
+    </div>
+  </div>
+</aside>
+
+<div class="main">
+
+  <header class="topbar">
+    <div class="topbar-trail">
+      <span class="seg">trace.</span>
+      <span class="sep">/</span>
+      <span class="now">追溯查询</span>
+    </div>
+    <button class="btn-secondary">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      搜索
+      <span class="kbd ml-1">⌘ K</span>
+    </button>
+  </header>
+
+  <main class="px-6 py-6 space-y-5">
+
+    <!-- Page header -->
+    <div class="flex items-end justify-between">
+      <div>
+        <h1 class="display d-md mb-1.5">追溯查询</h1>
+        <p class="body-sm text-[var(--ink-subtle)]">14,832 条记录 · 含 124 种 SPU · 链上完整性 100%</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="btn-secondary">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          导出 CSV
+        </button>
+        <button class="btn-primary">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          生产赋码
+        </button>
+      </div>
+    </div>
+
+    <!-- Filter bar -->
+    <section class="flex items-center gap-2 flex-wrap">
+      <div class="search-box">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-[var(--ink-tertiary)]"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input placeholder="搜索追溯码 / SPU / 批次" />
+        <span class="kbd">⌘ K</span>
+      </div>
+      <div class="filter-chip has-val">
+        状态<span class="text-[var(--ink-subtle)]">·</span>在库
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="filter-chip">
+        SPU<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="filter-chip">
+        批次<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="filter-chip has-val">
+        日期<span class="text-[var(--ink-subtle)]">·</span>近 7 天
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="filter-chip">
+        持有方<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="ml-auto flex items-center gap-2 text-[12.5px] text-[var(--ink-subtle)]">
+        <span><span class="text-[var(--ink)] font-semibold">142</span> 条匹配</span>
+      </div>
+    </section>
+
+    <!-- Table card -->
+    <section class="card overflow-hidden">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th class="!pl-4 !w-10"><span class="checkbox"></span></th>
+            <th>追溯码 <span class="arrow">↓</span></th>
+            <th>SPU</th>
+            <th>批次</th>
+            <th>状态</th>
+            <th>持有方</th>
+            <th>最近动作</th>
+            <th>链验</th>
+            <th class="!pr-4">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="!pl-4"><span class="checkbox"></span></td>
+            <td><span class="mono text-[12.5px] text-[var(--ink)]">TC-260505-A8F3K2</span></td>
+            <td>M8×60 内六角螺栓</td>
+            <td><span class="mono text-[12px] text-[var(--ink-muted)]">B260428-039</span></td>
+            <td><span class="pill pill-success"><span class="dot dot-success"></span>在库</span></td>
+            <td>本厂 · A 装配线</td>
+            <td><span class="text-[var(--ink-subtle)]">入库 · 14:21</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot dot-success"></span><span class="mono text-[12px]">4/4</span></span></td>
+            <td class="!pr-4"><a class="text-link">查看</a></td>
+          </tr>
+          <tr>
+            <td class="!pl-4"><span class="checkbox"></span></td>
+            <td><span class="mono text-[12.5px] text-[var(--ink)]">TC-260505-A8F3K1</span></td>
+            <td>M8×60 内六角螺栓</td>
+            <td><span class="mono text-[12px] text-[var(--ink-muted)]">B260428-039</span></td>
+            <td><span class="pill pill-success"><span class="dot dot-success"></span>在库</span></td>
+            <td>本厂 · A 装配线</td>
+            <td><span class="text-[var(--ink-subtle)]">入库 · 14:21</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot dot-success"></span><span class="mono text-[12px]">4/4</span></span></td>
+            <td class="!pr-4"><a class="text-link">查看</a></td>
+          </tr>
+          <tr>
+            <td class="!pl-4"><span class="checkbox"></span></td>
+            <td><span class="mono text-[12.5px] text-[var(--ink)]">TC-260505-A8F3J9</span></td>
+            <td>SKF-6204 深沟球轴承</td>
+            <td><span class="mono text-[12px] text-[var(--ink-muted)]">B260415-027</span></td>
+            <td><span class="pill pill-mute"><span class="dot dot-mute"></span>已出库</span></td>
+            <td>江南机床厂</td>
+            <td><span class="text-[var(--ink-subtle)]">出库 · 14:18</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot dot-success"></span><span class="mono text-[12px]">5/5</span></span></td>
+            <td class="!pr-4"><a class="text-link">查看</a></td>
+          </tr>
+          <tr>
+            <td class="!pl-4"><span class="checkbox"></span></td>
+            <td><span class="mono text-[12.5px] text-[var(--ink)]">TC-260505-A8F3J7</span></td>
+            <td>电磁阀阀芯 DN25</td>
+            <td><span class="mono text-[12px] text-[var(--ink-muted)]">B260420-014</span></td>
+            <td><span class="pill pill-error"><span class="dot dot-error"></span>异常</span></td>
+            <td>本厂 · 来料检验</td>
+            <td><span class="text-[var(--ink-subtle)]">异常 · 14:09</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot dot-success"></span><span class="mono text-[12px]">3/3</span></span></td>
+            <td class="!pr-4"><a class="text-link">查看</a></td>
+          </tr>
+          <tr>
+            <td class="!pl-4"><span class="checkbox"></span></td>
+            <td><span class="mono text-[12.5px] text-[var(--ink)]">TC-260505-A8F3J5</span></td>
+            <td>液压油缸密封圈</td>
+            <td><span class="mono text-[12px] text-[var(--ink-muted)]">B260423-008</span></td>
+            <td><span class="pill pill-warn"><span class="dot dot-warn"></span>流转中</span></td>
+            <td>顺丰快运</td>
+            <td><span class="text-[var(--ink-subtle)]">流转 · 13:55</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot dot-success"></span><span class="mono text-[12px]">4/4</span></span></td>
+            <td class="!pr-4"><a class="text-link">查看</a></td>
+          </tr>
+          <tr>
+            <td class="!pl-4"><span class="checkbox"></span></td>
+            <td><span class="mono text-[12.5px] text-[var(--ink)]">TC-260505-A8F3J2</span></td>
+            <td>不锈钢法兰 DN50</td>
+            <td><span class="mono text-[12px] text-[var(--ink-muted)]">B260418-031</span></td>
+            <td><span class="pill pill-success"><span class="dot dot-success"></span>在库</span></td>
+            <td>本厂 · 2# 立体仓</td>
+            <td><span class="text-[var(--ink-subtle)]">入库 · 13:42</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot dot-success"></span><span class="mono text-[12px]">2/2</span></span></td>
+            <td class="!pr-4"><a class="text-link">查看</a></td>
+          </tr>
+          <tr>
+            <td class="!pl-4"><span class="checkbox"></span></td>
+            <td><span class="mono text-[12.5px] text-[var(--ink)]">TC-260504-Z2R5K1</span></td>
+            <td>液压油缸密封圈</td>
+            <td><span class="mono text-[12px] text-[var(--ink-muted)]">B260420-005</span></td>
+            <td><span class="pill pill-error"><span class="dot dot-error"></span>异常</span></td>
+            <td>本厂 · 来料检验</td>
+            <td><span class="text-[var(--ink-subtle)]">昨日 16:42</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot dot-success"></span><span class="mono text-[12px]">3/3</span></span></td>
+            <td class="!pr-4"><a class="text-link">查看</a></td>
+          </tr>
+          <tr>
+            <td class="!pl-4"><span class="checkbox"></span></td>
+            <td><span class="mono text-[12.5px] text-[var(--ink)]">TC-260504-Z2R4S8</span></td>
+            <td>不锈钢法兰 DN50</td>
+            <td><span class="mono text-[12px] text-[var(--ink-muted)]">B260418-029</span></td>
+            <td><span class="pill pill-error"><span class="dot dot-error"></span>异常</span></td>
+            <td>本厂 · 来料检验</td>
+            <td><span class="text-[var(--ink-subtle)]">昨日 11:17</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot dot-success"></span><span class="mono text-[12px]">2/2</span></span></td>
+            <td class="!pr-4"><a class="text-link">查看</a></td>
+          </tr>
+          <tr>
+            <td class="!pl-4"><span class="checkbox"></span></td>
+            <td><span class="mono text-[12.5px] text-[var(--ink)]">TC-260504-Z2R4P2</span></td>
+            <td>304 不锈钢方钢</td>
+            <td><span class="mono text-[12px] text-[var(--ink-muted)]">B260411-077</span></td>
+            <td><span class="pill pill-warn"><span class="dot dot-warn"></span>流转中</span></td>
+            <td>外协 · 苏州精工</td>
+            <td><span class="text-[var(--ink-subtle)]">昨日 09:30</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot dot-success"></span><span class="mono text-[12px]">6/6</span></span></td>
+            <td class="!pr-4"><a class="text-link">查看</a></td>
+          </tr>
+          <tr>
+            <td class="!pl-4"><span class="checkbox"></span></td>
+            <td><span class="mono text-[12.5px] text-[var(--ink)]">TC-260503-Y9P3R7</span></td>
+            <td>气动阀 DN15</td>
+            <td><span class="mono text-[12px] text-[var(--ink-muted)]">B260411-014</span></td>
+            <td><span class="pill pill-success"><span class="dot dot-success"></span>在库</span></td>
+            <td>本厂 · B 装配线</td>
+            <td><span class="text-[var(--ink-subtle)]">5-3 11:08</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot dot-success"></span><span class="mono text-[12px]">4/4</span></span></td>
+            <td class="!pr-4"><a class="text-link">查看</a></td>
+          </tr>
+          <tr>
+            <td class="!pl-4"><span class="checkbox"></span></td>
+            <td><span class="mono text-[12.5px] text-[var(--ink)]">TC-260503-Y9P3K2</span></td>
+            <td>橡胶 O 形圈 32×3</td>
+            <td><span class="mono text-[12px] text-[var(--ink-muted)]">B260408-201</span></td>
+            <td><span class="pill pill-mute"><span class="dot dot-mute"></span>已出库</span></td>
+            <td>江南机床厂</td>
+            <td><span class="text-[var(--ink-subtle)]">5-3 09:25</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot dot-success"></span><span class="mono text-[12px]">5/5</span></span></td>
+            <td class="!pr-4"><a class="text-link">查看</a></td>
+          </tr>
+          <tr>
+            <td class="!pl-4"><span class="checkbox"></span></td>
+            <td><span class="mono text-[12.5px] text-[var(--ink)]">TC-260502-X1Y2A8</span></td>
+            <td>角接触轴承 7008C</td>
+            <td><span class="mono text-[12px] text-[var(--ink-muted)]">B260415-027</span></td>
+            <td><span class="pill pill-success"><span class="dot dot-success"></span>在库</span></td>
+            <td>本厂 · 2# 立体仓</td>
+            <td><span class="text-[var(--ink-subtle)]">5-2 16:48</span></td>
+            <td><span class="flex items-center gap-1.5"><span class="dot dot-success"></span><span class="mono text-[12px]">2/2</span></span></td>
+            <td class="!pr-4"><a class="text-link">查看</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- pagination -->
+    <section class="flex items-center justify-between">
+      <div class="text-[12.5px] text-[var(--ink-subtle)]">显示第 1–12 条 · 共 142 条匹配</div>
+      <div class="flex items-center gap-1">
+        <span class="pg-btn disabled">‹</span>
+        <span class="pg-btn active">1</span>
+        <span class="pg-btn">2</span>
+        <span class="pg-btn">3</span>
+        <span class="pg-btn">4</span>
+        <span class="pg-btn">…</span>
+        <span class="pg-btn">12</span>
+        <span class="pg-btn">›</span>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+</body>
+</html>
