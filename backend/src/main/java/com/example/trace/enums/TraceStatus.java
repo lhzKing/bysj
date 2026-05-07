@@ -75,7 +75,8 @@ public enum TraceStatus {
         
         return switch (actionType) {
             case INIT -> INIT;
-            case PRINT_CODE, REPRINT_CODE, ACTIVATE_CODE, VOID_CODE -> currentStatus;
+            case PRINT_CODE, REPRINT_CODE, ACTIVATE_CODE, VOID_CODE,
+                    PACK, UNPACK, PALLETIZE, UNPALLETIZE -> currentStatus;
             case OUTBOUND -> IN_TRANSIT;
             case INBOUND -> IN_STOCK;
             case TRANSFER -> TRANSFERRED;

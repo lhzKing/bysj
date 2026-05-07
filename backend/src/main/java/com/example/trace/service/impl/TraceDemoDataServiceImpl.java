@@ -376,7 +376,8 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
             return "system";
         }
         return switch (action) {
-            case INIT, PRINT_CODE, REPRINT_CODE, ACTIVATE_CODE, VOID_CODE -> "producer";
+            case INIT, PRINT_CODE, REPRINT_CODE, ACTIVATE_CODE, VOID_CODE,
+                    PACK, UNPACK, PALLETIZE, UNPALLETIZE -> "producer";
             case INBOUND, OUTBOUND -> "warehouse";
             case TRANSFER -> "logistics";
             case EXCEPTION, CORRECTION -> "warehouse";

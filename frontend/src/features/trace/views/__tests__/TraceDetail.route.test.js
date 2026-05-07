@@ -9,6 +9,10 @@ const routeMock = reactive({
   }
 })
 
+const currentUser = reactive({
+  permissions: ['trace:view']
+})
+
 const routerPushMock = vi.fn()
 const routerBackMock = vi.fn()
 const getTraceDetailMock = vi.fn()
@@ -20,6 +24,12 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({
     push: routerPushMock,
     back: routerBackMock
+  })
+}))
+
+vi.mock('@/core/stores/user', () => ({
+  useUserStore: () => ({
+    hasPermission: (permission) => currentUser.permissions.includes(permission)
   })
 }))
 
@@ -36,29 +46,80 @@ const dropdownStub = {
   template: '<div><slot /><slot name="dropdown" /></div>'
 }
 
-describe('TraceDetail route reuse', () => {
+const traceDetailResponse = (code, view = 'effective') => ({
+  view,
+  snapshot: {
+    traceCode: code,
+    currentStatus: 'ACTIVE',
+    spuId: 1,
+    province: 'Province',
+    city: 'City',
+    currentNode: 'Node',
+    lastEventTime: '2026-04-12 00:00:00',
+    currentOwner: 'Owner'
+  },
+  history: view === 'audit'
+    ? [
+        {
+          id: 1,
+          actionType: 'OUTBOUND',
+          eventTime: '2026-04-12T10:00:00',
+          currentHash: 'abcdef1234567890',
+          operator: 'alice'
+        },
+        {
+          id: 2,
+          actionType: 'CORRECTION',
+          correctionOf: 1,
+          eventTime: '2026-04-12T11:00:00',
+          currentHash: '1234567890abcdef',
+          operator: 'auditor',
+          remark: '修正错误节点'
+        }
+      ]
+    : [
+        {
+          id: 2,
+          actionType: 'CORRECTION',
+          correctionOf: 1,
+          eventTime: '2026-04-12T11:00:00',
+          currentHash: '1234567890abcdef',
+          operator: 'auditor',
+          remark: '修正错误节点'
+        }
+      ]
+})
+
+const mountTraceDetail = () => mount(TraceDetail, {
+  global: {
+    stubs: {
+      LogOut: true,
+      X: true,
+      BaseCard: passthroughStub,
+      ScanFlowDialog: true,
+      TraceRouteMap: true,
+      'el-button': passthroughStub,
+      'el-dropdown': dropdownStub,
+      'el-dropdown-menu': passthroughStub,
+      'el-dropdown-item': passthroughStub,
+      'el-icon': passthroughStub,
+      transition: false
+    }
+  }
+})
+
+describe('TraceDetail route reuse and detail views', () => {
   beforeEach(() => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     routeMock.params.code = 'TRACE-001'
+    currentUser.permissions = ['trace:view']
     routerPushMock.mockReset()
     routerBackMock.mockReset()
     getTraceDetailMock.mockReset()
     verifyTraceChainMock.mockReset()
 
-    getTraceDetailMock.mockImplementation((code) =>
-      Promise.resolve({
-        snapshot: {
-          traceCode: code,
-          currentStatus: 'ACTIVE',
-          spuId: 1,
-          province: 'Province',
-          city: 'City',
-          currentNode: 'Node',
-          lastEventTime: '2026-04-12 00:00:00',
-          currentOwner: 'Owner'
-        },
-        history: []
-      })
+    getTraceDetailMock.mockImplementation((code, view = 'effective') =>
+      Promise.resolve(traceDetailResponse(code, view))
     )
 
     verifyTraceChainMock.mockResolvedValue({
@@ -74,35 +135,21 @@ describe('TraceDetail route reuse', () => {
     consoleErrorSpy?.mockRestore()
   })
 
-  it('reloads detail data when route params code changes', async () => {
-    const wrapper = mount(TraceDetail, {
-      global: {
-        stubs: {
-        LogOut: true,
-        X: true,
-          BaseCard: passthroughStub,
-          ScanFlowDialog: true,
-          TraceRouteMap: true,
-          'el-button': passthroughStub,
-          'el-dropdown': dropdownStub,
-          'el-dropdown-menu': passthroughStub,
-          'el-dropdown-item': passthroughStub,
-          'el-icon': passthroughStub,
-          transition: false
-        }
-      }
-    })
+  it('loads effective detail by default and reloads when route params code changes', async () => {
+    const wrapper = mountTraceDetail()
 
     await flushPromises()
 
-    expect(getTraceDetailMock).toHaveBeenCalledWith('TRACE-001')
+    expect(getTraceDetailMock).toHaveBeenCalledWith('TRACE-001', 'effective')
     expect(wrapper.text()).toContain('TRACE-001')
+    expect(wrapper.text()).toContain('业务有效视图')
+    expect(wrapper.find('[data-testid="trace-detail-audit-tab"]').exists()).toBe(false)
 
     routeMock.params.code = 'TRACE-002'
     await nextTick()
     await flushPromises()
 
-    expect(getTraceDetailMock).toHaveBeenCalledWith('TRACE-002')
+    expect(getTraceDetailMock).toHaveBeenCalledWith('TRACE-002', 'effective')
     expect(verifyTraceChainMock).toHaveBeenCalledWith('TRACE-002')
     expect(wrapper.text()).toContain('TRACE-002')
   })
@@ -122,23 +169,7 @@ describe('TraceDetail route reuse', () => {
       })
     })
 
-    const wrapper = mount(TraceDetail, {
-      global: {
-        stubs: {
-        LogOut: true,
-        X: true,
-          BaseCard: passthroughStub,
-          ScanFlowDialog: true,
-          TraceRouteMap: true,
-          'el-button': passthroughStub,
-          'el-dropdown': dropdownStub,
-          'el-dropdown-menu': passthroughStub,
-          'el-dropdown-item': passthroughStub,
-          'el-icon': passthroughStub,
-          transition: false
-        }
-      }
-    })
+    const wrapper = mountTraceDetail()
 
     await flushPromises()
     expect(wrapper.text()).toContain('链上数据已验证')
@@ -148,5 +179,23 @@ describe('TraceDetail route reuse', () => {
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('链上数据已验证')
+  })
+
+  it('allows audit-permitted users to switch to full audit history and marks corrected records', async () => {
+    currentUser.permissions = ['trace:view', 'trace:audit:view']
+    const wrapper = mountTraceDetail()
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="trace-detail-audit-tab"]').exists()).toBe(true)
+    await wrapper.find('[data-testid="trace-detail-audit-tab"]').trigger('click')
+    await flushPromises()
+
+    expect(getTraceDetailMock).toHaveBeenLastCalledWith('TRACE-001', 'audit')
+    expect(wrapper.text()).toContain('审计完整视图')
+    expect(wrapper.text()).toContain('当前返回 2 条完整审计记录')
+    expect(wrapper.text()).toContain('已被纠错覆盖')
+    expect(wrapper.text()).toContain('本记录修正原始日志 #1')
+    expect(wrapper.find('[data-corrected-original="true"]').exists()).toBe(true)
   })
 })

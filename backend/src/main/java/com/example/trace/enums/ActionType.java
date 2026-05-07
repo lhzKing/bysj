@@ -17,6 +17,10 @@ public enum ActionType {
     REPRINT_CODE("REPRINT_CODE", "重打标签", "标签损坏或补打时重新打印同一溯源码"),
     ACTIVATE_CODE("ACTIVATE_CODE", "扫码激活", "贴码后扫码复核并激活单品码"),
     VOID_CODE("VOID_CODE", "作废码", "未激活标签丢失或作废"),
+    PACK("PACK", "装箱", "单品码绑定到箱码/批量聚合父码"),
+    UNPACK("UNPACK", "拆箱", "单品码从箱码/批量聚合父码解除"),
+    PALLETIZE("PALLETIZE", "托盘绑定", "单品或箱码绑定到托盘码"),
+    UNPALLETIZE("UNPALLETIZE", "托盘解绑", "单品或箱码从托盘码解除"),
     INBOUND("INBOUND", "入库", "货物进入仓库/节点"),
     OUTBOUND("OUTBOUND", "出库", "货物离开仓库/节点"),
     TRANSFER("TRANSFER", "流转", "节点间转移"),
@@ -66,7 +70,7 @@ public enum ActionType {
         }
 
         throw new IllegalArgumentException(
-            String.format("非法的 ActionType: '%s'，允许的值: INIT, PRINT_CODE, REPRINT_CODE, ACTIVATE_CODE, VOID_CODE, INBOUND, OUTBOUND, TRANSFER, EXCEPTION, CORRECTION", value)
+            String.format("非法的 ActionType: '%s'，允许的值: INIT, PRINT_CODE, REPRINT_CODE, ACTIVATE_CODE, VOID_CODE, PACK, UNPACK, PALLETIZE, UNPALLETIZE, INBOUND, OUTBOUND, TRANSFER, EXCEPTION, CORRECTION", value)
         );
     }
 

@@ -217,6 +217,10 @@ public class TraceAvailableActionService {
             case REPRINT_CODE -> "重打标签";
             case ACTIVATE_CODE -> "扫码激活";
             case VOID_CODE -> "作废标签";
+            case PACK -> "确认装箱";
+            case UNPACK -> "确认拆箱";
+            case PALLETIZE -> "确认托盘绑定";
+            case UNPALLETIZE -> "确认托盘解绑";
             case INBOUND -> currentStatus == TraceStatus.IN_TRANSIT || currentStatus == TraceStatus.TRANSFERRED
                     ? "确认接收/入库"
                     : "确认入库";

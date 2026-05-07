@@ -1,29 +1,59 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import BaseButton from '@/shared/components/ui/BaseButton.vue'
 import ScanFlowDialog from '@/features/trace/components/ScanFlowDialog.vue'
 import TraceRouteMap from '@/features/trace/components/TraceRouteMap.vue'
 import TraceSummary from '@/features/trace/components/TraceSummary.vue'
 import TraceTimeline from '@/features/trace/components/TraceTimeline.vue'
 import TraceVerificationPanel from '@/features/trace/components/TraceVerificationPanel.vue'
 import { getTraceDetail, verifyTraceChain } from '@/features/trace/api'
+import { useUserStore } from '@/core/stores/user'
+import { PERMISSIONS } from '@/shared/constants'
 import { ArrowLeft, Loader2, Package as PackageIn, PackageOpen as PackageOut, Navigation } from 'lucide-vue-next'
-import Menu from 'primevue/menu'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 const traceCode = computed(() => route.params.code)
 
 const loading = ref(true)
 const error = ref('')
 const snapshot = ref(null)
 const history = ref([])
+const detailView = ref('effective')
+const loadedView = ref('effective')
+const viewError = ref('')
+const switchingView = ref(false)
 const verification = ref(null)
 const verifying = ref(false)
 const showScanDialog = ref(false)
 const selectedActionType = ref('transfer')
 const isMenuOpen = ref(false)
+
+const canViewAudit = computed(() => userStore.hasPermission(PERMISSIONS.TRACE.AUDIT_VIEW))
+const historyCount = computed(() => history.value.length)
+const correctedLogIds = computed(() => new Set(
+  history.value
+    .map((log) => log.correctionOf)
+    .filter((id) => id !== null && id !== undefined)
+    .map((id) => String(id))
+))
+const correctedOriginalCount = computed(() =>
+  history.value.filter((log) => correctedLogIds.value.has(String(log.id))).length
+)
+const detailViewMeta = computed(() => {
+  if (loadedView.value === 'audit') {
+    return {
+      label: '审计完整视图',
+      description: '展示完整 Hash 日志链，包含被纠错覆盖的原始记录。'
+    }
+  }
+
+  return {
+    label: '业务有效视图',
+    description: '默认隐藏已被纠错覆盖的原始记录，只呈现当前业务有效历史。'
+  }
+})
 
 const closeMenuDelay = () => {
   setTimeout(() => {
@@ -31,20 +61,61 @@ const closeMenuDelay = () => {
   }, 200)
 }
 
-const loadDetail = async (code = traceCode.value) => {
+const normalizeDetailView = (view) => (view === 'audit' ? 'audit' : 'effective')
+
+const applyDetailData = (data, requestedView) => {
+  snapshot.value = data.snapshot
+  history.value = (data.history || [])
+    .sort((a, b) => new Date(b.eventTime) - new Date(a.eventTime))
+  loadedView.value = normalizeDetailView(data.view || requestedView)
+  detailView.value = loadedView.value
+}
+
+const loadDetail = async (code = traceCode.value, view = detailView.value) => {
+  const requestedView = normalizeDetailView(view)
   try {
     verification.value = null
-    const data = await getTraceDetail(code)
+    viewError.value = ''
+    const data = await getTraceDetail(code, requestedView)
 
-    snapshot.value = data.snapshot
-    history.value = (data.history || [])
-      .sort((a, b) => new Date(b.eventTime) - new Date(a.eventTime))
+    applyDetailData(data, requestedView)
 
     await verifyChain(code)
   } catch (err) {
     error.value = err.message || '获取详情失败'
   } finally {
     loading.value = false
+  }
+}
+
+const switchDetailView = async (view) => {
+  const requestedView = normalizeDetailView(view)
+  if (requestedView === loadedView.value || switchingView.value) {
+    detailView.value = loadedView.value
+    return
+  }
+  if (requestedView === 'audit' && !canViewAudit.value) {
+    detailView.value = loadedView.value
+    viewError.value = '审计完整视图需要 trace:audit:view 权限'
+    return
+  }
+
+  const previousView = loadedView.value
+  detailView.value = requestedView
+  switchingView.value = true
+  viewError.value = ''
+  verification.value = null
+  try {
+    const data = await getTraceDetail(traceCode.value, requestedView)
+    applyDetailData(data, requestedView)
+    await verifyChain(traceCode.value)
+  } catch (err) {
+    detailView.value = previousView
+    loadedView.value = previousView
+    verification.value = null
+    viewError.value = err.message || '切换详情视图失败'
+  } finally {
+    switchingView.value = false
   }
 }
 
@@ -69,7 +140,7 @@ const verifyChain = async (code = traceCode.value) => {
 const handleScanSuccess = () => {
   loading.value = true
   error.value = ''
-  loadDetail(traceCode.value)
+  loadDetail(traceCode.value, loadedView.value)
 }
 
 const handleActionSelect = (actionType) => {
@@ -77,28 +148,24 @@ const handleActionSelect = (actionType) => {
   showScanDialog.value = true
 }
 
-const menu = ref();
 const menuItems = ref([
-    {
-        label: '入库登记',
-        icon: PackageIn,
-        command: () => handleActionSelect('inbound')
-    },
-    {
-        label: '出库登记',
-        icon: PackageOut,
-        command: () => handleActionSelect('outbound')
-    },
-    {
-        label: '物流流转',
-        icon: Navigation,
-        command: () => handleActionSelect('transfer')
-    }
-]);
+  {
+    label: '入库登记',
+    icon: PackageIn,
+    command: () => handleActionSelect('inbound')
+  },
+  {
+    label: '出库登记',
+    icon: PackageOut,
+    command: () => handleActionSelect('outbound')
+  },
+  {
+    label: '物流流转',
+    icon: Navigation,
+    command: () => handleActionSelect('transfer')
+  }
+])
 
-const toggleMenu = (event) => {
-    menu.value.toggle(event);
-};
 
 watch(
   () => route.params.code,
@@ -108,13 +175,19 @@ watch(
       loading.value = false
       snapshot.value = null
       history.value = []
+      detailView.value = 'effective'
+      loadedView.value = 'effective'
+      viewError.value = ''
       verification.value = null
       return
     }
 
     loading.value = true
     error.value = ''
-    await loadDetail(newCode)
+    detailView.value = 'effective'
+    loadedView.value = 'effective'
+    viewError.value = ''
+    await loadDetail(newCode, 'effective')
   },
   { immediate: true }
 )
@@ -151,6 +224,12 @@ watch(
               </span>
             </div>
             <p class="text-slate-500 font-bold">关联配件模型: <span class="font-mono text-slate-900 ml-1">SPU-{{ snapshot.spuId }}</span></p>
+            <div class="mt-4 flex flex-wrap items-center gap-3">
+              <span class="px-4 py-2 rounded-2xl text-xs font-black bg-slate-900 text-white uppercase tracking-widest">
+                {{ detailViewMeta.label }}
+              </span>
+              <span class="text-xs font-bold text-slate-500">{{ detailViewMeta.description }}</span>
+            </div>
           </div>
 
           <div class="flex flex-wrap items-center gap-4">
@@ -190,8 +269,55 @@ watch(
 
         <!-- 生命周期事件流 (Full Width) -->
         <div class="premium-card rounded-[40px] p-6 md:p-10">
-          <h3 class="text-2xl font-black text-slate-900 mb-10 tracking-tight">生命周期事件流</h3>
-          <TraceTimeline :history="history" />
+          <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 mb-10">
+            <div>
+              <h3 class="text-2xl font-black text-slate-900 tracking-tight">生命周期事件流</h3>
+              <p class="mt-2 text-sm font-bold text-slate-500">
+                当前返回 {{ historyCount }} 条{{ loadedView === 'audit' ? '完整审计' : '业务有效' }}记录
+                <template v-if="loadedView === 'audit' && correctedOriginalCount > 0">
+                  ，其中 {{ correctedOriginalCount }} 条原始记录已被纠错覆盖
+                </template>
+              </p>
+            </div>
+
+            <div class="w-full lg:w-auto">
+              <div class="flex rounded-[24px] bg-slate-100/80 p-1 border border-slate-200" role="group" aria-label="详情视图切换">
+                <button
+                  type="button"
+                  class="flex-1 lg:flex-none px-5 py-3 rounded-[20px] text-xs font-black uppercase tracking-widest transition-all"
+                  :class="loadedView === 'effective' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-900'"
+                  :disabled="switchingView"
+                  data-testid="trace-detail-effective-tab"
+                  @click="switchDetailView('effective')"
+                >
+                  业务有效
+                </button>
+                <button
+                  v-if="canViewAudit"
+                  type="button"
+                  class="flex-1 lg:flex-none px-5 py-3 rounded-[20px] text-xs font-black uppercase tracking-widest transition-all"
+                  :class="loadedView === 'audit' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-900'"
+                  :disabled="switchingView"
+                  data-testid="trace-detail-audit-tab"
+                  @click="switchDetailView('audit')"
+                >
+                  审计完整
+                </button>
+              </div>
+              <p v-if="!canViewAudit" class="mt-2 text-xs font-bold text-slate-400 text-right">
+                审计完整视图需要 trace:audit:view 权限
+              </p>
+              <p v-if="viewError" class="mt-2 text-xs font-bold text-rose-500 text-right" data-testid="trace-detail-view-error">
+                {{ viewError }}
+              </p>
+            </div>
+          </div>
+
+          <div v-if="switchingView" class="mb-6 flex items-center gap-3 rounded-[24px] border border-indigo-100 bg-indigo-50 px-5 py-4 text-sm font-bold text-indigo-600">
+            <Loader2 class="w-4 h-4 animate-spin" /> 正在切换{{ detailView === 'audit' ? '审计完整视图' : '业务有效视图' }}...
+          </div>
+
+          <TraceTimeline :history="history" :view="loadedView" />
         </div>
       </div>
 

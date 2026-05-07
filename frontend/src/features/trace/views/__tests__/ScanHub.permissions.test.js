@@ -8,6 +8,8 @@ const { pushMock } = vi.hoisted(() => ({
   pushMock: vi.fn()
 }))
 
+const getTraceAvailableActionsMock = vi.fn()
+
 const currentUser = reactive({
   permissions: ['trace:view']
 })
@@ -28,6 +30,10 @@ vi.mock('@/core/stores/user', () => ({
   })
 }))
 
+vi.mock('@/features/trace/api', () => ({
+  getTraceAvailableActions: (...args) => getTraceAvailableActionsMock(...args)
+}))
+
 const traceScannerStub = {
   template: `
     <div data-test="trace-scanner-stub">
@@ -37,11 +43,13 @@ const traceScannerStub = {
 }
 
 const scanFlowDialogStub = {
-  template: '<div data-test="scan-flow-dialog-stub"></div>'
+  props: ['modelValue', 'actionType'],
+  template: '<div data-test="scan-flow-dialog-stub" :data-open="modelValue" :data-action="actionType"></div>'
 }
 
 const scanExceptionDialogStub = {
-  template: '<div data-test="scan-exception-dialog-stub"></div>'
+  props: ['modelValue'],
+  template: '<div data-test="scan-exception-dialog-stub" :data-open="modelValue"></div>'
 }
 
 const createTraceDialogStub = {
@@ -73,36 +81,68 @@ describe('ScanHub permission model', () => {
   beforeEach(() => {
     currentUser.permissions = ['trace:view']
     pushMock.mockReset()
+    getTraceAvailableActionsMock.mockReset()
+    getTraceAvailableActionsMock.mockResolvedValue({
+      traceCode: 'TRACE-001',
+      currentStatus: 'IN_STOCK',
+      currentStatusLabel: '在库',
+      currentNode: '北京仓库',
+      recommendedAction: null,
+      availableActions: [],
+      noActionReason: '当前角色没有该状态下的扫码动作权限；状态允许动作: OUTBOUND'
+    })
   })
 
-  it('does not expose scan actions to a view-only user', async () => {
+  it('does not expose scan actions to a view-only user and shows backend no-action reason', async () => {
     const wrapper = await openActionMatrix()
 
-    expect(wrapper.text()).toContain('全链路审计详情')
-    expect(wrapper.text()).not.toContain('入库登记')
-    expect(wrapper.text()).not.toContain('出库登记')
-    expect(wrapper.text()).not.toContain('物流流转')
-    expect(wrapper.text()).not.toContain('异常上报')
+    expect(getTraceAvailableActionsMock).toHaveBeenCalledWith('TRACE-001')
+    expect(wrapper.text()).toContain('查看溯源详情')
+    expect(wrapper.find('[data-test="no-available-actions"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('当前角色没有该状态下的扫码动作权限')
+    expect(wrapper.text()).not.toContain('确认出库')
   })
 
-  it('allows trace:scan to expose all scan actions including 异常上报', async () => {
+  it('renders only backend returned executable actions and highlights recommendation', async () => {
+    getTraceAvailableActionsMock.mockResolvedValueOnce({
+      traceCode: 'TRACE-001',
+      currentStatus: 'IN_STOCK',
+      currentStatusLabel: '在库',
+      currentNode: '北京仓库',
+      recommendedAction: 'OUTBOUND',
+      availableActions: [
+        { actionType: 'OUTBOUND', label: '确认出库', nextStatus: 'IN_TRANSIT', nextStatusLabel: '运输中', requiresRemark: false, permissionHint: 'trace:outbound or trace:scan' },
+        { actionType: 'EXCEPTION', label: '上报异常', nextStatus: 'EXCEPTION', nextStatusLabel: '异常', requiresRemark: true, permissionHint: 'trace:scan' }
+      ]
+    })
     currentUser.permissions = ['trace:scan', 'trace:view']
     const wrapper = await openActionMatrix()
 
-    expect(wrapper.text()).toContain('入库登记')
-    expect(wrapper.text()).toContain('出库登记')
-    expect(wrapper.text()).toContain('物流流转')
-    expect(wrapper.text()).toContain('异常上报')
+    expect(wrapper.text()).toContain('确认出库')
+    expect(wrapper.text()).toContain('上报异常')
+    expect(wrapper.text()).toContain('推荐')
+    expect(wrapper.text()).not.toContain('确认入库')
+    expect(wrapper.find('[data-test="recommended-action-badge"]').exists()).toBe(true)
   })
 
-  it('keeps trace:inbound limited to the matching action', async () => {
+  it('keeps trace:inbound limited to the backend returned matching action', async () => {
+    getTraceAvailableActionsMock.mockResolvedValueOnce({
+      traceCode: 'TRACE-001',
+      currentStatus: 'IN_TRANSIT',
+      currentStatusLabel: '运输中',
+      currentNode: '上海仓库',
+      recommendedAction: 'INBOUND',
+      availableActions: [
+        { actionType: 'INBOUND', label: '确认接收/入库', nextStatus: 'IN_STOCK', nextStatusLabel: '在库', requiresRemark: false, permissionHint: 'trace:inbound or trace:scan' }
+      ]
+    })
     currentUser.permissions = ['trace:inbound', 'trace:view']
     const wrapper = await openActionMatrix()
 
-    expect(wrapper.text()).toContain('入库登记')
-    expect(wrapper.text()).not.toContain('出库登记')
-    expect(wrapper.text()).not.toContain('物流流转')
-    expect(wrapper.text()).not.toContain('异常上报')
+    expect(wrapper.text()).toContain('确认接收/入库')
+    expect(wrapper.text()).not.toContain('确认出库')
+    expect(wrapper.text()).not.toContain('确认流转')
+    expect(wrapper.text()).not.toContain('上报异常')
   })
 
   it('never renders the legacy 生产记录 button regardless of permissions', async () => {
@@ -128,17 +168,45 @@ describe('ScanHub permission model', () => {
     expect(wrapper.text()).not.toContain('或者：直接生产赋码')
   })
 
-  it('exposes 异常上报 button after scanning when trace:scan is granted', async () => {
+  it('opens the matching flow dialog when the recommended normal action is clicked', async () => {
+    getTraceAvailableActionsMock.mockResolvedValueOnce({
+      traceCode: 'TRACE-001',
+      currentStatus: 'IN_STOCK',
+      currentStatusLabel: '在库',
+      currentNode: '北京仓库',
+      recommendedAction: 'OUTBOUND',
+      availableActions: [
+        { actionType: 'OUTBOUND', label: '确认出库', nextStatus: 'IN_TRANSIT', nextStatusLabel: '运输中', requiresRemark: false }
+      ]
+    })
+    currentUser.permissions = ['trace:outbound']
+    const wrapper = await openActionMatrix()
+
+    await wrapper.find('[data-test="available-action-OUTBOUND"]').trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.find('[data-test="scan-flow-dialog-stub"]')
+    expect(dialog.attributes('data-open')).toBe('true')
+    expect(dialog.attributes('data-action')).toBe('outbound')
+  })
+
+  it('opens exception dialog only when backend returns EXCEPTION as executable', async () => {
+    getTraceAvailableActionsMock.mockResolvedValueOnce({
+      traceCode: 'TRACE-001',
+      currentStatus: 'IN_STOCK',
+      currentStatusLabel: '在库',
+      currentNode: '北京仓库',
+      recommendedAction: 'OUTBOUND',
+      availableActions: [
+        { actionType: 'EXCEPTION', label: '上报异常', nextStatus: 'EXCEPTION', nextStatusLabel: '异常', requiresRemark: true }
+      ]
+    })
     currentUser.permissions = ['trace:scan']
     const wrapper = await openActionMatrix()
 
-    expect(wrapper.text()).toContain('异常上报')
-  })
+    await wrapper.find('[data-test="available-action-EXCEPTION"]').trigger('click')
+    await flushPromises()
 
-  it('hides 异常上报 button when only trace:inbound is granted', async () => {
-    currentUser.permissions = ['trace:inbound']
-    const wrapper = await openActionMatrix()
-
-    expect(wrapper.text()).not.toContain('异常上报')
+    expect(wrapper.find('[data-test="scan-exception-dialog-stub"]').attributes('data-open')).toBe('true')
   })
 })

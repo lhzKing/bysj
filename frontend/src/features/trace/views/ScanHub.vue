@@ -8,100 +8,111 @@
       :currentAction="currentAction"
       @close="stopCamera"
       @scan="onScanSuccess"
+      @camera-error="onCameraError"
     />
 
-    <!-- 操作选择界面（扫码成功后） -->
-    <div v-else-if="scannedCode" class="w-full max-w-3xl flex flex-col gap-8 relative z-10">
+    <!-- 操作选择界面（扫码成功后）：由后端 available-actions 决定可执行动作 -->
+    <div v-else-if="scannedCode" class="w-full max-w-4xl flex flex-col gap-8 relative z-10" data-test="scan-action-panel">
       <div class="flex items-center justify-between premium-card rounded-[32px] p-6 mb-4">
-        <button @click="resetScanner" class="flex items-center text-sm font-bold text-slate-400 hover:text-indigo-600 transition-colors">
+        <button @click="resetScanner" class="flex items-center text-sm font-bold text-slate-400 hover:text-indigo-600 transition-colors" data-test="scan-reset">
           <ArrowLeft class="w-4 h-4 mr-2" /> 重新扫描
         </button>
-        <h2 class="text-xl font-black text-slate-900 tracking-tight">操作流转矩阵</h2>
-        <div class="w-20"></div>
+        <h2 class="text-xl font-black text-slate-900 tracking-tight">系统推荐动作</h2>
+        <button v-if="!availableActionsLoading" type="button" class="text-xs font-black text-indigo-500 hover:text-indigo-700 transition-colors" data-test="available-actions-refresh" @click="loadAvailableActions(scannedCode)">
+          刷新判断
+        </button>
+        <div v-else class="w-16"></div>
       </div>
 
-      <div class="premium-card rounded-[48px] p-10 text-center relative overflow-hidden group">
+      <div class="premium-card rounded-[48px] p-8 md:p-10 relative overflow-hidden group">
         <div class="absolute -right-12 -top-12 size-40 bg-emerald-200 rounded-full blur-[60px] opacity-40 group-hover:scale-150 transition-transform"></div>
-        <div class="relative z-10">
-            <div class="size-20 bg-emerald-500 text-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-emerald-200 group-hover:rotate-12 transition-transform">
-              <Check class="w-10 h-10" />
+        <div class="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div class="min-w-0">
+            <div class="size-16 bg-emerald-500 text-white rounded-3xl flex items-center justify-center mb-5 shadow-lg shadow-emerald-200 group-hover:rotate-12 transition-transform">
+              <Check class="w-8 h-8" />
             </div>
-            <p class="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-2">Neural Scan Successful</p>
-            <p class="text-4xl font-mono font-black text-slate-900 tracking-tighter">{{ scannedCode }}</p>
+            <p class="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-2">Scan Successful</p>
+            <p class="break-all text-2xl md:text-4xl font-mono font-black text-slate-900 tracking-tighter" data-test="scanned-code">{{ scannedCode }}</p>
+          </div>
+          <div v-if="actionDecision" class="grid min-w-[260px] gap-3 rounded-[28px] bg-white/70 p-4 shadow-inner shadow-emerald-50">
+            <div>
+              <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">当前状态</p>
+              <p class="mt-1 text-sm font-black text-slate-900" data-test="available-current-status">{{ actionDecision.currentStatusLabel || actionDecision.currentStatus || '-' }}</p>
+            </div>
+            <div>
+              <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">当前节点</p>
+              <p class="mt-1 text-sm font-black text-slate-900" data-test="available-current-node">{{ actionDecision.currentNode || '-' }}</p>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-6">
-        <!-- 查询详情 -->
-        <button 
-          v-if="hasPermission(PERMISSIONS.TRACE.VIEW)"
-          class="col-span-2 md:col-span-3 bg-indigo-600 text-white rounded-[32px] p-8 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all hover:-translate-y-1 hover:shadow-2xl hover:shadow-indigo-200 active:scale-95 group"
-          @click="handleViewDetail"
-        >
-          <Search class="w-10 h-10 group-hover:scale-110 transition-transform" />
-          <span class="text-xl font-black tracking-tight">全链路审计详情</span>
-          <span class="text-xs font-bold text-indigo-200 uppercase tracking-widest">Full Audit Trail</span>
-        </button>
+      <div v-if="availableActionsLoading" class="premium-card rounded-[32px] p-10 text-center" data-test="available-actions-loading">
+        <Loader2 class="mx-auto h-10 w-10 animate-spin text-indigo-500" />
+        <p class="mt-4 text-sm font-black text-slate-500">正在根据当前状态、权限和节点判断可执行动作...</p>
+      </div>
 
-        <!-- 入库 -->
-        <button 
-          v-if="canUseTraceAction(PERMISSIONS.TRACE.INBOUND)"
-          class="premium-card rounded-[32px] p-8 flex flex-col items-center gap-4 cursor-pointer transition-all hover:-translate-y-1 hover:shadow-xl hover:border-emerald-300 active:scale-95 group"
-          @click="handleInboundAction"
-        >
-          <div class="size-14 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white transition-colors">
-              <PackageIn class="w-6 h-6" />
-          </div>
-          <div class="text-center">
-              <span class="block text-base font-black text-slate-900">入库登记</span>
-              <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Inbound</span>
-          </div>
-        </button>
+      <div v-else class="grid gap-6">
+        <div v-if="executableActions.length > 0" class="grid gap-5 md:grid-cols-2" data-test="available-action-list">
+          <button
+            v-for="action in executableActions"
+            :key="action.actionType"
+            type="button"
+            class="rounded-[32px] p-6 text-left transition-all hover:-translate-y-1 hover:shadow-xl active:scale-95"
+            :class="actionCardClass(action)"
+            :data-test="`available-action-${action.actionType}`"
+            @click="handleAvailableAction(action)"
+          >
+            <div class="mb-5 flex items-start justify-between gap-4">
+              <div class="flex items-center gap-4">
+                <div class="size-14 rounded-2xl flex items-center justify-center" :class="actionIconClass(action.actionType)">
+                  <component :is="actionIcon(action.actionType)" class="w-6 h-6" />
+                </div>
+                <div>
+                  <p class="text-lg font-black text-slate-900">{{ action.label || formatActionType(action.actionType) }}</p>
+                  <p class="mt-1 text-[10px] font-black uppercase tracking-widest text-slate-400">{{ action.actionType }}</p>
+                </div>
+              </div>
+              <span v-if="isRecommendedAction(action)" class="rounded-full bg-indigo-600 px-3 py-1 text-[10px] font-black text-white shadow-lg shadow-indigo-100" data-test="recommended-action-badge">推荐</span>
+            </div>
+            <p class="text-sm font-bold leading-6 text-slate-500">执行后状态：{{ action.nextStatusLabel || action.nextStatus || '-' }}</p>
+            <p class="mt-1 text-xs font-medium text-slate-400">权限要求：{{ action.permissionHint || '后端已校验' }}</p>
+            <p v-if="action.requiresRemark" class="mt-3 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">该动作需要填写说明后提交。</p>
+          </button>
+        </div>
 
-        <!-- 出库 -->
-        <button 
-          v-if="canUseTraceAction(PERMISSIONS.TRACE.OUTBOUND)"
-          class="premium-card rounded-[32px] p-8 flex flex-col items-center gap-4 cursor-pointer transition-all hover:-translate-y-1 hover:shadow-xl hover:border-cyan-300 active:scale-95 group"
-          @click="handleOutboundAction"
-        >
-          <div class="size-14 rounded-2xl bg-cyan-50 flex items-center justify-center text-cyan-600 group-hover:bg-cyan-500 group-hover:text-white transition-colors">
-              <PackageOut class="w-6 h-6" />
+        <div v-else class="premium-card rounded-[32px] border border-amber-100 bg-amber-50/70 p-8" data-test="no-available-actions">
+          <div class="flex items-start gap-4">
+            <AlertTriangle class="mt-0.5 h-7 w-7 flex-shrink-0 text-amber-600" />
+            <div>
+              <h3 class="text-xl font-black text-slate-900">当前无可执行扫码动作</h3>
+              <p class="mt-2 text-sm font-bold leading-7 text-amber-800" data-test="no-action-reason">{{ noActionMessage }}</p>
+            </div>
           </div>
-          <div class="text-center">
-              <span class="block text-base font-black text-slate-900">出库登记</span>
-              <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Outbound</span>
-          </div>
-        </button>
+        </div>
 
-        <!-- 流转 -->
-        <button 
-          v-if="canUseTraceAction(PERMISSIONS.TRACE.TRANSFER)"
-          class="premium-card rounded-[32px] p-8 flex flex-col items-center gap-4 cursor-pointer transition-all hover:-translate-y-1 hover:shadow-xl hover:border-amber-300 active:scale-95 group"
-          @click="handleTransferAction"
-        >
-          <div class="size-14 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600 group-hover:bg-amber-500 group-hover:text-white transition-colors">
-              <Truck class="w-6 h-6" />
-          </div>
-          <div class="text-center">
-              <span class="block text-base font-black text-slate-900">物流流转</span>
-              <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Transfer</span>
-          </div>
-        </button>
-
-        <!-- 异常上报 -->
-        <button 
-          v-if="hasPermission(PERMISSIONS.TRACE.SCAN)"
-          class="premium-card rounded-[32px] p-8 flex flex-col items-center gap-4 cursor-pointer transition-all hover:-translate-y-1 hover:shadow-xl hover:border-rose-300 active:scale-95 group"
-          @click="handleAlertAction"
-        >
-          <div class="size-14 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-500 group-hover:bg-rose-500 group-hover:text-white transition-colors">
-              <AlertTriangle class="w-6 h-6" />
-          </div>
-          <div class="text-center">
-              <span class="block text-base font-black text-slate-900">异常上报</span>
-              <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Alert</span>
-          </div>
-        </button>
+        <div class="grid gap-4 md:grid-cols-2">
+          <button
+            v-if="hasPermission(PERMISSIONS.TRACE.VIEW)"
+            class="rounded-[28px] bg-slate-900 p-6 text-white transition-all hover:-translate-y-1 hover:bg-indigo-700 hover:shadow-xl hover:shadow-indigo-100 active:scale-95"
+            data-test="scan-view-detail"
+            @click="handleViewDetail"
+          >
+            <Search class="mb-4 w-8 h-8" />
+            <span class="block text-lg font-black tracking-tight">查看溯源详情</span>
+            <span class="mt-1 block text-xs font-bold text-slate-300 uppercase tracking-widest">Trace Detail</span>
+          </button>
+          <button
+            type="button"
+            class="rounded-[28px] border border-slate-200 bg-white/80 p-6 text-left text-slate-600 transition-all hover:-translate-y-1 hover:border-indigo-300 hover:text-indigo-600 hover:shadow-xl active:scale-95"
+            data-test="scan-open-task-workbench"
+            @click="router.push('/trace-flow-tasks')"
+          >
+            <Truck class="mb-4 w-8 h-8" />
+            <span class="block text-lg font-black tracking-tight text-slate-900">进入任务工作台</span>
+            <span class="mt-1 block text-xs font-bold text-slate-400 uppercase tracking-widest">Batch Scan Tasks</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -169,14 +180,18 @@ import TraceScanner from '../components/TraceScanner.vue'
 import ScanFlowDialog from '../components/ScanFlowDialog.vue'
 import ScanExceptionDialog from '../components/ScanExceptionDialog.vue'
 import CreateTraceDialog from '../components/CreateTraceDialog.vue'
+import { getTraceAvailableActions } from '@/features/trace/api'
+import { useToast } from '@/shared/composables/useToast'
+import { logger } from '@/shared/utils/logger'
 import { PERMISSIONS } from '@/shared/constants'
 import {
   ArrowLeft, Check, Search, Factory, Package as PackageIn,
-  PackageOpen as PackageOut, Truck, AlertTriangle, QrCode, Camera
+  PackageOpen as PackageOut, Truck, AlertTriangle, QrCode, Camera, Loader2
 } from 'lucide-vue-next'
 
 const router = useRouter()
 const userStore = useUserStore()
+const toast = useToast()
 
 const user = computed(() => userStore.user)
 const permissions = computed(() => user.value?.permissions || [])
@@ -185,18 +200,26 @@ const hasPermission = (perm) => {
   return permissions.value.includes(perm)
 }
 
-const hasAnyPermission = (requiredPermissions = []) => {
-  return requiredPermissions.some((permission) => permissions.value.includes(permission))
-}
+const executableActions = computed(() => actionDecision.value?.availableActions || [])
+const noActionMessage = computed(() =>
+  availableActionsError.value
+    || actionDecision.value?.noActionReason
+    || '当前状态、权限或节点不允许执行扫码动作。'
+)
 
-const canUseTraceAction = (specificPermission) => {
-  return hasAnyPermission([PERMISSIONS.TRACE.SCAN, specificPermission])
+const actionTypeToDialogAction = {
+  INBOUND: 'inbound',
+  OUTBOUND: 'outbound',
+  TRANSFER: 'transfer'
 }
 
 const isCameraActive = ref(false)
 const scannedCode = ref('')
 const currentAction = ref('') 
 const cameraInitError = ref('') // 新增：专门记录初始化错误
+const availableActionsLoading = ref(false)
+const actionDecision = ref(null)
+const availableActionsError = ref('')
 
 const showFlowDialog = ref(false)
 const showExceptionDialog = ref(false)
@@ -212,24 +235,104 @@ const stopCamera = () => {
   isCameraActive.value = false
   scannedCode.value = ''
   cameraInitError.value = ''
+  actionDecision.value = null
+  availableActionsError.value = ''
 }
 
 const resetScanner = () => {
   scannedCode.value = ''
   cameraInitError.value = ''
+  actionDecision.value = null
+  availableActionsError.value = ''
   startCamera()
 }
 
-const onScanSuccess = (code) => {
+const onScanSuccess = async (code) => {
   scannedCode.value = code
   isCameraActive.value = false
   cameraInitError.value = ''
+  await loadAvailableActions(code)
 }
 
 // 修改：增加对子组件传出错误的监听
 const onCameraError = (msg) => {
   cameraInitError.value = msg
   isCameraActive.value = false
+}
+
+async function loadAvailableActions(traceCode) {
+  const normalizedCode = traceCode?.trim()
+  if (!normalizedCode) return
+  availableActionsLoading.value = true
+  availableActionsError.value = ''
+  actionDecision.value = null
+  try {
+    actionDecision.value = await getTraceAvailableActions(normalizedCode)
+  } catch (error) {
+    logger.error('加载扫码可执行动作失败', error)
+    availableActionsError.value = error?.message || '加载扫码可执行动作失败，请稍后重试'
+    toast.error(availableActionsError.value)
+  } finally {
+    availableActionsLoading.value = false
+  }
+}
+
+function isRecommendedAction(action) {
+  return action?.actionType && action.actionType === actionDecision.value?.recommendedAction
+}
+
+function formatActionType(actionType) {
+  const labelMap = {
+    INBOUND: '确认入库',
+    OUTBOUND: '确认出库',
+    TRANSFER: '确认流转',
+    EXCEPTION: '上报异常',
+    CORRECTION: '审计纠错'
+  }
+  return labelMap[actionType] || actionType || '未知动作'
+}
+
+function actionIcon(actionType) {
+  if (actionType === 'INBOUND') return PackageIn
+  if (actionType === 'OUTBOUND') return PackageOut
+  if (actionType === 'TRANSFER') return Truck
+  if (actionType === 'EXCEPTION') return AlertTriangle
+  return Check
+}
+
+function actionIconClass(actionType) {
+  if (actionType === 'INBOUND') return 'bg-emerald-50 text-emerald-600'
+  if (actionType === 'OUTBOUND') return 'bg-cyan-50 text-cyan-600'
+  if (actionType === 'TRANSFER') return 'bg-amber-50 text-amber-600'
+  if (actionType === 'EXCEPTION') return 'bg-rose-50 text-rose-500'
+  return 'bg-indigo-50 text-indigo-600'
+}
+
+function actionCardClass(action) {
+  const recommended = isRecommendedAction(action)
+  if (recommended) return 'premium-card border-2 border-indigo-300 bg-indigo-50/80 shadow-xl shadow-indigo-100'
+  if (action?.actionType === 'EXCEPTION') return 'premium-card border border-rose-100 hover:border-rose-300'
+  return 'premium-card border border-slate-200 hover:border-indigo-200'
+}
+
+async function handleAvailableAction(action) {
+  const actionType = action?.actionType
+  if (!actionType) return
+  if (actionType === 'EXCEPTION') {
+    handleAlertAction()
+    return
+  }
+  if (actionType === 'CORRECTION') {
+    toast.error('审计纠错请进入溯源详情的审计流程处理')
+    return
+  }
+  const dialogAction = actionTypeToDialogAction[actionType]
+  if (!dialogAction) {
+    toast.error(`当前前端暂不支持动作: ${actionType}`)
+    return
+  }
+  currentAction.value = dialogAction
+  showFlowDialog.value = true
 }
 
 const handleViewDetail = () => {
@@ -248,21 +351,6 @@ const onCreateTraceSuccess = (traceCodes) => {
   }
 }
 
-const handleInboundAction = () => {
-  currentAction.value = 'inbound'
-  showFlowDialog.value = true
-}
-
-const handleOutboundAction = () => {
-  currentAction.value = 'outbound'
-  showFlowDialog.value = true
-}
-
-const handleTransferAction = () => {
-  currentAction.value = 'transfer'
-  showFlowDialog.value = true
-}
-
 const handleAlertAction = () => {
   showExceptionDialog.value = true
 }
@@ -270,6 +358,8 @@ const handleAlertAction = () => {
 const onFlowSuccess = () => {
   scannedCode.value = ''
   currentAction.value = ''
+  actionDecision.value = null
+  availableActionsError.value = ''
   setTimeout(() => {
     startCamera()
   }, 1500)

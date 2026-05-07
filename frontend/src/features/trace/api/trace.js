@@ -27,10 +27,22 @@ export function createEvent(traceCode, data) {
 /**
  * Get trace detail and event history.
  * @param {string} traceCode
- * @returns {Promise<{snapshot: Object, history: Array}>}
+ * @param {'effective'|'audit'} view
+ * @returns {Promise<{snapshot: Object, history: Array, view: string}>}
  */
-export function getTraceDetail(traceCode) {
-  return request.get(`/traces/${traceCode}`)
+export function getTraceDetail(traceCode, view = 'effective') {
+  return request.get(`/traces/${traceCode}`, {
+    params: { view }
+  })
+}
+
+/**
+ * Get scan-time executable actions and recommended action for the current user.
+ * @param {string} traceCode
+ * @returns {Promise<{traceCode: string, currentStatus: string, currentStatusLabel?: string, currentNode?: string, recommendedAction?: string, availableActions: Array, noActionReason?: string}>}
+ */
+export function getTraceAvailableActions(traceCode) {
+  return request.get(`/traces/${traceCode}/available-actions`)
 }
 
 /**

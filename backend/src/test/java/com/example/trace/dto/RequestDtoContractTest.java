@@ -49,6 +49,12 @@ class RequestDtoContractTest {
         TraceFlowTaskScanRequest flowTaskScan = mapper.readValue("""
                 {"trace_code":"TRACE-001","event_time":"2026-05-06T13:10:00","idempotency_key":"SCAN-001","remark":"装车出库"}
                 """, TraceFlowTaskScanRequest.class);
+        TraceAggregationBindRequest aggregationBind = mapper.readValue("""
+                {"parent_code":"CARTON-001","child_code":"TRACE-001","relation_type":"carton","remark":"装箱"}
+                """, TraceAggregationBindRequest.class);
+        TraceAggregationReleaseRequest aggregationRelease = mapper.readValue("""
+                {"remark":"拆箱复核"}
+                """, TraceAggregationReleaseRequest.class);
 
         assertThat(produce.getPartCode()).isEqualTo("P-001");
         assertThat(produce.getBatchNo()).isEqualTo("ASSIGN-001");
@@ -93,6 +99,11 @@ class RequestDtoContractTest {
         assertThat(flowTaskScan.getEventTime()).isEqualTo("2026-05-06T13:10:00");
         assertThat(flowTaskScan.getIdempotencyKey()).isEqualTo("SCAN-001");
         assertThat(flowTaskScan.getRemark()).isEqualTo("装车出库");
+        assertThat(aggregationBind.getParentCode()).isEqualTo("CARTON-001");
+        assertThat(aggregationBind.getChildCode()).isEqualTo("TRACE-001");
+        assertThat(aggregationBind.getRelationType()).isEqualTo(com.example.trace.enums.TraceAggregationRelationType.CARTON);
+        assertThat(aggregationBind.getRemark()).isEqualTo("装箱");
+        assertThat(aggregationRelease.getRemark()).isEqualTo("拆箱复核");
     }
 
     @Test
@@ -216,6 +227,11 @@ class RequestDtoContractTest {
         assertThat(jsonAliases(TraceFlowTaskScanRequest.class, "eventTime")).isEmpty();
         assertThat(jsonAliases(TraceFlowTaskScanRequest.class, "idempotencyKey")).isEmpty();
         assertThat(jsonAliases(TraceFlowTaskScanRequest.class, "remark")).isEmpty();
+        assertThat(jsonAliases(TraceAggregationBindRequest.class, "parentCode")).isEmpty();
+        assertThat(jsonAliases(TraceAggregationBindRequest.class, "childCode")).isEmpty();
+        assertThat(jsonAliases(TraceAggregationBindRequest.class, "relationType")).isEmpty();
+        assertThat(jsonAliases(TraceAggregationBindRequest.class, "remark")).isEmpty();
+        assertThat(jsonAliases(TraceAggregationReleaseRequest.class, "remark")).isEmpty();
 
         assertThat(jsonAliases(PartCreateRequest.class, "partCode")).containsExactly("partCode");
         assertThat(jsonAliases(PartCreateRequest.class, "partName")).containsExactly("partName");

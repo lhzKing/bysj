@@ -24,6 +24,8 @@ import {
   completeTraceFlowTask,
   createTrace,
   createTraceFlowTask,
+  getTraceAvailableActions,
+  getTraceDetail,
   getTraceBatch,
   getTraceBatchCodes,
   getTraceFlowTask,
@@ -138,6 +140,8 @@ describe('feature api contracts', () => {
 
     await createPart({ partCode: 'P-001', partName: 'Bearing', partType: 'Mechanical' })
     await createTrace({ partCode: 'P-001', manufacturerNode: 'Factory-A', quantity: 3 })
+    await getTraceDetail('TRACE-001')
+    await getTraceAvailableActions('TRACE-001')
     await getTopology('TRACE-001', '30d')
 
     expect(request.post).toHaveBeenNthCalledWith(1, '/parts', {
@@ -150,6 +154,10 @@ describe('feature api contracts', () => {
       manufacturerNode: 'Factory-A',
       quantity: 3
     })
+    expect(request.get).toHaveBeenNthCalledWith(1, '/traces/TRACE-001', {
+      params: { view: 'effective' }
+    })
+    expect(request.get).toHaveBeenNthCalledWith(2, '/traces/TRACE-001/available-actions')
     expect(request.get).toHaveBeenCalledWith('/dashboard/topology', {
       params: { traceCode: 'TRACE-001', range: '30d' }
     })

@@ -20,6 +20,7 @@ export const TRACE_SCAN = 'trace:scan'
 export const TRACE_INBOUND = 'trace:inbound'
 export const TRACE_OUTBOUND = 'trace:outbound'
 export const TRACE_TRANSFER = 'trace:transfer'
+export const TRACE_AUDIT_VIEW = 'trace:audit:view'
 export const TRACE_SCAN_HUB_ACCESS = [
   TRACE_CREATE,
   TRACE_SCAN,
@@ -51,6 +52,7 @@ export const PERMISSIONS = {
     INBOUND: TRACE_INBOUND,
     OUTBOUND: TRACE_OUTBOUND,
     TRANSFER: TRACE_TRANSFER,
+    AUDIT_VIEW: TRACE_AUDIT_VIEW,
     SCAN_HUB_ACCESS: TRACE_SCAN_HUB_ACCESS
   }
 }
