@@ -5,14 +5,14 @@ import Login from '@/shared/components/Login.vue'
 
 const {
   loginMock,
-  registerMock,
   pushMock,
+  promptMock,
   toastSuccessMock,
   toastErrorMock
 } = vi.hoisted(() => ({
   loginMock: vi.fn(),
-  registerMock: vi.fn(),
   pushMock: vi.fn(),
+  promptMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn()
 }))
@@ -24,10 +24,6 @@ vi.mock('@/core/stores/user', () => ({
   })
 }))
 
-vi.mock('@/core/api/auth', () => ({
-  register: registerMock
-}))
-
 vi.mock('vue-router', () => ({
   useRoute: () => routeMock,
   useRouter: () => ({
@@ -35,6 +31,12 @@ vi.mock('vue-router', () => ({
     currentRoute: {
       value: routeMock
     }
+  })
+}))
+
+vi.mock('@/shared/composables/usePrompt', () => ({
+  usePrompt: () => ({
+    prompt: promptMock
   })
 }))
 
@@ -49,23 +51,29 @@ describe('Login view', () => {
   beforeEach(() => {
     routeMock.query = { redirect: '/parts' }
     loginMock.mockReset()
-    registerMock.mockReset()
     pushMock.mockReset()
+    promptMock.mockReset()
     toastSuccessMock.mockReset()
     toastErrorMock.mockReset()
   })
 
-  it('renders the approved enterprise copy and login controls', () => {
+  it('renders Linear-style login shell with brand, title and audit links', () => {
     const wrapper = renderWithPrime(Login)
     const pageText = wrapper.text()
 
-    expect(pageText).toContain('工业配件供应链溯源系统')
-    expect(pageText).toContain('毕业设计展示')
-    expect(pageText).toContain('演示账号请联系管理员或查看项目说明')
-    expect(pageText).toContain('© 2026 工业配件供应链溯源系统')
+    expect(pageText).toContain('trace.')
+    expect(pageText).toContain('登录到 trace.')
+    expect(pageText).toContain('输入工号与密码访问溯源系统')
+    expect(pageText).toContain('14 天内保持登录')
+    expect(pageText).toContain('外部审计 · 无需登录')
+    expect(pageText).toContain('通过追溯码自助验签')
+    expect(pageText).toContain('下载 RSA 公钥')
+    expect(pageText).toContain('© 2026 工业零配件溯源 · 内部系统')
+
     expect(wrapper.find('[data-test="login-username"] input').exists()).toBe(true)
     expect(wrapper.find('[data-test="login-password"] input').exists()).toBe(true)
     expect(wrapper.find('[data-test="login-submit"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="audit-public-key"]').attributes('href')).toBe('/api/traces/public-key')
   })
 
   it('submits credentials and redirects to the requested route on success', async () => {
@@ -97,26 +105,71 @@ describe('Login view', () => {
     expect(toastErrorMock).toHaveBeenCalledWith('用户名或密码错误')
   })
 
-  it('submits self-service registration via auth register instead of management create-user api', async () => {
-    registerMock.mockResolvedValue({
-      token: 'register-token',
-      username: 'new_user',
-      role: 'USER'
-    })
+  it('maps backend status codes to Linear-style inline error messages', async () => {
+    const error401 = new Error('server')
+    error401.response = { status: 401 }
+    loginMock.mockRejectedValueOnce(error401)
     const wrapper = renderWithPrime(Login)
 
-    const modeToggleButton = wrapper.findAll('button[type="button"]')[1]
-    await modeToggleButton.trigger('click')
-    await wrapper.find('[data-test="login-username"] input').setValue('new_user')
-    await wrapper.find('[data-test="login-password"] input').setValue('abc123')
-    await wrapper.find('[data-test="register-confirm-password"] input').setValue('abc123')
+    await wrapper.find('[data-test="login-username"] input').setValue('admin')
+    await wrapper.find('[data-test="login-password"] input').setValue('wrong')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
+    expect(wrapper.find('[data-test="login-error"]').text()).toContain('用户名或密码错误')
 
-    expect(registerMock).toHaveBeenCalledWith('new_user', 'abc123')
-    expect(loginMock).not.toHaveBeenCalled()
-    expect(pushMock).not.toHaveBeenCalled()
-    expect(toastSuccessMock).toHaveBeenCalledWith('注册成功，请登录')
-    expect(wrapper.find('[data-test="register-confirm-password"]').exists()).toBe(false)
+    const error403 = new Error('server')
+    error403.response = { status: 403 }
+    loginMock.mockRejectedValueOnce(error403)
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(wrapper.find('[data-test="login-error"]').text()).toContain('账号已禁用')
+
+    const error429 = new Error('server')
+    error429.response = { status: 429 }
+    loginMock.mockRejectedValueOnce(error429)
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(wrapper.find('[data-test="login-error"]').text()).toContain('登录尝试过于频繁')
+  })
+
+  it('locks submission for 5 seconds after three consecutive failures', async () => {
+    vi.useFakeTimers()
+    const error401 = new Error('server')
+    error401.response = { status: 401 }
+    loginMock.mockRejectedValue(error401)
+    const wrapper = renderWithPrime(Login)
+
+    await wrapper.find('[data-test="login-username"] input').setValue('admin')
+    await wrapper.find('[data-test="login-password"] input').setValue('wrong')
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await wrapper.find('form').trigger('submit.prevent')
+      await flushPromises()
+    }
+
+    const submit = wrapper.find('[data-test="login-submit"]')
+    expect(submit.attributes('disabled')).toBeDefined()
+    expect(submit.text()).toContain('请等待 5s 后重试')
+
+    vi.advanceTimersByTime(5000)
+    await flushPromises()
+    expect(wrapper.find('[data-test="login-submit"]').text()).toContain('登录')
+    vi.useRealTimers()
+  })
+
+  it('opens the audit verify prompt and routes to guest trace view', async () => {
+    promptMock.mockResolvedValue('TC-260505-A8F3K2')
+    const wrapper = renderWithPrime(Login)
+
+    await wrapper.find('[data-test="audit-verify"]').trigger('click')
+    await flushPromises()
+
+    expect(promptMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: '追溯码自助验签'
+    }))
+    expect(pushMock).toHaveBeenCalledWith({
+      path: '/traces/TC-260505-A8F3K2',
+      query: { audit: 'guest' }
+    })
   })
 })

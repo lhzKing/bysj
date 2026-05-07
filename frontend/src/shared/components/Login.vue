@@ -1,88 +1,88 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Lock, User, Eye, EyeOff } from 'lucide-vue-next'
-import { register as registerUser } from '@/core/api/auth'
+import { Clock, Download } from 'lucide-vue-next'
+import BaseButton from '@/shared/components/ui/BaseButton.vue'
+import BaseInput from '@/shared/components/ui/BaseInput.vue'
 import { useUserStore } from '@/core/stores/user'
+import { usePrompt } from '@/shared/composables/usePrompt'
 import { useToast } from '@/shared/composables/useToast'
 
-const COPY = {
-  badge: '\u6bd5\u4e1a\u8bbe\u8ba1\u5c55\u793a',
-  title: '\u5de5\u4e1a\u914d\u4ef6\u4f9b\u5e94\u94fe\u6eaf\u6e90\u7cfb\u7edf',
-  subtitle: 'Neural Industrial Traceability System. 数字生命周期监控中枢。',
-  help: '\u6f14\u793a\u8d26\u53f7\u8bf7\u8054\u7cfb\u7ba1\u7406\u5458\u6216\u67e5\u770b\u9879\u76ee\u8bf4\u660e',
-  usernameLabel: '\u7528\u6237\u540d',
-  usernamePlaceholder: '\u8bf7\u8f93\u5165\u7528\u6237\u540d',
-  passwordLabel: '\u5bc6\u7801',
-  passwordPlaceholder: '\u8bf7\u8f93\u5165\u5bc6\u7801',
-  rememberMe: '\u8bb0\u4f4f\u767b\u5f55\u72b6\u6001',
-  submitLogin: '\u767b\u5f55\u7cfb\u7edf',
-  submitRegister: '注册新账号',
-  successLogin: '\u767b\u5f55\u6210\u529f',
-  successRegister: '注册成功，请登录',
-  fallbackError: '\u767b\u5f55\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u7528\u6237\u540d\u548c\u5bc6\u7801\u540e\u91cd\u8bd5\u3002',
-  footer: '\u00a9 2026 \u5de5\u4e1a\u914d\u4ef6\u4f9b\u5e94\u94fe\u6eaf\u6e90\u7cfb\u7edf'
-}
+const FAILURE_THRESHOLD = 3
+const LOCKOUT_SECONDS = 5
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 const toast = useToast()
+const { prompt } = usePrompt()
 
-const isRegister = ref(false)
 const username = ref('')
 const password = ref('')
-const confirmPassword = ref('')
 const rememberMe = ref(false)
 const errorMessage = ref('')
 const loading = ref(false)
-const showPassword = ref(false)
+const failureCount = ref(0)
+const lockoutSeconds = ref(0)
+let lockoutTimer = null
 
-const canSubmit = computed(() => {
-  if (isRegister.value) {
-    return username.value.trim().length > 0 && password.value.trim().length > 0 && password.value === confirmPassword.value && !loading.value
+const lockoutActive = computed(() => lockoutSeconds.value > 0)
+
+const canSubmit = computed(() =>
+  username.value.trim().length > 0 &&
+  password.value.length > 0 &&
+  !loading.value &&
+  !lockoutActive.value
+)
+
+const submitLabel = computed(() =>
+  lockoutActive.value ? `请等待 ${lockoutSeconds.value}s 后重试` : '登录'
+)
+
+const stopLockout = () => {
+  if (lockoutTimer) {
+    clearInterval(lockoutTimer)
+    lockoutTimer = null
   }
-  return username.value.trim().length > 0 && password.value.trim().length > 0 && !loading.value
-})
+}
 
-const toggleMode = () => {
-  isRegister.value = !isRegister.value
-  errorMessage.value = ''
-  password.value = ''
-  confirmPassword.value = ''
+const startLockout = () => {
+  stopLockout()
+  lockoutSeconds.value = LOCKOUT_SECONDS
+  lockoutTimer = setInterval(() => {
+    lockoutSeconds.value -= 1
+    if (lockoutSeconds.value <= 0) {
+      stopLockout()
+      failureCount.value = 0
+    }
+  }, 1000)
+}
+
+const mapErrorToMessage = (error) => {
+  if (!error) return '登录失败，请稍后重试'
+  if (error.request && !error.response) {
+    return '网络连接失败，请检查网络后重试'
+  }
+  const status = error.response?.status
+  if (status === 401) return '用户名或密码错误'
+  if (status === 403) return '账号已禁用，请联系管理员'
+  if (status === 429) return '登录尝试过于频繁，请稍后再试'
+  return error.message || '登录失败，请稍后重试'
 }
 
 const handleSubmit = async () => {
   if (!canSubmit.value) return
-
   loading.value = true
   errorMessage.value = ''
 
-  if (isRegister.value) {
-    if (password.value.length < 6 || !/[a-zA-Z]/.test(password.value) || !/\d/.test(password.value)) {
-      errorMessage.value = '密码必须包含字母和数字，长度6-100个字符'
-      loading.value = false
-      return
-    }
-    try {
-      await registerUser(username.value, password.value)
-      toast.success(COPY.successRegister)
-      isRegister.value = false
-      password.value = ''
-      confirmPassword.value = ''
-    } catch (error) {
-      errorMessage.value = error?.message || '注册失败，用户名可能已存在'
-      toast.error(errorMessage.value)
-    } finally {
-      loading.value = false
-    }
-    return
-  }
-
   try {
-    await userStore.login(username.value, password.value, rememberMe.value)
+    await userStore.login(username.value.trim(), password.value, rememberMe.value)
   } catch (error) {
-    errorMessage.value = error?.message || COPY.fallbackError
+    errorMessage.value = mapErrorToMessage(error)
+    failureCount.value += 1
+    if (failureCount.value >= FAILURE_THRESHOLD) {
+      startLockout()
+    }
     if (!error?.response && !error?.request && !error?.toastShown) {
       toast.error(errorMessage.value)
     }
@@ -90,134 +90,477 @@ const handleSubmit = async () => {
     return
   }
 
+  failureCount.value = 0
   try {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
     await router.push(redirect)
-    toast.success(COPY.successLogin)
+    toast.success('登录成功')
   } finally {
     loading.value = false
   }
 }
+
+const openAuditVerify = async () => {
+  const code = await prompt({
+    title: '追溯码自助验签',
+    message: '输入追溯码即可在无需登录的情况下查看链上签名与节点完整性。',
+    confirmText: '验签',
+    cancelText: '取消',
+    placeholder: 'TC-260505-A8F3K2'
+  })
+  if (!code) return
+  await router.push({ path: `/traces/${code.trim()}`, query: { audit: 'guest' } })
+}
+
+onUnmounted(() => {
+  stopLockout()
+})
 </script>
 
 <template>
-  <div class="relative min-h-screen flex items-center justify-center overflow-hidden bg-[#fdfdff] p-4 md:p-8">
-    <div class="mesh-bg"></div>
-    <div class="grid-accent"></div>
-    
-    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-[600px] bg-indigo-300 rounded-full blur-[120px] opacity-20 pointer-events-none"></div>
+  <div class="login-page">
+    <header class="login-header">
+      <a class="login-brand">
+        <span class="login-brand__logo" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round">
+            <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+          </svg>
+        </span>
+        <span class="login-brand__text">trace.</span>
+      </a>
+      <a class="login-link login-link--muted" href="#help" aria-label="需要帮助？">需要帮助？</a>
+    </header>
 
-    <div class="premium-card relative z-10 w-full max-w-lg rounded-[40px] md:rounded-[56px] p-8 md:p-12 shadow-2xl flex flex-col gap-8 border-t border-white overflow-hidden group transition-all duration-500">
-      
-      <div class="absolute -right-20 -top-20 size-60 bg-emerald-100 rounded-full blur-[60px] opacity-30 group-hover:scale-150 transition-transform duration-1000 pointer-events-none"></div>
-
-      <header class="space-y-4 relative z-10">
-        <div class="inline-flex items-center px-4 py-1.5 rounded-full bg-indigo-50 border border-indigo-100/50 text-indigo-600 text-xs font-black uppercase tracking-widest mb-2 shadow-sm">
-          {{ COPY.badge }}
-        </div>
-        <h1 class="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight">
-          TRACE<span class="text-indigo-600">.CORE</span>
-        </h1>
-        <p class="text-sm font-bold text-slate-400">{{ COPY.subtitle }}</p>
-      </header>
-
-      <form class="space-y-6 relative z-10" @submit.prevent="handleSubmit">
-        <div class="space-y-5">
-          <div data-test="login-username" class="group/input">
-            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1 group-focus-within/input:text-indigo-600 transition-colors">{{ COPY.usernameLabel }}</label>
-            <div class="relative">
-              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <User class="h-5 w-5 text-slate-400 group-focus-within/input:text-indigo-600 transition-colors" />
-              </div>
-              <input
-                v-model="username"
-                id="login-username"
-                type="text"
-                :placeholder="COPY.usernamePlaceholder"
-                :disabled="loading"
-                class="block w-full pl-11 pr-4 py-4 border-0 bg-slate-50/50 text-slate-900 rounded-2xl ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm font-bold transition-shadow shadow-inner placeholder:text-slate-400/70"
-              />
-            </div>
-          </div>
-
-          <div data-test="login-password" class="group/input">
-            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1 group-focus-within/input:text-indigo-600 transition-colors">{{ COPY.passwordLabel }}</label>
-            <div class="relative">
-              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Lock class="h-5 w-5 text-slate-400 group-focus-within/input:text-indigo-600 transition-colors" />
-              </div>
-              <input
-                v-model="password"
-                id="login-password"
-                :type="showPassword ? 'text' : 'password'"
-                :placeholder="COPY.passwordPlaceholder"
-                :disabled="loading"
-                class="block w-full pl-11 pr-12 py-4 border-0 bg-slate-50/50 text-slate-900 rounded-2xl ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm font-bold transition-shadow shadow-inner placeholder:text-slate-400/70"
-              />
-              <button type="button" @click="showPassword = !showPassword" class="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-indigo-600 transition-colors focus:outline-none">
-                <EyeOff v-if="showPassword" class="h-5 w-5" />
-                <Eye v-else class="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-
-          <div v-if="isRegister" data-test="register-confirm-password" class="group/input animate-[fadeIn_0.3s_ease-out]">
-            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1 group-focus-within/input:text-indigo-600 transition-colors">确认密码</label>
-            <div class="relative">
-              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Lock class="h-5 w-5 text-slate-400 group-focus-within/input:text-indigo-600 transition-colors" />
-              </div>
-              <input
-                v-model="confirmPassword"
-                type="password"
-                placeholder="请再次输入密码"
-                :disabled="loading"
-                class="block w-full pl-11 pr-4 py-4 border-0 bg-slate-50/50 text-slate-900 rounded-2xl ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm font-bold transition-shadow shadow-inner placeholder:text-slate-400/70"
-              />
-            </div>
-          </div>
+    <main class="login-main">
+      <div class="login-shell">
+        <div class="login-headline">
+          <h1 class="login-title">登录到 trace.</h1>
+          <p class="login-subtitle">输入工号与密码访问溯源系统</p>
         </div>
 
-        <div class="flex items-center justify-between pt-2">
-          <label v-if="!isRegister" class="flex items-center gap-3 cursor-pointer group/check">
-            <div class="relative flex items-center justify-center">
-              <input v-model="rememberMe" data-test="remember-me" type="checkbox" :disabled="loading" class="peer sr-only" />
-              <div class="w-5 h-5 border-2 border-slate-300 rounded bg-white peer-checked:bg-indigo-600 peer-checked:border-indigo-600 transition-all shadow-sm"></div>
-              <svg class="absolute w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+        <form class="login-card" novalidate @submit.prevent="handleSubmit">
+          <div data-test="login-username">
+            <BaseInput
+              v-model="username"
+              input-id="login-username"
+              label="工号 / 用户名"
+              type="text"
+              placeholder="superadmin"
+              autocomplete="username"
+              autofocus
+              :disabled="loading || lockoutActive"
+              name="username"
+            />
+          </div>
+
+          <div data-test="login-password">
+            <BaseInput
+              v-model="password"
+              input-id="login-password"
+              label="密码"
+              type="password"
+              placeholder="••••••••"
+              autocomplete="current-password"
+              :disabled="loading || lockoutActive"
+              name="password"
+            />
+          </div>
+
+          <label class="login-remember">
+            <input
+              v-model="rememberMe"
+              type="checkbox"
+              data-test="remember-me"
+              :disabled="loading || lockoutActive"
+              class="login-remember__input"
+            />
+            <span class="login-remember__box" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 13l4 4L19 7" />
               </svg>
-            </div>
-            <span class="text-sm font-bold text-slate-500 group-hover/check:text-slate-700 transition-colors">{{ COPY.rememberMe }}</span>
+            </span>
+            <span>14 天内保持登录</span>
           </label>
-          <div v-else></div>
-          
-          <button type="button" @click="toggleMode" class="text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
-            {{ isRegister ? '已有账号？去登录' : '没有账号？去注册' }}
-          </button>
-        </div>
 
-        <div v-if="errorMessage" class="p-4 bg-rose-50 border border-rose-100 rounded-2xl animate-[fadeIn_0.3s_ease-out]" data-test="login-error">
-          <p class="text-sm font-bold text-rose-600 flex items-center gap-2">
-            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            {{ errorMessage }}
-          </p>
-        </div>
+          <Transition name="login-error-fade">
+            <div
+              v-if="errorMessage"
+              class="login-error"
+              data-test="login-error"
+              role="alert"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v4M12 16h.01" />
+              </svg>
+              <span>{{ errorMessage }}</span>
+            </div>
+          </Transition>
 
-        <button
-          type="submit"
-          :disabled="!canSubmit"
-          data-test="login-submit"
-          class="w-full py-4 mt-4 bg-indigo-600 text-white rounded-2xl font-black text-lg shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 hover:shadow-xl hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
-        >
-          <span v-if="loading" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-          {{ loading ? '连接网络中...' : (isRegister ? COPY.submitRegister : COPY.submitLogin) }}
-        </button>
-      </form>
+          <BaseButton
+            type="submit"
+            variant="primary"
+            size="md"
+            block
+            :loading="loading"
+            :disabled="!canSubmit"
+            data-test="login-submit"
+            class="login-submit"
+          >
+            {{ submitLabel }}
+          </BaseButton>
+        </form>
 
-      <footer class="relative z-10 pt-6 border-t border-slate-200/50 text-center">
-        <p class="text-xs font-bold text-slate-400 mb-2">{{ COPY.help }}</p>
-        <p class="text-[10px] font-black text-slate-300 uppercase tracking-widest">{{ COPY.footer }}</p>
-      </footer>
-    </div>
+        <p class="login-footnote">
+          没有账号？<span class="login-link login-link--accent">联系管理员注册</span>
+        </p>
+
+        <section class="login-audit" aria-label="外部审计入口">
+          <div class="login-audit__eyebrow">外部审计 · 无需登录</div>
+          <div class="login-audit__actions">
+            <button
+              type="button"
+              class="login-link login-link--muted login-audit__action"
+              data-test="audit-verify"
+              @click="openAuditVerify"
+            >
+              <Clock :size="13" :stroke-width="2" />
+              通过追溯码自助验签
+            </button>
+            <span class="login-audit__divider" aria-hidden="true">·</span>
+            <a
+              class="login-link login-link--muted login-audit__action"
+              href="/api/traces/public-key"
+              target="_blank"
+              rel="noopener"
+              data-test="audit-public-key"
+            >
+              <Download :size="13" :stroke-width="2" />
+              下载 RSA 公钥
+            </a>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="login-footer">
+      <span>© 2026 工业零配件溯源 · 内部系统</span>
+      <span class="login-footer__version mono">v2.4.1</span>
+    </footer>
   </div>
 </template>
+
+<style scoped>
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+  color: var(--ink-muted);
+  position: relative;
+  overflow-x: hidden;
+}
+
+.login-page::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(60% 50% at 50% 0%, rgba(94, 106, 210, 0.04), transparent 70%);
+}
+
+.login-header {
+  padding: 24px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  z-index: 1;
+}
+
+.login-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.6px;
+  text-decoration: none;
+}
+
+.login-brand__logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--primary);
+  display: grid;
+  place-items: center;
+}
+
+.login-brand__text {
+  line-height: 1;
+}
+
+.login-main {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  margin-top: -48px;
+  position: relative;
+  z-index: 1;
+}
+
+.login-shell {
+  width: 100%;
+  max-width: 400px;
+}
+
+.login-headline {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.login-title {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.6px;
+  line-height: 1.2;
+  margin: 0 0 8px;
+}
+
+.login-subtitle {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-subtle);
+  margin: 0;
+}
+
+.login-card {
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-subtle);
+  cursor: pointer;
+  user-select: none;
+  padding-top: 4px;
+}
+
+.login-remember__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.login-remember__box {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface-1);
+  display: grid;
+  place-items: center;
+  color: transparent;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.login-remember__box svg {
+  width: 10px;
+  height: 10px;
+}
+
+.login-remember__input:checked + .login-remember__box {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.login-remember__input:focus-visible + .login-remember__box {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.15);
+}
+
+.login-remember:hover .login-remember__box {
+  border-color: var(--ink-subtle);
+}
+
+.login-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--error-soft);
+  border: 1px solid #f8c8ca;
+  color: var(--error);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.login-error svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.login-submit {
+  margin-top: 4px;
+}
+
+.login-footnote {
+  margin: 24px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-subtle);
+}
+
+.login-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  transition: color 0.12s;
+}
+
+.login-link--muted {
+  color: var(--ink-subtle);
+}
+
+.login-link--muted:hover,
+.login-link--muted:focus-visible {
+  color: var(--ink);
+  outline: none;
+}
+
+.login-link--accent {
+  color: var(--primary);
+}
+
+.login-link--accent:hover {
+  color: var(--primary-hover);
+}
+
+.login-audit {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--hairline);
+}
+
+.login-audit__eyebrow {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--ink-subtle);
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.login-audit__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.login-audit__divider {
+  color: var(--ink-tertiary);
+}
+
+.login-audit__action {
+  white-space: nowrap;
+}
+
+.login-footer {
+  padding: 24px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ink-subtle);
+  position: relative;
+  z-index: 1;
+}
+
+.login-footer__version {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.login-error-fade-enter-active,
+.login-error-fade-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.login-error-fade-enter-from,
+.login-error-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-2px);
+}
+
+@media (max-width: 767.98px) {
+  .login-header,
+  .login-footer {
+    padding: 16px;
+  }
+
+  .login-main {
+    padding: 0 16px;
+    margin-top: -16px;
+  }
+
+  .login-card {
+    padding: 24px;
+  }
+
+  .login-shell {
+    max-width: none;
+  }
+
+  .login-audit {
+    margin-top: 32px;
+  }
+
+  .login-audit__actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .login-audit__divider {
+    display: none;
+  }
+
+  .login-footer {
+    flex-direction: column;
+    gap: 4px;
+    text-align: center;
+  }
+}
+</style>
