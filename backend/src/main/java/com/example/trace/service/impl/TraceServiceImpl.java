@@ -7,12 +7,16 @@ import com.example.trace.dto.ProduceAssignRequest;
 import com.example.trace.dto.ProduceAssignResponse;
 import com.example.trace.dto.ScanTraceRequest;
 import com.example.trace.dto.TraceAvailableActionsResponse;
+import com.example.trace.dto.TraceAggregationHistoryResponse;
 import com.example.trace.dto.TraceCodeActivateRequest;
 import com.example.trace.dto.TraceCodeActivateResponse;
 import com.example.trace.dto.TraceCodeLabelActionRequest;
 import com.example.trace.dto.TraceCodeLabelActionResponse;
 import com.example.trace.dto.TraceDetailResponse;
+import com.example.trace.entity.TraceAggregation;
 import com.example.trace.entity.TraceSnapshot;
+import com.example.trace.enums.TraceAggregationRelationType;
+import com.example.trace.mapper.TraceAggregationMapper;
 import com.example.trace.mapper.TraceLifecycleLogMapper;
 import com.example.trace.mapper.TraceSnapshotMapper;
 import com.example.trace.security.PermissionService;
@@ -24,6 +28,11 @@ import com.example.trace.service.impl.support.TraceCodeAssignmentService;
 import com.example.trace.service.impl.support.TraceCodeLabelService;
 import com.example.trace.service.impl.support.TraceScanRetryExecutor;
 import org.springframework.stereotype.Service;
+
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 public class TraceServiceImpl implements TraceService {
@@ -41,6 +50,7 @@ public class TraceServiceImpl implements TraceService {
     private final TraceCodeLabelService traceCodeLabelService;
     private final TraceCodeActivationService traceCodeActivationService;
     private final PermissionService permissionService;
+    private final TraceAggregationMapper traceAggregationMapper;
 
     public TraceServiceImpl(
             TraceCodeAssignmentService traceCodeAssignmentService,
@@ -51,7 +61,8 @@ public class TraceServiceImpl implements TraceService {
             TraceAvailableActionService traceAvailableActionService,
             TraceCodeLabelService traceCodeLabelService,
             TraceCodeActivationService traceCodeActivationService,
-            PermissionService permissionService
+            PermissionService permissionService,
+            TraceAggregationMapper traceAggregationMapper
     ) {
         this.traceCodeAssignmentService = traceCodeAssignmentService;
         this.traceScanRetryExecutor = traceScanRetryExecutor;
@@ -62,6 +73,7 @@ public class TraceServiceImpl implements TraceService {
         this.traceCodeLabelService = traceCodeLabelService;
         this.traceCodeActivationService = traceCodeActivationService;
         this.permissionService = permissionService;
+        this.traceAggregationMapper = traceAggregationMapper;
     }
 
     @Override
@@ -120,9 +132,21 @@ public class TraceServiceImpl implements TraceService {
         String normalizedView = normalizeDetailView(view);
         if (VIEW_AUDIT.equals(normalizedView)) {
             ensureAuditViewPermission(roleId);
-            return new TraceDetailResponse(snapshot, traceLifecycleLogMapper.selectFullChain(traceCode), VIEW_AUDIT);
+            List<TraceAggregationHistoryResponse> aggregationHistory = buildAggregationHistory(snapshot.getTraceCode());
+            return new TraceDetailResponse(
+                    snapshot,
+                    traceLifecycleLogMapper.selectFullChain(traceCode),
+                    VIEW_AUDIT,
+                    aggregationHistory
+            );
         }
-        return new TraceDetailResponse(snapshot, traceLifecycleLogMapper.selectEffectiveHistory(traceCode), VIEW_EFFECTIVE);
+        List<TraceAggregationHistoryResponse> aggregationHistory = buildAggregationHistory(snapshot.getTraceCode());
+        return new TraceDetailResponse(
+                snapshot,
+                traceLifecycleLogMapper.selectEffectiveHistory(traceCode),
+                VIEW_EFFECTIVE,
+                aggregationHistory
+        );
     }
 
     @Override
@@ -170,5 +194,73 @@ public class TraceServiceImpl implements TraceService {
         if (roleId == null || !permissionService.hasPermission(roleId, TRACE_AUDIT_VIEW_PERMISSION)) {
             throw new BizException(BizCode.FORBIDDEN, "无权限查看审计完整视图: " + TRACE_AUDIT_VIEW_PERMISSION);
         }
+    }
+
+    private List<TraceAggregationHistoryResponse> buildAggregationHistory(String traceCode) {
+        Map<String, TraceAggregationHistoryResponse> responsesByKey = new LinkedHashMap<>();
+        List<TraceAggregation> directRelations = safeRelations(traceAggregationMapper.selectHistoryByChild(traceCode));
+        directRelations.forEach(relation -> {
+            TraceAggregationHistoryResponse response = toAggregationHistoryResponse(relation, true, 1, null);
+            responsesByKey.put(historyKey(response), response);
+        });
+
+        directRelations.stream()
+                .map(TraceAggregation::getParentCode)
+                .filter(parentCode -> parentCode != null && !parentCode.isBlank())
+                .distinct()
+                .flatMap(parentCode -> safeRelations(traceAggregationMapper.selectHistoryByChild(parentCode)).stream()
+                        .map(relation -> toAggregationHistoryResponse(relation, false, 2, parentCode)))
+                .forEach(response -> responsesByKey.putIfAbsent(historyKey(response), response));
+
+        return responsesByKey.values().stream()
+                .sorted(Comparator
+                        .comparing(TraceAggregationHistoryResponse::getActive, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(TraceAggregationHistoryResponse::getBindTime, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(TraceAggregationHistoryResponse::getRelationId, Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
+    }
+
+    private List<TraceAggregation> safeRelations(List<TraceAggregation> relations) {
+        return relations == null ? List.of() : relations;
+    }
+
+    private TraceAggregationHistoryResponse toAggregationHistoryResponse(
+            TraceAggregation relation,
+            boolean direct,
+            int level,
+            String viaCode
+    ) {
+        TraceAggregationRelationType relationType = parseRelationType(relation);
+        return TraceAggregationHistoryResponse.builder()
+                .relationId(relation.getId())
+                .parentCode(relation.getParentCode())
+                .childCode(relation.getChildCode())
+                .relationType(relationType)
+                .relationTypeLabel(relationType.getLabel())
+                .active(relation.getActive())
+                .direct(direct)
+                .level(level)
+                .viaCode(viaCode)
+                .bindTime(relation.getBindTime())
+                .releaseTime(relation.getReleaseTime())
+                .remark(relation.getRemark())
+                .build();
+    }
+
+    private TraceAggregationRelationType parseRelationType(TraceAggregation relation) {
+        try {
+            return TraceAggregationRelationType.fromString(relation.getRelationType());
+        } catch (IllegalArgumentException e) {
+            throw new BizException(BizCode.BAD_REQUEST,
+                    "聚合关系类型非法: relationId=" + relation.getId()
+                            + ", relationType=" + relation.getRelationType());
+        }
+    }
+
+    private String historyKey(TraceAggregationHistoryResponse response) {
+        return (response.getRelationId() == null ? "null" : response.getRelationId())
+                + ":" + response.getLevel()
+                + ":" + response.getParentCode()
+                + ":" + response.getChildCode();
     }
 }

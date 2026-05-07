@@ -28,7 +28,7 @@ export function createEvent(traceCode, data) {
  * Get trace detail and event history.
  * @param {string} traceCode
  * @param {'effective'|'audit'} view
- * @returns {Promise<{snapshot: Object, history: Array, view: string}>}
+ * @returns {Promise<{snapshot: Object, history: Array, view: string, aggregationHistory: Array}>}
  */
 export function getTraceDetail(traceCode, view = 'effective') {
   return request.get(`/traces/${traceCode}`, {
@@ -176,4 +176,3 @@ export function completeTraceFlowTask(taskId, data = {}) {
 export function cancelTraceFlowTask(taskId) {
   return request.post(`/trace-flow-tasks/${taskId}/cancel`)
 }
-

@@ -87,7 +87,36 @@ const traceDetailResponse = (code, view = 'effective') => ({
           operator: 'auditor',
           remark: '修正错误节点'
         }
-      ]
+      ],
+  aggregationHistory: [
+    {
+      relationId: 11,
+      parentCode: 'CARTON-001',
+      childCode: code,
+      relationType: 'CARTON',
+      relationTypeLabel: '箱码',
+      active: true,
+      direct: true,
+      level: 1,
+      bindTime: '2026-05-07 10:00:00',
+      releaseTime: null,
+      remark: '生产装箱'
+    },
+    {
+      relationId: 12,
+      parentCode: 'PALLET-001',
+      childCode: 'CARTON-001',
+      relationType: 'PALLET',
+      relationTypeLabel: '托盘码',
+      active: true,
+      direct: false,
+      level: 2,
+      viaCode: 'CARTON-001',
+      bindTime: '2026-05-07 10:10:00',
+      releaseTime: null,
+      remark: '整托发运'
+    }
+  ]
 })
 
 const mountTraceDetail = () => mount(TraceDetail, {
@@ -144,6 +173,11 @@ describe('TraceDetail route reuse and detail views', () => {
     expect(wrapper.text()).toContain('TRACE-001')
     expect(wrapper.text()).toContain('业务有效视图')
     expect(wrapper.find('[data-testid="trace-detail-audit-tab"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="trace-aggregation-history"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('箱码 / 托盘码聚合历史')
+    expect(wrapper.text()).toContain('CARTON-001')
+    expect(wrapper.text()).toContain('PALLET-001')
+    expect(wrapper.text()).toContain('经 CARTON-001 关联')
 
     routeMock.params.code = 'TRACE-002'
     await nextTick()

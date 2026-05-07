@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { CheckCircle2, MapPin, Navigation, XCircle, User } from 'lucide-vue-next'
+import { Boxes, CheckCircle2, MapPin, Navigation, PackageOpen, XCircle, User } from 'lucide-vue-next'
 import dayjs from 'dayjs'
 
 const props = defineProps({
@@ -23,6 +23,10 @@ const actionMap = {
   REPRINT_CODE: { label: '重打标签', color: 'bg-amber-50 text-amber-600 border-amber-200', icon: CheckCircle2 },
   VOID_CODE: { label: '作废标签', color: 'bg-rose-50 text-rose-600 border-rose-200', icon: XCircle },
   ACTIVATE_CODE: { label: '扫码激活', color: 'bg-emerald-50 text-emerald-600 border-emerald-200', icon: CheckCircle2 },
+  PACK: { label: '装箱', color: 'bg-cyan-50 text-cyan-600 border-cyan-200', icon: Boxes },
+  UNPACK: { label: '拆箱', color: 'bg-amber-50 text-amber-600 border-amber-200', icon: PackageOpen },
+  PALLETIZE: { label: '托盘绑定', color: 'bg-cyan-50 text-cyan-600 border-cyan-200', icon: Boxes },
+  UNPALLETIZE: { label: '托盘解绑', color: 'bg-amber-50 text-amber-600 border-amber-200', icon: PackageOpen },
   EXCEPTION: { label: '异常', color: 'bg-rose-50 text-rose-600 border-rose-200', icon: XCircle },
   CORRECTION: { label: '修正', color: 'bg-amber-50 text-amber-600 border-amber-200', icon: User }
 }

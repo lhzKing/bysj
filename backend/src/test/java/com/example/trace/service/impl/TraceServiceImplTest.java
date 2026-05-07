@@ -12,9 +12,11 @@ import com.example.trace.dto.TraceCodeLabelActionResponse;
 import com.example.trace.dto.TraceDetailResponse;
 import com.example.trace.common.BizCode;
 import com.example.trace.common.BizException;
+import com.example.trace.entity.TraceAggregation;
 import com.example.trace.enums.ActionType;
 import com.example.trace.entity.TraceLifecycleLog;
 import com.example.trace.entity.TraceSnapshot;
+import com.example.trace.mapper.TraceAggregationMapper;
 import com.example.trace.mapper.TraceLifecycleLogMapper;
 import com.example.trace.mapper.TraceSnapshotMapper;
 import com.example.trace.security.PermissionService;
@@ -30,6 +32,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,6 +62,8 @@ class TraceServiceImplTest {
     private TraceCodeActivationService traceCodeActivationService;
     @Mock
     private PermissionService permissionService;
+    @Mock
+    private TraceAggregationMapper traceAggregationMapper;
 
     private TraceServiceImpl service;
 
@@ -73,7 +78,8 @@ class TraceServiceImplTest {
                 traceAvailableActionService,
                 traceCodeLabelService,
                 traceCodeActivationService,
-                permissionService
+                permissionService,
+                traceAggregationMapper
         );
     }
 
@@ -157,7 +163,35 @@ class TraceServiceImplTest {
         assertThat(response.getSnapshot()).isSameAs(snapshot);
         assertThat(response.getHistory()).containsExactly(log);
         assertThat(response.getView()).isEqualTo("effective");
+        assertThat(response.getAggregationHistory()).isEmpty();
         verify(traceLifecycleLogMapper, never()).selectFullChain("trace-1");
+    }
+
+    @Test
+    void detail_shouldIncludeDirectAndIndirectAggregationHistory() {
+        TraceSnapshot snapshot = new TraceSnapshot();
+        snapshot.setTraceCode("TRACE-001");
+        TraceLifecycleLog log = new TraceLifecycleLog();
+        TraceAggregation carton = aggregation(11L, "CARTON-001", "TRACE-001", "CARTON", true);
+        TraceAggregation pallet = aggregation(12L, "PALLET-001", "CARTON-001", "PALLET", true);
+        TraceAggregation oldCarton = aggregation(10L, "CARTON-OLD", "TRACE-001", "CARTON", false);
+        when(traceSnapshotMapper.selectById("TRACE-001")).thenReturn(snapshot);
+        when(traceLifecycleLogMapper.selectEffectiveHistory("TRACE-001")).thenReturn(List.of(log));
+        when(traceAggregationMapper.selectHistoryByChild("TRACE-001")).thenReturn(List.of(carton, oldCarton));
+        when(traceAggregationMapper.selectHistoryByChild("CARTON-001")).thenReturn(List.of(pallet));
+        when(traceAggregationMapper.selectHistoryByChild("CARTON-OLD")).thenReturn(List.of());
+
+        TraceDetailResponse response = service.detail("TRACE-001", "effective", 6L);
+
+        assertThat(response.getAggregationHistory()).hasSize(3);
+        assertThat(response.getAggregationHistory().get(0).getParentCode()).isEqualTo("PALLET-001");
+        assertThat(response.getAggregationHistory().get(0).getDirect()).isFalse();
+        assertThat(response.getAggregationHistory().get(0).getLevel()).isEqualTo(2);
+        assertThat(response.getAggregationHistory().get(0).getViaCode()).isEqualTo("CARTON-001");
+        assertThat(response.getAggregationHistory().get(1).getParentCode()).isEqualTo("CARTON-001");
+        assertThat(response.getAggregationHistory().get(1).getDirect()).isTrue();
+        assertThat(response.getAggregationHistory().get(2).getParentCode()).isEqualTo("CARTON-OLD");
+        assertThat(response.getAggregationHistory().get(2).getActive()).isFalse();
     }
 
     @Test
@@ -234,5 +268,25 @@ class TraceServiceImplTest {
         TraceAvailableActionsResponse response = service.availableActions("trace-1", 4L);
 
         assertThat(response).isSameAs(expected);
+    }
+
+    private static TraceAggregation aggregation(
+            Long id,
+            String parentCode,
+            String childCode,
+            String relationType,
+            boolean active
+    ) {
+        TraceAggregation aggregation = new TraceAggregation();
+        aggregation.setId(id);
+        aggregation.setParentCode(parentCode);
+        aggregation.setChildCode(childCode);
+        aggregation.setRelationType(relationType);
+        aggregation.setActive(active);
+        aggregation.setBindTime(LocalDateTime.of(2026, 5, 7, 10, id.intValue() % 60));
+        if (!active) {
+            aggregation.setReleaseTime(LocalDateTime.of(2026, 5, 7, 11, id.intValue() % 60));
+        }
+        return aggregation;
     }
 }

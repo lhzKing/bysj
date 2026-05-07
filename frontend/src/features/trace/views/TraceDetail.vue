@@ -9,7 +9,8 @@ import TraceVerificationPanel from '@/features/trace/components/TraceVerificatio
 import { getTraceDetail, verifyTraceChain } from '@/features/trace/api'
 import { useUserStore } from '@/core/stores/user'
 import { PERMISSIONS } from '@/shared/constants'
-import { ArrowLeft, Loader2, Package as PackageIn, PackageOpen as PackageOut, Navigation } from 'lucide-vue-next'
+import { ArrowLeft, Boxes, Loader2, Package as PackageIn, PackageOpen as PackageOut, Navigation } from 'lucide-vue-next'
+import dayjs from 'dayjs'
 
 const route = useRoute()
 const router = useRouter()
@@ -20,6 +21,7 @@ const loading = ref(true)
 const error = ref('')
 const snapshot = ref(null)
 const history = ref([])
+const aggregationHistory = ref([])
 const detailView = ref('effective')
 const loadedView = ref('effective')
 const viewError = ref('')
@@ -32,6 +34,7 @@ const isMenuOpen = ref(false)
 
 const canViewAudit = computed(() => userStore.hasPermission(PERMISSIONS.TRACE.AUDIT_VIEW))
 const historyCount = computed(() => history.value.length)
+const aggregationHistoryCount = computed(() => aggregationHistory.value.length)
 const correctedLogIds = computed(() => new Set(
   history.value
     .map((log) => log.correctionOf)
@@ -67,6 +70,7 @@ const applyDetailData = (data, requestedView) => {
   snapshot.value = data.snapshot
   history.value = (data.history || [])
     .sort((a, b) => new Date(b.eventTime) - new Date(a.eventTime))
+  aggregationHistory.value = data.aggregationHistory || []
   loadedView.value = normalizeDetailView(data.view || requestedView)
   detailView.value = loadedView.value
 }
@@ -148,6 +152,17 @@ const handleActionSelect = (actionType) => {
   showScanDialog.value = true
 }
 
+const formatAggregationTime = (value) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '至今')
+
+const aggregationStatusClass = (item) => item?.active
+  ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+  : 'bg-slate-100 text-slate-500 border-slate-200'
+
+const aggregationScopeLabel = (item) => {
+  if (!item) return '-'
+  return item.direct ? '直接绑定' : `经 ${item.viaCode || '上级包装'} 关联`
+}
+
 const menuItems = ref([
   {
     label: '入库登记',
@@ -175,6 +190,7 @@ watch(
       loading.value = false
       snapshot.value = null
       history.value = []
+      aggregationHistory.value = []
       detailView.value = 'effective'
       loadedView.value = 'effective'
       viewError.value = ''
@@ -261,6 +277,64 @@ watch(
       <div class="flex flex-col gap-8">
         <!-- 摘要区 -->
         <TraceSummary :snapshot="snapshot" />
+
+        <!-- 聚合历史 -->
+        <div class="premium-card rounded-[40px] p-6 md:p-10" data-testid="trace-aggregation-history">
+          <div class="mb-8 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Aggregation History</p>
+              <h3 class="mt-2 text-2xl font-black tracking-tight text-slate-900">箱码 / 托盘码聚合历史</h3>
+              <p class="mt-2 text-sm font-bold text-slate-500">
+                当前单品共返回 {{ aggregationHistoryCount }} 条聚合关系，包含直接装箱和经箱码关联托盘的历史。
+              </p>
+            </div>
+            <span class="inline-flex w-fit items-center gap-2 rounded-2xl bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-cyan-600">
+              <Boxes class="h-4 w-4" /> 一物一码 + 批量流转
+            </span>
+          </div>
+
+          <div v-if="aggregationHistory.length" class="grid gap-4">
+            <article
+              v-for="item in aggregationHistory"
+              :key="`${item.relationId}-${item.level}-${item.parentCode}`"
+              class="rounded-[28px] border border-slate-100 bg-slate-50/70 p-5"
+              data-testid="trace-aggregation-history-item"
+            >
+              <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div class="min-w-0">
+                  <div class="mb-3 flex flex-wrap items-center gap-2">
+                    <span class="rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest" :class="aggregationStatusClass(item)">
+                      {{ item.active ? '当前有效' : '历史解除' }}
+                    </span>
+                    <span class="rounded-full bg-white px-3 py-1 text-[10px] font-black text-slate-500 ring-1 ring-slate-100">
+                      {{ item.relationTypeLabel || item.relationType }}
+                    </span>
+                    <span class="rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black text-indigo-600">
+                      {{ aggregationScopeLabel(item) }}
+                    </span>
+                  </div>
+                  <p class="break-all font-mono text-base font-black text-slate-900">
+                    {{ item.parentCode }}
+                  </p>
+                  <p class="mt-2 text-xs font-bold text-slate-500">
+                    子码：<span class="font-mono text-slate-700">{{ item.childCode }}</span>
+                  </p>
+                  <p v-if="item.remark" class="mt-3 text-sm font-bold text-slate-600">
+                    {{ item.remark }}
+                  </p>
+                </div>
+                <div class="rounded-2xl bg-white px-4 py-3 text-xs font-bold text-slate-500 shadow-sm md:text-right">
+                  <p>绑定：{{ formatAggregationTime(item.bindTime) }}</p>
+                  <p class="mt-1">解除：{{ formatAggregationTime(item.releaseTime) }}</p>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <div v-else class="rounded-[28px] border border-dashed border-slate-200 bg-slate-50/70 px-6 py-8 text-center text-sm font-bold text-slate-500">
+            当前单品暂无箱码或托盘码聚合历史。
+          </div>
+        </div>
 
         <!-- 流转轨迹地图 (Full Width) -->
         <div class="premium-card rounded-[40px] overflow-hidden p-2">
