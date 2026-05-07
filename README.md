@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-基于 Spring Boot + Vue 3 的工业零配件供应链全链路溯源系统，支持生产赋码、扫码流转、溯源查询、哈希链防篡改、红冲蓝补纠错等核心功能。
+基于 Spring Boot + Vue 3 的工业零配件供应链全链路溯源系统，支持批次赋码、一物一码、扫码激活、任务驱动出入库/接收、箱码/托盘码批量流转、溯源查询、哈希链防篡改、异常冻结与红冲蓝补纠错等核心功能。
 
 ## 目录结构
 
@@ -87,7 +87,12 @@ backend/src/main/java/com/example/trace/
 │   └── WebMvcConfig.java          # 登录/权限拦截器配置
 ├── controller/                    # 控制器 (接收请求)
 │   ├── AuthController.java        # 认证 (登录/注册/登出)
-│   ├── TraceController.java       # 溯源 (赋码/扫码/验链)
+│   ├── TraceController.java       # 溯源 (赋码/扫码/验链/异常/纠错)
+│   ├── TraceAssignBatchController.java # 赋码批次对账/码列表
+│   ├── TraceCodeController.java   # 单品码激活
+│   ├── TraceFlowTaskController.java # 仓库/物流流转任务
+│   ├── TraceAggregationController.java # 箱码/托盘码聚合
+│   ├── TraceNodeController.java   # 结构化业务节点
 │   ├── UserController.java        # 用户管理
 │   ├── RoleController.java        # 角色管理
 │   ├── PartController.java        # 配件管理
@@ -100,10 +105,21 @@ backend/src/main/java/com/example/trace/
 │   ├── Role.java                  # 角色表
 │   ├── TraceSnapshot.java         # 溯源快照表 (@Version 乐观锁)
 │   ├── TraceLifecycleLog.java     # 溯源日志表 (Hash 链 + 签名)
+│   ├── TraceAssignBatch.java      # 赋码批次表
+│   ├── TraceCode.java             # 单品码状态表
+│   ├── TraceNode.java             # 结构化业务节点
+│   ├── TraceUserNodeBinding.java  # 用户-节点绑定
+│   ├── TraceFlowTask.java         # 流转任务/发货单
+│   ├── TraceFlowTaskScan.java     # 任务内扫码明细
+│   ├── TraceAggregation.java      # 箱码/托盘码聚合关系
+│   ├── TraceScanIdempotency.java  # 扫码幂等记录
 │   └── BasePartSpec.java          # 配件规格表
 ├── enums/                         # 枚举类 (v2.0 新增)
-│   ├── ActionType.java            # 操作类型 (INIT/INBOUND/OUTBOUND/...)
-│   └── TraceStatus.java           # 状态类型 (自动推导)
+│   ├── ActionType.java            # 操作类型 (INIT/PRINT_CODE/INBOUND/...)
+│   ├── TraceStatus.java           # 物流快照状态
+│   ├── TraceCodeStatus.java       # 单品码状态
+│   ├── TraceFlowTaskType.java     # 任务类型
+│   └── TraceAggregationRelationType.java # 聚合关系类型
 ├── mapper/                        # MyBatis 映射接口
 │   └── *Mapper.java               # 继承 BaseMapper<T>
 ├── security/                      # 安全组件
@@ -114,7 +130,9 @@ backend/src/main/java/com/example/trace/
 ├── service/                       # 业务逻辑
 │   ├── TraceService.java          # 溯源服务接口
 │   ├── policy/
-│   │   └── RolePolicy.java        # 角色层级/系统角色/授权策略
+│   │   ├── RolePolicy.java        # 角色层级/系统角色/授权策略
+│   │   ├── TraceTransitionPolicy.java # 溯源码状态机
+│   │   └── TraceActionPermissionPolicy.java # 业务动作权限策略
 │   └── impl/
 │       └── TraceServiceImpl.java  # 溯源服务实现
 └── util/                          # 工具类
@@ -126,41 +144,37 @@ backend/src/main/java/com/example/trace/
 ### 核心数据流
 
 ```
-                    生产赋码流程
+                    批次赋码 + 单品码激活流程
 ┌────────────────────────────────────────────────────────────┐
 │  1. POST /api/traces                                        │
-│  2. 生成 UUID 溯源码                                         │
-│  3. 计算 Hash = SHA256(data + GENESIS)                      │
-│  4. 生成签名 = RSA_SIGN(私钥, data + hash)                   │
-│  5. INSERT trace_lifecycle_log (含 hash + signature)        │
-│  6. INSERT trace_snapshot (当前状态快照)                     │
+│  2. INSERT trace_assign_batch（生产/工单/批次数量）          │
+│  3. 为批次生成 N 个唯一 trace_code                           │
+│  4. INSERT trace_code（GENERATED，批次内 serial_no）         │
+│  5. INSERT trace_lifecycle_log（INIT + Hash + RSA 签名）     │
+│  6. INSERT trace_snapshot（历史兼容 INIT 快照）              │
+│  7. 打印/重打/作废/激活分别写入 PRINT/REPRINT/VOID/ACTIVATE │
 └────────────────────────────────────────────────────────────┘
 
-                    扫码流转流程 (带乐观锁)
+                    普通扫码流转流程 (状态机 + 幂等 + 乐观锁)
 ┌────────────────────────────────────────────────────────────┐
-│  scan() 外层：重试控制器（无事务）                           │
-│  ┌────────────────────────────────────────────────────────┐│
-│  │  while (retryCount <= 3) {                             ││
-│  │      try {                                             ││
-│  │          doScanOnce();  // 独立事务                     ││
-│  │          return;                                        ││
-│  │      } catch (OptimisticLockException) {               ││
-│  │          retryCount++;                                  ││
-│  │          sleep(50ms * retryCount);  // 退避            ││
-│  │      }                                                  ││
-│  │  }                                                      ││
-│  └────────────────────────────────────────────────────────┘│
-│                                                             │
-│  doScanOnce() 内层：原子操作（REQUIRES_NEW 事务）            │
-│  ┌────────────────────────────────────────────────────────┐│
-│  │  1. SELECT snapshot (读取当前状态 + version)            ││
-│  │  2. 计算 Hash = SHA256(data + prevHash + 非空remark)   ││
-│  │  3. 生成签名 = RSA_SIGN(私钥, data + hash + 非空remark) ││
-│  │  4. INSERT log (日志链增长)                             ││
-│  │  5. UPDATE snapshot SET version = version + 1          ││
-│  │     WHERE version = 原version                           ││
-│  │  6. 若 affected_rows = 0 → throw → 事务回滚            ││
-│  └────────────────────────────────────────────────────────┘│
+│  1. POST /api/traces/{code}/events                          │
+│  2. 可选占用 trace_scan_idempotency 幂等键                   │
+│  3. SELECT snapshot + trace_code（状态、版本、码可用性）     │
+│  4. TraceTransitionPolicy 校验当前状态 + 动作是否合法        │
+│  5. 后端推导/校验 fromNode、地区、目标节点                   │
+│  6. 计算 Hash/RSA 签名（operator 与非空 remark 已保护）       │
+│  7. INSERT trace_lifecycle_log，UPDATE snapshot/version      │
+│  8. 同步 trace_code 物流态；重复幂等键不重复写日志           │
+└────────────────────────────────────────────────────────────┘
+
+                    任务驱动连续扫码流程
+┌────────────────────────────────────────────────────────────┐
+│  1. POST /api/trace-flow-tasks 创建发货/入库/接收任务        │
+│  2. 任务固定 source_node_id、target_node_id、expected_qty    │
+│  3. POST /api/trace-flow-tasks/{id}/scan 连续扫码            │
+│  4. 扫父码时从 trace_aggregation 展开箱/托盘下所有子码       │
+│  5. trace_flow_task_scan 保证单码只计数一次并记录重复次数    │
+│  6. complete 时数量一致直接完成；少扫/多扫必须填写差异原因   │
 └────────────────────────────────────────────────────────────┘
 
                     验链流程
@@ -229,6 +243,24 @@ CREATE DATABASE trace_db DEFAULT CHARACTER SET utf8mb4;
 ```
 
 执行初始化脚本：[backend/sql/init_schema.sql](backend/sql/init_schema.sql)
+
+**已有数据库升级路径**：如果不是全新库，请按迁移编号顺序执行 `backend/sql/migrate_*.sql`。与新版溯源码核心业务直接相关的迁移包括：
+
+| 迁移 | 说明 |
+|---|---|
+| `migrate_v8_trace_scan_idempotency.sql` | 普通扫码幂等表 |
+| `migrate_v9_trace_audit_view_permission.sql` | `trace:audit:view` 审计视图权限 |
+| `migrate_v10_trace_assign_batch.sql` | 赋码批次表 |
+| `migrate_v11_trace_code_status.sql` | 单品码状态表，并回填历史快照码 |
+| `migrate_v12_trace_node.sql` | 结构化业务节点表 |
+| `migrate_v13_trace_user_node_binding.sql` | 用户-节点绑定表 |
+| `migrate_v14_trace_flow_task.sql` | 流转任务表 |
+| `migrate_v15_trace_flow_task_scan.sql` | 任务内连续扫码明细表 |
+| `migrate_v16_trace_flow_task_discrepancy.sql` | 任务完成差异字段 |
+| `migrate_v17_trace_aggregation.sql` | 箱码/托盘码聚合关系表 |
+| `migrate_v18_trace_aggregation_events.sql` | 聚合事件动作类型注释同步 |
+| `migrate_v19_trace_business_action_permissions.sql` | 新版业务动作权限 |
+| `migrate_v20_trace_exception_workflow.sql` | 异常冻结恢复字段与 EXCEPTION_CLOSE 动作 |
 
 ### 2. 启动 Redis
 
@@ -418,9 +450,23 @@ mysql -u root -p trace_db < backend/sql/sample_data_full.sql
 | 认证 | `POST /api/auth/logout` | 用户登出 |
 | 认证 | `POST /api/auth/refresh` | 刷新 Token |
 | 认证 | `GET /api/auth/me` | 获取当前用户信息 |
-| 溯源 | `POST /api/traces` | 生产赋码（单次 `quantity<=500`） |
-| 溯源 | `POST /api/traces/{traceCode}/events` | 扫码流转 |
-| 溯源 | `GET /api/traces/{traceCode}` | 溯源详情 |
+| 溯源 | `POST /api/traces` | 创建赋码批次并生成单品码（单次 `quantity<=500`） |
+| 溯源 | `POST /api/traces/{traceCode}/events` | 普通扫码流转（状态机校验 + 幂等） |
+| 溯源 | `GET /api/traces/{traceCode}/available-actions` | 扫码后可执行动作推荐 |
+| 溯源 | `GET /api/traces/{traceCode}?view=effective|audit` | 溯源详情；audit 需 `trace:audit:view` |
+| 标签 | `POST /api/traces/{traceCode}/print|reprint|void` | 打印、重打/补打、作废标签 |
+| 单品码 | `POST /api/trace-codes/{traceCode}/activate` | 贴码后扫码激活/复核 |
+| 批次 | `GET /api/trace-batches/{batchId}` | 赋码批次数量对账 |
+| 批次 | `GET /api/trace-batches/{batchId}/codes` | 批次单品码列表 |
+| 任务 | `GET/POST /api/trace-flow-tasks` | 仓库/物流流转任务列表与创建 |
+| 任务 | `POST /api/trace-flow-tasks/{id}/scan|complete|cancel` | 任务内连续扫码、完成、取消 |
+| 聚合 | `POST /api/trace-aggregations` | 箱码/托盘码绑定 |
+| 聚合 | `POST /api/trace-aggregations/{relationId}/release` | 解除箱码/托盘码绑定 |
+| 聚合 | `GET /api/trace-aggregations/children|parents|history/*` | 聚合有效关系与历史 |
+| 节点 | `GET/POST/PUT/DELETE /api/trace-nodes` | 结构化业务节点 |
+| 节点 | `GET /api/users/me/trace-nodes`、`GET/PUT /api/users/{id}/trace-nodes` | 用户可操作节点绑定 |
+| 异常/纠错 | `POST /api/traces/{traceCode}/exception/close` | 解除异常冻结 |
+| 异常/纠错 | `POST /api/traces/{traceCode}/corrections` | 红冲蓝补式审计纠错 |
 | 溯源 | `GET /api/traces/{traceCode}/verify` | **验证溯源链完整性**（v2.0） |
 | 溯源 | `GET /api/traces/public-key` | **获取公钥**（v2.0，公开接口） |
 | Dashboard | `GET /api/dashboard/kpi` | KPI 统计 |
@@ -437,7 +483,38 @@ mysql -u root -p trace_db < backend/sql/sample_data_full.sql
 
 > 配件删除会先检查 `trace_snapshot` 与 `trace_lifecycle_log` 的 `spu_id` 引用；已参与溯源的配件返回 409，批量删除会整批拒绝，避免孤儿溯源数据。
 
-> 扫码流转 `POST /api/traces/{traceCode}/events` 支持可选 `remark`（最长 255 字符）。非空备注会随 `trace_lifecycle_log` 落库，并纳入该日志的 Hash 与 RSA 签名载荷，避免前端备注被静默丢弃。
+> 扫码流转 `POST /api/traces/{traceCode}/events` 支持可选 `idempotencyKey` 与 `remark`（最长 255 字符）。非空备注和操作人 `operator` 会随 `trace_lifecycle_log` 落库，并纳入新日志的 Hash 与 RSA 签名载荷；验链服务兼容历史未保护 `operator` 的旧日志。
+
+## 新版核心业务流程
+
+### 生产赋码与扫码激活
+
+1. 生产人员在“生产赋码工作台”创建赋码批次（`POST /api/traces`），一次生成 N 个唯一单品码。
+2. 系统写入 `trace_assign_batch`、`trace_code`、`trace_lifecycle_log` 和 `trace_snapshot`。
+3. 生产人员打印/重打/作废标签（`PRINT_CODE/REPRINT_CODE/VOID_CODE`）。
+4. 贴码后扫码激活（`POST /api/trace-codes/{traceCode}/activate`），码状态变为 `ACTIVATED` 后才能进入常规入库/出库/流转。
+5. 批次详情（`GET /api/trace-batches/{batchId}`）展示计划、生成、打印、激活、入库、作废数量和差异原因。
+
+### 快递式仓库/物流任务流
+
+1. 创建流转任务（`POST /api/trace-flow-tasks`），提前确定起点、终点和预计数量。
+2. 仓库/物流用户在任务工作台连续扫码（`POST /api/trace-flow-tasks/{id}/scan`），系统按任务自动推导 `fromNode/toNode`。
+3. 重复扫码返回“已扫”反馈，不重复计数；扫箱码/托盘码时自动展开有效子码批量流转。
+4. 完成任务（`POST /api/trace-flow-tasks/{id}/complete`）时，数量一致直接完成；少扫/多扫必须填写差异原因，任务进入异常状态并留下审计字段。
+
+### 箱码/托盘码聚合
+
+- `POST /api/trace-aggregations` 创建箱码/托盘码与单品码的有效绑定，并写入 `PACK/PALLETIZE` 生命周期事件。
+- `POST /api/trace-aggregations/{relationId}/release` 解除绑定，并写入 `UNPACK/UNPALLETIZE` 生命周期事件。
+- 运输中、已交接、异常冻结等状态下禁止随意修改聚合关系。
+- 单品详情会返回 `aggregationHistory`，展示直接/间接箱码、托盘码历史。
+
+### 详情视图与异常/纠错
+
+- `GET /api/traces/{traceCode}?view=effective` 是默认业务有效视图，会隐藏被后续 `CORRECTION` 覆盖的原始日志。
+- `GET /api/traces/{traceCode}?view=audit` 是审计完整视图，需要 `trace:audit:view`。
+- 异常冻结通过 `EXCEPTION_OPEN` 暂停常规流转；`POST /api/traces/{traceCode}/exception/close` 写入 `EXCEPTION_CLOSE` 并恢复冻结前状态。
+- 红冲蓝补纠错使用 `POST /api/traces/{traceCode}/corrections`，只追加审计记录，不物理删除历史。
 
 ## 鉴权说明
 
@@ -478,6 +555,31 @@ mysql -u root -p trace_db < backend/sql/sample_data_full.sql
 > 当前不做该迁移的取舍：项目处于本地开发 + 单实例部署阶段，短 Token + 黑名单 + CSP + 适配层已经把"localStorage 中 Token 被 XSS 读取"的最坏窗口压到 ≤ 2 小时；与一次性引入 Cookie + CSRF + refresh 大改造相比，性价比更优。决策可在 [`docs/security/token-storage-and-csp.md`](docs/security/token-storage-and-csp.md) 第 4 节查阅，需要时再单独排期。
 
 ## 用户管理权限控制
+
+### 溯源业务权限
+
+| 权限代码 | 说明 |
+|---|---|
+| `trace:view` | 查看溯源详情、节点、任务、批次和聚合关系 |
+| `trace:create` | 历史兼容生产/管理权限 |
+| `trace:batch:create` | 创建赋码批次并生成单品码 |
+| `trace:code:print` | 打印、重打/补打、作废标签 |
+| `trace:code:activate` | 单品码扫码激活/复核 |
+| `trace:scan` | 超级扫码权限，可执行全部扫码动作 |
+| `trace:inbound` / `trace:outbound` / `trace:transfer` | 入库、出库、流转细粒度权限 |
+| `trace:task:create` | 创建仓库/物流流转任务 |
+| `trace:task:scan` | 任务内连续扫码、扫箱码/托盘码 |
+| `trace:task:complete` | 完成任务并处理数量差异 |
+| `trace:audit:view` | 查看 `view=audit` 审计完整历史 |
+| `trace:exception:handle` | 异常冻结、解除和红冲蓝补纠错 |
+
+默认授权策略：
+
+- `SUPER_ADMIN` / `ADMIN` 拥有全部权限。
+- `PRODUCER` 侧重赋码、打印、激活和异常上报。
+- `WAREHOUSE` 侧重入库/出库、流转任务创建/扫码/完成和异常上报。
+- `LOGISTICS` 侧重物流流转、任务扫码/完成和异常上报。
+- `USER` 仅具备查询类能力。
 
 ### 角色优先级体系
 
@@ -604,21 +706,29 @@ Redis 的 TTL 特性非常适合黑名单场景：Token 过期后黑名单记录
 
 ## 字段命名规范
 
-| 请求体 | 响应体 |
+| 场景 | 命名 |
 |--------|--------|
-| 支持 `camelCase` 或 `snake_case` | 统一使用 `snake_case` |
-| 如 `spuId` 或 `spu_id` 均可 | 如 `spu_id`, `trace_code` |
+| 原始 HTTP 请求体 | 后端支持 `camelCase` 或 `snake_case` |
+| 原始 HTTP 响应体 | 后端 JSON 使用 `snake_case` |
+| 前端 API 模块入参 | 使用 `camelCase`，`request.js` 会序列化为 `snake_case` |
+| 前端 API 模块返回 | `request.js` 会转换为 `camelCase`，如 `batchId`、`traceCode` |
 
 ## 核心功能
 
-- ✅ 生产赋码 - 批量生成溯源码（单次 `quantity<=500`）
-- ✅ 扫码流转 - 记录流转事件（入库/出库/转移/异常）
-- ✅ 溯源查询 - 查看完整流转历史
+- ✅ 批次赋码 - 创建赋码批次并批量生成唯一单品码（单次 `quantity<=500`）
+- ✅ 一物一码 - `trace_code` 区分 `GENERATED/PRINTED/ACTIVATED/IN_STOCK/IN_TRANSIT/EXCEPTION/VOIDED/SCRAPPED`
+- ✅ 标签管理 - 打印、重打/补打、作废、扫码激活均进入生命周期审计链
+- ✅ 扫码流转 - 状态机校验 + 节点自动推导 + 幂等键防重复提交
+- ✅ 可执行动作推荐 - 扫码后由后端返回当前用户可做什么
+- ✅ 任务驱动出入库 - 仓库/物流按任务连续扫码、自动累计数量、一键完成
+- ✅ 差异处理 - 少扫/多扫必须填写原因并形成异常任务
+- ✅ 箱码/托盘码聚合 - 支持装箱/拆箱/托盘绑定和扫父码批量流转子码
+- ✅ 溯源查询 - 支持 `effective` 业务有效视图与 `audit` 审计完整视图
 - ✅ 哈希链防篡改 - 每条记录包含前一条的哈希
 - ✅ **RSA 数字签名** - 非对称加密确保数据不可伪造（v2.0 新增）
 - ✅ **验证溯源链** - 公开接口验证 Hash 链和数字签名完整性（v2.0 新增）
 - ✅ 快照表加速 - 当前状态快速查询
-- ✅ 红冲蓝补纠错 - 通过 CORRECTION 类型修正错误记录
+- ✅ 异常冻结与红冲蓝补纠错 - `EXCEPTION_OPEN/CLOSE` 冻结/恢复，`CORRECTION` 追加审计修正
 - ✅ **跨链攻击防御** - 防止修正其他溯源码的记录（v2.0 新增）
 - ✅ **乐观锁并发控制** - 高并发场景下的数据一致性（v2.0 新增）
 - ✅ Dashboard 统计 - KPI/地图热力图/趋势图/拓扑图
@@ -711,6 +821,8 @@ export TRACE_SIGNATURE_AUTO_GENERATE="false"
 
 Each `trace_lifecycle_log` row stores `signature_key_id` and `signature_key_version`. Chain verification first checks the key metadata declared by the log, instead of blindly verifying all historical signatures with the currently loaded public key. `GET /api/traces/public-key` also returns the current `keyId` and `keyVersion`. Existing rows can be backfilled with `backend/sql/migrate_v3_signature_key_metadata.sql` to `default` / `1`, matching the backup key pair in `D:/trace-runtime/keys`.
 
+新写入日志的 Hash/RSA 签名载荷还包含 `operator` 和非空 `remark`；验链服务会优先按当前 operator-protected 载荷校验，失败后再尝试历史未保护 `operator` 的 legacy 载荷，以兼容旧演示数据。
+
 ### 验证接口
 
 | 接口 | 说明 | 认证 |
@@ -782,9 +894,9 @@ export TRACE_CORS_ALLOWED_ORIGINS="*"   # 启动会失败
 |------|------|----------|
 | SUPER_ADMIN | 超级管理员 | 所有权限，可管理其他管理员 |
 | ADMIN | 系统管理员 | 所有权限，不可管理超管 |
-| PRODUCER | 生产员 | 生产赋码、溯源查询、看板、配件查看 |
-| WAREHOUSE | 仓管员 | 扫码流转、溯源查询、看板、配件查看 |
-| LOGISTICS | 物流员 | 扫码流转、溯源查询、看板 |
+| PRODUCER | 生产员 | 赋码批次创建、标签打印/重打/作废、扫码激活、异常上报、溯源查询、看板、配件查看 |
+| WAREHOUSE | 仓管员 | 入库/出库、流转任务创建/扫码/完成、异常上报、溯源查询、看板、配件查看 |
+| LOGISTICS | 物流员 | 物流流转、任务扫码/完成、异常上报、溯源查询、看板 |
 | USER | 普通用户 | 溯源查询、看板 |
 
 权限可在后台动态配置，修改后立即生效（用户需重新登录）。
@@ -811,7 +923,7 @@ export TRACE_CORS_ALLOWED_ORIGINS="*"   # 启动会失败
 2. **请求拦截器**: 自动添加 `Authorization: Bearer <token>` 头
 3. **响应拦截器**: 处理 `code !== 0` 的业务错误
 4. **时间格式**: 使用 ISO-8601（如 `2026-01-16T10:30:00`）
-5. **字段命名**: 请求体用 camelCase，响应自动转 snake_case
+5. **字段命名**: 前端 API 模块使用 camelCase；HTTP 层由 `request.js` 自动完成请求 snake_case 序列化和响应 camelCase 反序列化
 
 ### 登录后权限控制
 
@@ -823,53 +935,93 @@ export TRACE_CORS_ALLOWED_ORIGINS="*"   # 启动会失败
   "token": "xxx",
   "username": "warehouse",
   "role": "WAREHOUSE",
-  "permissions": ["trace:inbound", "trace:outbound", "trace:view", "dashboard:view", "part:view"]
+  "permissions": ["trace:inbound", "trace:outbound", "trace:task:scan", "trace:task:complete", "trace:view", "dashboard:view", "part:view"]
 }
 
 // 前端权限判断
-const canAccessScanHub = ['trace:create', 'trace:scan', 'trace:inbound', 'trace:outbound', 'trace:transfer']
+const canAccessScanHub = ['trace:scan', 'trace:inbound', 'trace:outbound', 'trace:transfer', 'trace:task:scan']
   .some((permission) => permissions.includes(permission))
 const canInbound = permissions.includes('trace:scan') || permissions.includes('trace:inbound')
 const canOutbound = permissions.includes('trace:scan') || permissions.includes('trace:outbound')
 const canTransfer = permissions.includes('trace:scan') || permissions.includes('trace:transfer')
-const canCreate = permissions.includes('trace:create')  // 生产赋码
+const canCreateBatch = permissions.includes('trace:batch:create') || permissions.includes('trace:create')
+const canPrintCode = permissions.includes('trace:code:print') || permissions.includes('trace:create')
+const canActivateCode = permissions.includes('trace:code:activate') || permissions.includes('trace:create')
+const canCreateTask = permissions.includes('trace:task:create')
+const canScanTask = permissions.includes('trace:task:scan')
+const canViewAudit = permissions.includes('trace:audit:view')
+const canHandleException = permissions.includes('trace:exception:handle') || permissions.includes('trace:scan')
 const canView = permissions.includes('trace:view')      // 查询扫码
 ```
 
 ### 扫码流转接口
 
 ```javascript
-// 入库扫码
+// 普通入库扫码：fromNode 可省略，后端从快照当前节点推导
 POST /api/traces/{traceCode}/events
 {
   "action_type": "INBOUND",
-  "from_node": "物流运输",
   "to_node": "华东仓库",
   "province": "江苏省",
-  "event_time": "2026-01-16T10:30:00",
+  "event_time": "2026-05-07T10:30:00",
+  "idempotency_key": "scan-inbound-001",
   "remark": "到货外观完好"
 }
 
-// 出库扫码
-POST /api/traces/{traceCode}/events
+// 任务内连续扫码：推荐仓库/物流日常操作使用该入口
+POST /api/trace-flow-tasks/{taskId}/scan
 {
-  "action_type": "OUTBOUND",
-  "from_node": "华东仓库",
-  "to_node": "物流公司A",
-  "event_time": "2026-01-16T14:30:00"
+  "trace_code": "CARTON-001",
+  "event_time": "2026-05-07T14:30:00",
+  "idempotency_key": "task-1-carton-001",
+  "remark": "任务工作台扫码"
 }
 
-// 流转扫码
-POST /api/traces/{traceCode}/events
-{
-  "action_type": "TRANSFER",
-  "from_node": "南京中转站",
-  "to_node": "上海中转站",
-  "event_time": "2026-01-17T09:00:00"
-}
+// 扫码后动作推荐：扫码页先调用该接口，再展示可执行按钮
+GET /api/traces/{traceCode}/available-actions
 ```
 
-`event_time` 可省略，后端会使用服务器当前时间；一旦提供，必须是 ISO-8601 本地时间（如 `2026-01-16T10:30:00`），非法格式返回 400，不再容错解析为当前时间。
+### 赋码批次与标签接口
+
+```javascript
+// 创建赋码批次并生成单品码
+POST /api/traces
+{
+  "part_code": "SPU-VALVE-001",
+  "batch_no": "ASSIGN-20260507-0001",
+  "production_order_no": "PO-20260507-01",
+  "quantity": 100,
+  "manufacturer_node_id": 1
+}
+
+// 打印 / 重打 / 作废 / 激活
+POST /api/traces/{traceCode}/print
+POST /api/traces/{traceCode}/reprint
+POST /api/traces/{traceCode}/void
+POST /api/trace-codes/{traceCode}/activate
+
+// 批次对账与码列表
+GET /api/trace-batches/{batchId}
+GET /api/trace-batches/{batchId}/codes
+```
+
+### 聚合码接口
+
+```javascript
+// 装箱或托盘绑定
+POST /api/trace-aggregations
+{
+  "parent_code": "CARTON-001",
+  "child_code": "TRC-20260507-000001",
+  "relation_type": "CARTON",
+  "remark": "装箱"
+}
+
+// 解除绑定
+POST /api/trace-aggregations/{relationId}/release
+```
+
+`event_time` 可省略，后端会使用服务器当前时间；一旦提供，必须是 ISO-8601 本地时间（如 `2026-05-07T10:30:00`），非法格式返回 400，不再容错解析为当前时间。
 
 ## 严格代码审查提示词与流程
 

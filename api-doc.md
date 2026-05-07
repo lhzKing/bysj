@@ -237,7 +237,7 @@ Access-Control-Max-Age: 3600
   |------|------|------|------|
   | username | string | ✅ | 用户名 |
   | password | string | ✅ | 密码 |
-  | rememberMe | boolean | ❌ | 记住登录（true=7天有效，false=24小时有效） |
+  | rememberMe | boolean | ❌ | 记住登录（true=1天有效，false=2小时有效） |
   
 - **Response** (HTTP 200)
   ```json
@@ -265,11 +265,19 @@ Access-Control-Max-Age: 3600
   | 权限代码 | 说明 | 对应功能 |
   |----------|------|----------|
   | trace:view | 溯源查询 | 查询扫码、溯源详情 |
-  | trace:create | 生产赋码 | 生产赋码 |
+  | trace:create | 历史兼容生产/管理权限 | 兼容旧生产赋码、节点管理等入口 |
+  | trace:batch:create | 创建赋码批次 | 生产赋码批次与单品码生成 |
+  | trace:code:print | 标签打印管理 | 打印、重打/补打、作废 |
+  | trace:code:activate | 单品码激活 | 贴码后扫码激活/复核 |
   | trace:scan | 超级扫码权限 | 可执行入库/出库/流转/异常等所有扫码动作 |
   | trace:inbound | 入库扫码 | 仅允许入库 |
   | trace:outbound | 出库扫码 | 仅允许出库 |
   | trace:transfer | 物流流转扫码 | 仅允许流转 |
+  | trace:task:create | 流转任务创建 | 仓库/物流发货、入库、接收任务 |
+  | trace:task:scan | 任务内扫码 | 单品码/箱码/托盘码连续扫码 |
+  | trace:task:complete | 任务完成 | 完成任务并处理少扫/多扫差异 |
+  | trace:audit:view | 审计完整视图 | `GET /api/traces/{traceCode}?view=audit` |
+  | trace:exception:handle | 异常处理 | 异常冻结、解除、红冲蓝补纠错 |
   | dashboard:view | 看板查看 | Dashboard 数据 |
   | user:view | 查看用户 | 用户列表 |
   | user:manage | 管理用户 | 增删改用户 |
@@ -365,36 +373,40 @@ Access-Control-Max-Age: 3600
 
 ---
 
-## 2. 溯源模块 `/api/traces`
+## 2. 溯源核心业务模块
 
-### 2.1 生产赋码（创建溯源实例）
+新版溯源码核心业务已从“自由扫码填表”扩展为“批次赋码 + 单品码状态 + 结构化节点 + 任务驱动连续扫码 + 箱码/托盘码聚合 + 异常/纠错审计”。接口响应仍统一使用 `ApiResponse`，前端请求可使用 `camelCase` 或 `snake_case`，响应统一为 `snake_case`。
+
+### 2.1 生产赋码（创建赋码批次并生成单品码）
 
 - **POST** `/api/traces`
-- **Headers**: `Authorization: Bearer <token>`
+- **权限**：`trace:batch:create` 或历史兼容 `trace:create`
+- **Headers**：`Authorization: Bearer <token>`
 - **Request Body**
   ```json
   {
     "spu_id": 1,
-    "part_code": "PART-001",
+    "part_code": "SPU-VALVE-001",
+    "batch_no": "ASSIGN-20260507-0001",
+    "production_order_no": "PO-20260507-01",
     "quantity": 100,
-    "manufacturer_node": "工厂A",
-    "province": "浙江省",
-    "city": "杭州市"
+    "manufacturer_node_id": 1,
+    "manufacturer_node": "北京工厂",
+    "province": "北京市",
+    "city": "北京市"
   }
   ```
-  
+
   | 字段 | 类型 | 必填 | 说明 |
   |------|------|------|------|
-  | spu_id | number | ❌* | 配件ID（spuId 和 part_code 至少提供一个） |
-  | part_code | string | ❌* | 配件编码（推荐使用，后端自动解析为 spuId） |
-  | quantity | number | ✅ | 生产数量，范围 `1 ~ 500`；超限返回 `10001` / HTTP 400 |
-  | manufacturer_node | string | ❌ | 生产节点名称 |
-  | province | string | ❌ | 省份 |
-  | city | string | ❌ | 城市 |
-  
-  > **注意**：`spu_id` 和 `part_code` 至少提供一个。如果两者都提供，优先使用 `part_code` 解析的 ID。推荐前端使用 `part_code`，更加直观易用。
-  >
-  > **批量持久化语义（T-P1-01）**：本接口已改为"内存组装 + 分批 REQUIRES_NEW 提交"。每片大小由 `TRACE_BATCH_COMMIT_SIZE`（默认 50）控制，因此 **不再保证"全或无"**——若第 N 片提交失败，前 1..N-1 片已写入数据库且不会回滚。前端在错误处理时应假定可能出现部分写入；后端日志会记录已提交片数。详见 `README.md` "批量持久化语义"段。
+  | spu_id | number | ❌* | 配件ID；`spu_id` 与 `part_code` 至少提供一个 |
+  | part_code | string | ❌* | 配件编码；两者都传时优先按 `part_code` 解析 |
+  | batch_no | string | ❌ | 赋码批次号，最长 64；不传由后端生成 |
+  | production_order_no | string | ❌ | 生产计划/工单号，最长 64 |
+  | quantity | number | ✅ | 单次生成数量，范围 `1 ~ 500` |
+  | manufacturer_node_id | number | ❌ | 结构化生产节点ID；传入时必须是启用的 FACTORY 节点 |
+  | manufacturer_node | string | ❌ | 历史兼容的生产节点文本 |
+  | province/city | string | ❌ | 生产区域；未传时可由节点资料补齐 |
 
 - **Response** (HTTP 201)
   ```json
@@ -403,49 +415,160 @@ Access-Control-Max-Age: 3600
     "status": 201,
     "message": "赋码成功",
     "data": {
+      "batch_id": 12,
+      "batch_no": "ASSIGN-20260507-0001",
+      "requested_count": 100,
       "generated_count": 100,
-      "trace_codes": ["TRC-20260116-001", "TRC-20260116-002"]
+      "trace_codes": ["TRC-20260507-000001", "TRC-20260507-000002"],
+      "batch_status": "GENERATED",
+      "partial_failure": false,
+      "warning": null
     }
   }
   ```
 
-### 2.2 扫码流转（创建流转事件）
+> **一物一码说明**：批次只是管理容器；每个返回的 `trace_code` 都会写入 `trace_code` 单品码状态表，并拥有独立 `trace_snapshot` 与 `trace_lifecycle_log` 链。
+> **批量持久化语义**：本接口按 `TRACE_BATCH_COMMIT_SIZE`（默认 50）分片独立提交；部分失败时前面已提交分片不会回滚，响应只返回已落库码，并通过 `partial_failure/batch_status/warning` 告知调用方。
+
+### 2.2 标签打印、重打、作废
+
+| 操作 | 方法与路径 | 权限 | 说明 |
+|---|---|---|---|
+| 打印标签 | `POST /api/traces/{trace_code}/print` | `trace:code:print` 或 `trace:create` | 写入 `PRINT_CODE`，`print_count + 1` |
+| 重打/补打 | `POST /api/traces/{trace_code}/reprint` | `trace:code:print` 或 `trace:create` | 写入 `REPRINT_CODE`，必须记录补打事实 |
+| 作废标签 | `POST /api/traces/{trace_code}/void` | `trace:code:print` 或 `trace:create` | 写入 `VOID_CODE`；作废码不能激活和流转 |
+
+- **Request Body**
+  ```json
+  {
+    "event_time": "2026-05-07T10:30:00",
+    "remark": "标签损坏，补打"
+  }
+  ```
+- **Response** (HTTP 201)
+  ```json
+  {
+    "code": 0,
+    "status": 201,
+    "message": "标签重打成功",
+    "data": {
+      "trace_code": "TRC-20260507-000001",
+      "action_type": "REPRINT_CODE",
+      "code_status": "PRINTED",
+      "print_count": 2,
+      "lifecycle_log_id": 88,
+      "event_time": "2026-05-07T10:30:00",
+      "remark": "标签损坏，补打",
+      "current_status": "INIT"
+    }
+  }
+  ```
+
+### 2.3 单品码扫码激活/复核
+
+- **POST** `/api/trace-codes/{trace_code}/activate`
+- **权限**：`trace:code:activate` 或 `trace:create`
+- **Request Body**
+  ```json
+  {
+    "event_time": "2026-05-07T10:35:00",
+    "activation_node": "北京工厂",
+    "device_id": "PDA-01",
+    "remark": "贴码后扫码复核"
+  }
+  ```
+- **Response** (HTTP 201)
+  ```json
+  {
+    "code": 0,
+    "status": 201,
+    "message": "单品码激活成功",
+    "data": {
+      "trace_code": "TRC-20260507-000001",
+      "action_type": "ACTIVATE_CODE",
+      "code_status": "ACTIVATED",
+      "activation_node": "北京工厂",
+      "device_id": "PDA-01",
+      "activated_by_username": "producer",
+      "activated_time": "2026-05-07T10:35:00",
+      "lifecycle_log_id": 89,
+      "remark": "贴码后扫码复核"
+    }
+  }
+  ```
+
+> 未激活码（`GENERATED/PRINTED`）不能执行常规入库、出库、流转；`VOIDED/SCRAPPED` 为终态，不可复用。
+
+### 2.4 赋码批次对账与码列表
+
+| 方法与路径 | 权限 | 说明 |
+|---|---|---|
+| `GET /api/trace-batches/{batch_id}` | `trace:view` | 批次数量对账详情 |
+| `GET /api/trace-batches/{batch_id}/codes` | `trace:view` | 批次下单品码列表 |
+
+- **批次详情响应示例**
+  ```json
+  {
+    "code": 0,
+    "status": 200,
+    "message": "success",
+    "data": {
+      "batch_id": 12,
+      "batch_no": "ASSIGN-20260507-0001",
+      "production_order_no": "PO-20260507-01",
+      "spu_id": 1,
+      "batch_status": "GENERATED",
+      "quantity_requested": 100,
+      "quantity_generated": 100,
+      "quantity_printed": 80,
+      "quantity_activated": 70,
+      "quantity_inbound": 60,
+      "quantity_voided": 2,
+      "print_operation_count": 83,
+      "consistent": false,
+      "reconciliation_status": "DISCREPANCY",
+      "discrepancy_reasons": ["激活数量少于生成数量"]
+    }
+  }
+  ```
+
+### 2.5 扫码流转（普通生命周期事件）
 
 - **POST** `/api/traces/{trace_code}/events`
-- **Headers**: `Authorization: Bearer <token>`
-- **Path Params**: `trace_code` - 溯源码
-- **权限要求**：
+- **权限**：
+
   | action_type | 需要权限 | 说明 |
   |-------------|----------|------|
-  | INBOUND | `trace:inbound` 或 `trace:scan` | 入库操作 |
-  | OUTBOUND | `trace:outbound` 或 `trace:scan` | 出库操作 |
-  | TRANSFER | `trace:transfer` 或 `trace:scan` | 物流流转 |
-  | 其他 | `trace:scan` | 通用扫码权限 |
-  
+  | INBOUND | `trace:inbound` 或 `trace:scan` | 入库 |
+  | OUTBOUND | `trace:outbound` 或 `trace:scan` | 出库 |
+  | TRANSFER | `trace:transfer` 或 `trace:scan` | 流转/运输 |
+  | EXCEPTION / EXCEPTION_OPEN | `trace:exception:handle` 或 `trace:scan` | 异常冻结 |
+  | EXCEPTION_CLOSE / CORRECTION | 推荐使用专用接口 | 异常解除/审计纠错 |
+
 - **Request Body**
   ```json
   {
     "action_type": "INBOUND",
-    "from_node": "物流A",
-    "to_node": "仓库B",
-    "province": "江苏省",
-    "city": "苏州市",
-    "event_time": "2026-01-16T10:30:00",
-    "correction_of": null,
+    "to_node": "上海仓库",
+    "province": "上海市",
+    "city": "上海市",
+    "event_time": "2026-05-07T11:00:00",
+    "idempotency_key": "scan-TRC-000001-INBOUND-001",
     "remark": "到货外观完好"
   }
   ```
 
   | 字段 | 类型 | 必填 | 说明 |
   |------|------|------|------|
-  | action_type | string | ✅ | 动作类型，见下方枚举 |
-  | from_node | string | ❌ | 上游/来源节点，最长 64 字符 |
-  | to_node | string | ❌ | 下游/目标节点，最长 64 字符 |
-  | province | string | ❌ | 省份，最长 32 字符 |
-  | city | string | ❌ | 城市，最长 32 字符 |
-  | event_time | string | ❌ | 业务发生时间。非空时必须为 ISO-8601 本地时间，如 `2026-01-16T10:30:00`；省略或空值时后端使用服务器当前时间；非法格式返回 400 |
-  | correction_of | number/null | ❌ | 修正原日志 ID，仅 CORRECTION 使用 |
-  | remark | string | ❌ | 事件备注，最长 255 字符；非空备注会持久化并纳入 Hash/签名载荷 |
+  | action_type | string | ✅ | 动作类型，见 2.13 枚举 |
+  | from_node | string | ❌ | 来源节点；常规流转可省略，后端默认来自快照当前节点；伪造不一致来源会被拒绝 |
+  | to_node | string | ❌ | 目标节点；任务内扫码时由任务目标节点推导 |
+  | province/city | string | ❌ | 未传时沿用快照或节点资料 |
+  | event_time | string | ❌ | ISO-8601 本地时间，如 `2026-05-07T11:00:00`；非法格式返回 400 |
+  | idempotency_key | string | ❌ | 幂等键；同一 `trace_code + action_type + idempotency_key` 不重复写日志 |
+  | correction_of | number/null | ❌ | 仅历史兼容；新纠错使用 `/corrections` |
+  | remark | string | ❌ | 最长 255；非空会落库并纳入 Hash/签名 |
+
 - **Response** (HTTP 201)
   ```json
   {
@@ -456,21 +579,10 @@ Access-Control-Max-Age: 3600
   }
   ```
 
-**action_type 枚举值**：
-- `INIT` - 初始化/生产
-- `INBOUND` - 入库
-- `OUTBOUND` - 出库
-- `TRANSFER` - 转移
-- `EXCEPTION` - 异常
-- `CORRECTION` - 修正（红冲蓝补）
+### 2.6 扫码后可执行动作
 
-> `event_time` 不再容错解析：例如 `not-a-date` 或 `2026-01-16 10:30:00` 会返回 400，不会静默写入当前时间。
-
-### 2.3 溯源详情
-
-- **GET** `/api/traces/{trace_code}`
-- **Headers**: `Authorization: Bearer <token>`
-- **Path Params**: `trace_code` - 溯源码
+- **GET** `/api/traces/{trace_code}/available-actions`
+- **权限**：`trace:view`
 - **Response** (HTTP 200)
   ```json
   {
@@ -478,47 +590,244 @@ Access-Control-Max-Age: 3600
     "status": 200,
     "message": "success",
     "data": {
+      "trace_code": "TRC-20260507-000001",
+      "current_status": "IN_TRANSIT",
+      "current_status_label": "运输中",
+      "current_node": "北京工厂",
+      "recommended_action": "INBOUND",
+      "available_actions": [
+        {
+          "action_type": "INBOUND",
+          "label": "确认入库",
+          "requires_remark": false,
+          "next_status": "IN_STOCK",
+          "next_status_label": "在库",
+          "permission_hint": "trace:inbound"
+        }
+      ],
+      "no_action_reason": null
+    }
+  }
+  ```
+
+### 2.7 溯源详情：业务有效视图 / 审计完整视图
+
+- **GET** `/api/traces/{trace_code}?view=effective|audit`
+- **权限**：`trace:view`；`view=audit` 额外要求 `trace:audit:view`
+- **说明**：
+  - `effective` 为默认视图，会隐藏被后续 `CORRECTION` 覆盖的原始日志。
+  - `audit` 返回完整日志链，并保留纠错关系。
+  - 响应包含 `aggregation_history`，用于展示单品曾经所在箱码/托盘码及直接/间接关系。
+
+- **Response** (HTTP 200)
+  ```json
+  {
+    "code": 0,
+    "status": 200,
+    "message": "success",
+    "data": {
+      "view": "effective",
       "snapshot": {
-        "trace_code": "TRC-20260116-001",
+        "trace_code": "TRC-20260507-000001",
         "spu_id": 1,
         "current_status": "IN_STOCK",
-        "current_node": "仓库B",
-        "current_owner": "admin",
-        "province": "江苏省",
-        "city": "苏州市",
-        "last_event_time": "2026-01-16T10:30:00",
-        "last_log_id": 5,
-        "last_hash": "a1b2c3d4...",
-        "update_time": "2026-01-16T10:30:00"
+        "current_node": "上海仓库",
+        "current_owner": "warehouse",
+        "province": "上海市",
+        "city": "上海市",
+        "last_event_time": "2026-05-07T11:00:00",
+        "last_log_id": 95,
+        "last_hash": "a1b2c3d4..."
       },
       "history": [
         {
-          "id": 1,
-          "trace_code": "TRC-20260116-001",
-          "action_type": "INIT",
+          "id": 89,
+          "trace_code": "TRC-20260507-000001",
+          "action_type": "ACTIVATE_CODE",
           "from_node": null,
-          "to_node": "工厂A",
-          "province": "浙江省",
-          "city": "杭州市",
-          "remark": "生产赋码初始化",
-          "event_time": "2026-01-15T09:00:00",
+          "to_node": "北京工厂",
+          "remark": "贴码后扫码复核",
+          "operator": "producer",
+          "signature_key_id": "default",
+          "signature_key_version": 1,
           "prev_hash": "GENESIS",
-          "current_hash": "abc123...",
-          "signature": "Base64EncodedRSASignature...",
-          "create_time": "2026-01-15T09:00:00"
+          "current_hash": "abc123..."
+        }
+      ],
+      "aggregation_history": [
+        {
+          "relation_id": 5,
+          "parent_code": "CARTON-001",
+          "child_code": "TRC-20260507-000001",
+          "relation_type": "CARTON",
+          "relation_type_label": "箱码",
+          "active": true,
+          "direct": true,
+          "level": 1,
+          "via_code": null
         }
       ]
     }
   }
   ```
 
-### 2.4 验证溯源链完整性
+### 2.8 异常冻结、解除与审计纠错
 
-验证溯源链的完整性，包括 Hash 链连续性验证和 RSA 数字签名验证。
+| 操作 | 方法与路径 | 权限 | 说明 |
+|---|---|---|---|
+| 异常冻结 | `POST /api/traces/{trace_code}/events`，`action_type=EXCEPTION_OPEN` | `trace:exception:handle` 或 `trace:scan` | 冻结常规流转，记录冻结前状态 |
+| 解除异常 | `POST /api/traces/{trace_code}/exception/close` | `trace:exception:handle` 或 `trace:scan` | 写入 `EXCEPTION_CLOSE`，恢复冻结前状态 |
+| 审计纠错 | `POST /api/traces/{trace_code}/corrections` | `trace:exception:handle` 或 `trace:scan` | 写入 `CORRECTION`，不删除原始日志 |
+
+- **解除异常 Request**
+  ```json
+  {
+    "remark": "复核通过，解除冻结",
+    "event_time": "2026-05-07T12:00:00",
+    "idempotency_key": "close-exception-001"
+  }
+  ```
+- **审计纠错 Request**
+  ```json
+  {
+    "correction_of": 95,
+    "remark": "原事件节点录入错误，追加修正说明",
+    "from_node": "北京工厂",
+    "to_node": "上海仓库",
+    "province": "上海市",
+    "city": "上海市",
+    "event_time": "2026-05-07T12:05:00",
+    "idempotency_key": "correction-95-001"
+  }
+  ```
+
+### 2.9 流转任务（仓库/物流工作台）
+
+| 方法与路径 | 权限 | 说明 |
+|---|---|---|
+| `GET /api/trace-flow-tasks?task_type=OUTBOUND&status=CREATED` | `trace:view` | 任务列表 |
+| `GET /api/trace-flow-tasks/{id}` | `trace:view` | 按ID查询任务 |
+| `GET /api/trace-flow-tasks/no/{task_no}` | `trace:view` | 按任务号查询 |
+| `POST /api/trace-flow-tasks` | `trace:task:create` 或兼容扫码权限 | 创建任务 |
+| `POST /api/trace-flow-tasks/{id}/scan` | `trace:task:scan` 或兼容扫码权限 | 任务内连续扫码 |
+| `POST /api/trace-flow-tasks/{id}/complete` | `trace:task:complete` 或兼容扫码权限 | 完成任务；数量不一致必须填写差异原因 |
+| `POST /api/trace-flow-tasks/{id}/cancel` | `trace:task:create/complete` 或兼容扫码权限 | 取消任务 |
+
+- **创建任务 Request**
+  ```json
+  {
+    "task_no": "TASK-OUT-20260507-001",
+    "task_type": "OUTBOUND",
+    "source_node_id": 1,
+    "target_node_id": 2,
+    "expected_quantity": 100,
+    "remark": "北京工厂发往上海仓"
+  }
+  ```
+- **任务扫码 Request**
+  ```json
+  {
+    "trace_code": "CARTON-001",
+    "event_time": "2026-05-07T13:00:00",
+    "idempotency_key": "task-1-scan-carton-001",
+    "remark": "任务内扫码"
+  }
+  ```
+- **任务响应关键字段**
+  ```json
+  {
+    "id": 1,
+    "task_no": "TASK-OUT-20260507-001",
+    "task_type": "OUTBOUND",
+    "status": "PROCESSING",
+    "source_node_id": 1,
+    "source_node_name": "北京工厂",
+    "target_node_id": 2,
+    "target_node_name": "上海仓库",
+    "expected_quantity": 100,
+    "actual_quantity": 20,
+    "remaining_quantity": 80,
+    "last_scan_trace_code": "CARTON-001",
+    "duplicate_scan": false,
+    "batch_scan": true,
+    "batch_parent_code": "CARTON-001",
+    "batch_expanded_quantity": 20,
+    "batch_created_quantity": 20,
+    "batch_duplicate_quantity": 0,
+    "batch_skipped_quantity": 0,
+    "scan_message": "批量扫码成功"
+  }
+  ```
+
+### 2.10 箱码/托盘码聚合
+
+| 方法与路径 | 权限 | 说明 |
+|---|---|---|
+| `POST /api/trace-aggregations` | `trace:task:scan` 或兼容扫码权限 | 创建箱码/托盘码绑定 |
+| `POST /api/trace-aggregations/{relation_id}/release` | `trace:task:scan` 或兼容扫码权限 | 解除聚合关系 |
+| `GET /api/trace-aggregations/children?parent_code=CARTON-001` | `trace:view` | 查询有效子码 |
+| `GET /api/trace-aggregations/parents?child_code=TRC-001` | `trace:view` | 查询有效父码 |
+| `GET /api/trace-aggregations/history/by-parent?parent_code=CARTON-001` | `trace:view` | 父码聚合历史 |
+| `GET /api/trace-aggregations/history/by-child?child_code=TRC-001` | `trace:view` | 单品聚合历史 |
+
+- **绑定 Request**
+  ```json
+  {
+    "parent_code": "CARTON-001",
+    "child_code": "TRC-20260507-000001",
+    "relation_type": "CARTON",
+    "remark": "装箱"
+  }
+  ```
+- **解除 Request**
+  ```json
+  {
+    "remark": "拆箱复核"
+  }
+  ```
+
+### 2.11 节点与用户节点绑定
+
+| 方法与路径 | 权限 | 说明 |
+|---|---|---|
+| `GET /api/trace-nodes?keyword=&node_type=&enabled=` | `trace:view` | 节点列表 |
+| `GET /api/trace-nodes/selectable` | `trace:view` | 可选启用节点 |
+| `GET /api/trace-nodes/{id}` | `trace:view` | 节点详情 |
+| `GET /api/trace-nodes/code/{node_code}` | `trace:view` | 按节点编码查询 |
+| `POST /api/trace-nodes` | `trace:create` | 创建节点 |
+| `PUT /api/trace-nodes/{id}` | `trace:create` | 更新节点 |
+| `DELETE /api/trace-nodes/{id}` | `trace:create` | 删除节点 |
+| `GET /api/users/me/trace-nodes` | `trace:view` | 当前用户自己的可操作节点 |
+| `GET /api/users/{id}/trace-nodes` | `user:view` | 管理员查看用户节点绑定 |
+| `PUT /api/users/{id}/trace-nodes` | `user:manage` | 管理员替换用户节点绑定 |
+
+- **节点 Request**
+  ```json
+  {
+    "node_code": "BJ-FACTORY-01",
+    "node_name": "北京工厂",
+    "node_type": "FACTORY",
+    "org_id": 1001,
+    "province": "北京市",
+    "city": "北京市",
+    "address": "工业园区1号",
+    "enabled": true
+  }
+  ```
+- **用户节点绑定 Request**
+  ```json
+  {
+    "node_ids": [1, 2],
+    "default_node_id": 1
+  }
+  ```
+
+### 2.12 验证溯源链完整性与公钥
+
+#### 2.12.1 验链
 
 - **GET** `/api/traces/{trace_code}/verify`
-- **Headers**: `Authorization: Bearer <token>`
-- **Path Params**: `trace_code` - 溯源码
+- **权限**：`trace:view`
 - **Response - 验证通过** (HTTP 200)
   ```json
   {
@@ -533,52 +842,9 @@ Access-Control-Max-Age: 3600
       "anchor_hash": "a1b2c3d4e5f6...",
       "anchor_signature": "Base64RSASignature...",
       "public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAO...",
-      "verify_time": "2026-01-18T15:30:00",
+      "verify_time": "2026-05-07T15:30:00",
       "verify_duration_ms": 125,
       "errors": []
-    }
-  }
-  ```
-- **Response - 验证失败** (HTTP 200)
-  ```json
-  {
-    "code": 0,
-    "status": 200,
-    "message": "success",
-    "data": {
-      "valid": false,
-      "total_logs": 5,
-      "hash_verified_count": 3,
-      "signature_verified_count": 4,
-      "anchor_hash": null,
-      "anchor_signature": null,
-      "public_key": null,
-      "verify_time": "2026-01-18T15:30:00",
-      "verify_duration_ms": 150,
-      "errors": [
-        {
-          "log_id": 4,
-          "error_type": "HASH_MISMATCH",
-          "message": "Hash 不匹配：数据可能被篡改",
-          "expected": "abc123...",
-          "actual": "def456...",
-          "event_time": "2026-01-16T10:30:00",
-          "from_node": "物流A",
-          "to_node": "仓库B",
-          "action_type": "INBOUND"
-        },
-        {
-          "log_id": 5,
-          "error_type": "CHAIN_BROKEN",
-          "message": "Hash 链断裂：prevHash 不匹配",
-          "expected": "abc123...",
-          "actual": "xyz789...",
-          "event_time": "2026-01-17T14:00:00",
-          "from_node": "仓库B",
-          "to_node": "门店C",
-          "action_type": "OUTBOUND"
-        }
-      ]
     }
   }
   ```
@@ -587,17 +853,15 @@ Access-Control-Max-Age: 3600
 | error_type | 说明 |
 |------------|------|
 | `CHAIN_BROKEN` | Hash 链断裂，prevHash 不等于上一条的 currentHash |
-| `HASH_MISMATCH` | Hash 不匹配，重算 Hash 与存储的不一致，数据可能被篡改 |
-| `SIGNATURE_INVALID` | 数字签名验证失败，数据可能被篡改 |
+| `HASH_MISMATCH` | Hash 不匹配，重算 Hash 与存储的不一致 |
+| `SIGNATURE_INVALID` | 数字签名验证失败 |
 | `SIGNATURE_MISSING` | 缺少数字签名 |
 | `NO_LOGS` | 未找到任何溯源日志 |
 
-### 2.5 获取验证公钥
-
-获取 RSA 公钥，供第三方独立验证数字签名。
+#### 2.12.2 获取验证公钥
 
 - **GET** `/api/traces/public-key`
-- **Headers**: 无需认证（公开接口）
+- **Headers**：无需认证（公开接口）
 - **Response** (HTTP 200)
   ```json
   {
@@ -606,24 +870,30 @@ Access-Control-Max-Age: 3600
     "message": "success",
     "data": {
       "public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...",
+      "key_id": "default",
+      "key_version": "1",
       "algorithm": "RSA",
       "signature_algorithm": "SHA256withRSA"
     }
   }
   ```
 
-**第三方验证流程**：
-1. 调用本接口获取公钥
-2. 调用 `/api/traces/{trace_code}` 获取溯源日志
-3. 构建签名数据字符串（格式见下）
-4. 使用公钥验证每条日志的 `signature` 字段
-
-**签名数据格式**：
+**当前签名数据格式**：
 ```
-traceCode={traceCode}|actionType={actionType}|fromNode={fromNode}|toNode={toNode}|province={province}|city={city}|eventTime={eventTime}|ingestTime={ingestTime}|prevHash={prevHash}|currentHash={currentHash}|correctionOf={correctionOf}|remark={remark}
+traceCode={traceCode}|actionType={actionType}|fromNode={fromNode}|toNode={toNode}|province={province}|city={city}|eventTime={eventTime}|ingestTime={ingestTime}|prevHash={prevHash}|currentHash={currentHash}|correctionOf={correctionOf}|operator={operator}|remark={remark}
 ```
 
-`remark` 仅在日志备注非空时追加到签名数据；空备注历史日志不追加该片段。
+`operator` 已纳入新日志签名载荷；`remark` 仅在日志备注非空时追加。验链服务兼容历史未保护 `operator` 的旧签名格式。
+
+### 2.13 当前核心枚举
+
+| 枚举 | 取值 |
+|---|---|
+| action_type | `INIT`、`PRINT_CODE`、`REPRINT_CODE`、`ACTIVATE_CODE`、`VOID_CODE`、`PACK`、`UNPACK`、`PALLETIZE`、`UNPALLETIZE`、`INBOUND`、`OUTBOUND`、`TRANSFER`、`EXCEPTION`、`EXCEPTION_OPEN`、`EXCEPTION_CLOSE`、`CORRECTION` |
+| trace_code.code_status | `GENERATED`、`PRINTED`、`ACTIVATED`、`IN_STOCK`、`IN_TRANSIT`、`EXCEPTION`、`VOIDED`、`SCRAPPED` |
+| trace_flow_task.task_type | `OUTBOUND`、`TRANSFER`、`INBOUND`、`RECEIVE` |
+| trace_flow_task.status | `CREATED`、`PROCESSING`、`COMPLETED`、`CANCELLED`、`EXCEPTION` |
+| trace_aggregation.relation_type | `CARTON`、`PALLET`、`BATCH` |
 
 ---
 
@@ -1419,6 +1689,20 @@ curl http://localhost:8080/api/traces/TC-20260119-0001/verify \
 
 > 若仍调用旧路径，将命中 404/路由不存在；请迁移到当前接口路径。
 
+### 9.1 新版核心业务新增路径速查
+
+| 能力 | 当前接口路径 |
+|---|---|
+| 扫码后动作推荐 | `GET /api/traces/{trace_code}/available-actions` |
+| 打印 / 重打 / 作废 | `POST /api/traces/{trace_code}/print` / `reprint` / `void` |
+| 单品码激活 | `POST /api/trace-codes/{trace_code}/activate` |
+| 批次对账 / 批次码列表 | `GET /api/trace-batches/{batch_id}` / `codes` |
+| 流转任务 | `GET/POST /api/trace-flow-tasks`、`POST /api/trace-flow-tasks/{id}/scan|complete|cancel` |
+| 箱码/托盘码聚合 | `POST /api/trace-aggregations`、`GET /api/trace-aggregations/children|parents|history/*` |
+| 结构化节点 | `GET/POST/PUT/DELETE /api/trace-nodes` |
+| 用户节点绑定 | `GET /api/users/me/trace-nodes`、`GET/PUT /api/users/{id}/trace-nodes` |
+| 异常解除 / 审计纠错 | `POST /api/traces/{trace_code}/exception/close`、`POST /api/traces/{trace_code}/corrections` |
+
 ---
 
 ## 10. 前端对接示例（Vue 3 + Axios）
@@ -1527,26 +1811,38 @@ const handleLogin = async () => {
 // 生产赋码
 const handleProduce = async () => {
   const result = await createTrace({
-    spuId: 1,           // camelCase
-    quantity: 10,        // 1 ~ 500
-    manufacturerNode: '工厂A',
-    province: '浙江省',
-    city: '杭州市'
+    partCode: 'SPU-VALVE-001',
+    batchNo: 'ASSIGN-20260507-0001',
+    productionOrderNo: 'PO-20260507-01',
+    quantity: 10,              // 1 ~ 500
+    manufacturerNodeId: 1
   })
-  // result: { generatedCount: 10, traceCodes: [...] }  // 前端 request.js 已转换为 camelCase
+  // request.js 会把响应转换为 camelCase：
+  // { batchId, batchNo, requestedCount, generatedCount, traceCodes, batchStatus, partialFailure, warning }
 }
 
 // 扫码流转
 const handleScan = async (traceCode) => {
   await createEvent(traceCode, {
     actionType: 'INBOUND',
-    fromNode: '工厂A',
-    toNode: '仓库B',
+    // 常规流转 fromNode 可省略，后端从当前快照或任务推导
+    toNode: '上海仓库',
     province: '江苏省',
     city: '苏州市',
-    eventTime: '2026-01-16T10:30:00',
+    eventTime: '2026-05-07T10:30:00',
+    idempotencyKey: `scan-${traceCode}-inbound-001`,
     remark: '到货外观完好'
   })
+}
+
+// 任务内连续扫码
+const handleTaskScan = async (taskId, traceCode) => {
+  const task = await scanTraceFlowTask(taskId, {
+    traceCode,
+    idempotencyKey: `task-${taskId}-${traceCode}`,
+    remark: '任务工作台扫码'
+  })
+  // task.duplicateScan / task.batchScan 可直接用于提示重复码或父码批量展开结果
 }
 ```
 
@@ -1568,12 +1864,19 @@ interface LoginResult {
   token: string
   username: string
   role: string
+  permissions: string[]
 }
 
 // 赋码响应
 interface ProduceResult {
+  batch_id: number
+  batch_no: string
+  requested_count: number
   generated_count: number
   trace_codes: string[]
+  batch_status: string
+  partial_failure: boolean
+  warning?: string | null
 }
 
 // 溯源快照
@@ -1588,6 +1891,9 @@ interface TraceSnapshot {
   last_event_time: string
   last_log_id: number
   last_hash: string
+  exception_restore_status?: string | null
+  exception_restore_node?: string | null
+  exception_restore_owner?: string | null
   update_time: string
 }
 
@@ -1604,13 +1910,44 @@ interface TraceLog {
   event_time: string
   prev_hash: string
   current_hash: string
+  correction_of?: number | null
+  operator: string
+  signature_key_id: string
+  signature_key_version: number
   create_time: string
 }
 
 // 溯源详情
 interface TraceDetail {
+  view: 'effective' | 'audit'
   snapshot: TraceSnapshot
   history: TraceLog[]
+  aggregation_history: Array<{
+    relation_id: number
+    parent_code: string
+    child_code: string
+    relation_type: 'CARTON' | 'PALLET' | 'BATCH'
+    active: boolean
+    direct: boolean
+    level: number
+    via_code?: string | null
+  }>
+}
+
+interface TraceFlowTask {
+  id: number
+  task_no: string
+  task_type: 'OUTBOUND' | 'TRANSFER' | 'INBOUND' | 'RECEIVE'
+  status: 'CREATED' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED' | 'EXCEPTION'
+  source_node_id: number
+  target_node_id: number
+  expected_quantity: number
+  actual_quantity: number
+  remaining_quantity: number
+  duplicate_scan?: boolean
+  batch_scan?: boolean
+  batch_expanded_quantity?: number
+  scan_message?: string
 }
 ```
 

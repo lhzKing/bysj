@@ -2,7 +2,7 @@
 
 > 日期：2026-05-05  
 > 范围：工业零配件供应链溯源系统的生产赋码、扫码流转、批次管理、单品码一致性、前线用户操作体验  
-> 状态：讨论稿 v0.1
+> 状态：已落地收口版 v1.0（B01-B32 已按执行任务表实现并完成文档同步）
 
 ## 1. 背景与核心问题
 
@@ -853,11 +853,72 @@ GET /api/traces/{traceCode}?view=audit
 
 ---
 
-## 14. 参考方向
+## 14. 当前实现落地状态（2026-05-07）
+
+本分析文档最初作为讨论稿输出；当前 `溯源码核心业务重设计执行任务表_20260505.md` 中 B01-B32 已收口为实现。关键落地结果如下：
+
+### 14.1 后端核心能力
+
+| 设计方向 | 当前实现 |
+|---|---|
+| 状态机校验 | 已新增 `TraceTransitionPolicy`，普通扫码写入前校验当前状态、动作和纠错关系；异常冻结状态禁止常规流转 |
+| 可执行动作 | 已提供 `GET /api/traces/{traceCode}/available-actions`，按状态、权限、用户节点返回可执行动作和推荐动作 |
+| 后端推导节点 | 普通扫码默认从快照推导 `fromNode`；任务内扫码由任务起点/终点推导节点 |
+| 扫码幂等 | 已新增 `trace_scan_idempotency`；任务内连续扫码另由 `trace_flow_task_scan` 唯一约束防重复计数 |
+| Hash/签名保护 | 新日志的 `operator` 与非空 `remark` 已纳入 Hash/RSA 签名；验链兼容历史旧载荷 |
+| effective/audit 详情 | `GET /api/traces/{traceCode}?view=effective|audit` 已落地，audit 需要 `trace:audit:view` |
+
+### 14.2 批次赋码与一物一码
+
+| 设计方向 | 当前实现 |
+|---|---|
+| 赋码批次 | 已新增 `trace_assign_batch`，`POST /api/traces` 创建批次并返回 `batchId/batchNo/traceCodes` |
+| 单品码状态 | 已新增 `trace_code`，支持 `GENERATED/PRINTED/ACTIVATED/IN_STOCK/IN_TRANSIT/EXCEPTION/VOIDED/SCRAPPED` |
+| 打印/重打/作废 | 已新增 `PRINT_CODE/REPRINT_CODE/VOID_CODE`，并同步打印次数、码状态和生命周期日志 |
+| 扫码激活 | 已提供 `POST /api/trace-codes/{traceCode}/activate`，只有激活后的码可进入常规流转 |
+| 批次数量对账 | 已提供 `GET /api/trace-batches/{batchId}` 与 `/codes`，返回计划、生成、打印、激活、入库、作废等指标 |
+
+### 14.3 节点、任务与批量流转
+
+| 设计方向 | 当前实现 |
+|---|---|
+| 结构化节点 | 已新增 `trace_node` 与 `/api/trace-nodes` 管理接口 |
+| 用户节点绑定 | 已新增 `trace_user_node_binding` 与 `/api/users/*/trace-nodes` 管理接口 |
+| 流转任务 | 已新增 `trace_flow_task` 与 `/api/trace-flow-tasks`，支持创建、取消、扫码、完成 |
+| 连续扫码 | 已新增 `trace_flow_task_scan`，支持重复码反馈和稳定进度语义 |
+| 差异处理 | 任务完成时少扫/多扫必须填写差异原因，并记录 `discrepancy_*` 字段 |
+| 箱码/托盘码 | 已新增 `trace_aggregation` 与 `/api/trace-aggregations`，支持装箱、拆箱、托盘绑定/解绑 |
+| 扫父码批量流转 | 任务内扫码可展开箱码/托盘码子码，整批校验后批量流转 |
+| 聚合历史 | 单品详情返回 `aggregationHistory`，前端详情页展示直接/间接聚合关系 |
+
+### 14.4 前端与权限
+
+- 已新增生产赋码工作台：批次创建、码列表、打印/重打/作废、扫码激活、数量对账。
+- 已新增仓库/物流任务工作台：任务创建、待办列表、连续扫码、重复码反馈、进度展示、一键完成。
+- 扫码页已接入 available-actions，仅展示后端返回的可执行动作。
+- 详情页支持 effective/audit 切换，并在 audit 视图展示纠错标识。
+- 已新增业务动作权限：`trace:batch:create`、`trace:code:print`、`trace:code:activate`、`trace:task:create`、`trace:task:scan`、`trace:task:complete`、`trace:audit:view`、`trace:exception:handle`。
+
+### 14.5 当前保留的兼容边界
+
+- `trace_snapshot.current_node/current_owner` 与 `trace_lifecycle_log.from_node/to_node` 仍保留文本字段，用于历史数据、地图/拓扑和展示兼容；新业务判断优先使用结构化节点、用户节点绑定和流转任务。
+- `TraceStatus` 仍保留 `INIT/IN_STOCK/IN_TRANSIT/TRANSFERRED/EXCEPTION` 的历史物流快照状态；真实标签可用性由 `TraceCodeStatus` 承载。
+- 旧版 `/api/trace/*` 路径不再暴露；当前 RESTful 路径详见根目录 `api-doc.md`。
+
+相关收口文档：
+
+- 数据库结构：`docs/数据库设计说明.md`
+- API 契约：`api-doc.md`
+- 项目使用说明：`README.md`
+- 执行过程：`溯源码核心业务重设计执行任务表_20260505.md`
+
+---
+
+## 15. 参考方向
 
 - GS1 Digital Link：将识别键放入 Web URI，并连接到在线信息和服务。
 - EPCIS / OpenTraceability：强调事件、业务步骤、状态、地点、来源、去向、纠错声明等事件模型。
-- 本项目当前实现：`TraceCodeAssignmentService`、`TraceScanTransactionService`、`TraceStatus`、`TraceLifecycleLog`、`TraceSnapshot`。
+- 本项目当前实现：`TraceCodeAssignmentService`、`TraceScanTransactionService`、`TraceTransitionPolicy`、`TraceFlowTaskService`、`TraceAggregationService`、`TraceCodeStatus`、`TraceLifecycleLog`、`TraceSnapshot`。
 
 相关链接：
 
@@ -865,4 +926,3 @@ GET /api/traces/{traceCode}?view=audit
 - https://ref.gs1.org/standards/digital-link/uri-syntax/
 - https://github.com/ift-gftc/opentraceability
 - https://raw.githubusercontent.com/ift-gftc/opentraceability/main/docs/epcis/epcis_schema.json
-
