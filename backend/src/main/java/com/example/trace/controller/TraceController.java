@@ -27,9 +27,11 @@ import java.util.Map;
  * 资源: traces (溯源实例)
  * 
  * 权限要求：
- * - trace:create（生产赋码）
+ * - trace:batch:create（生产赋码批次；trace:create 保留为历史兼容权限）
+ * - trace:code:print（打印、重打、作废标签）
  * - trace:scan（超级扫码权限，可执行所有扫码动作）
  * - trace:inbound / trace:outbound / trace:transfer（细粒度扫码权限）
+ * - trace:exception:handle（异常上报）
  * - trace:view（溯源查询）
  */
 @RestController
@@ -53,7 +55,7 @@ public class TraceController {
      * POST /api/traces
      */
     @PostMapping
-    @RequirePermission("trace:create")
+    @RequirePermission({"trace:batch:create", "trace:create"})
     public ResponseEntity<ApiResponse<ProduceAssignResponse>> createTraces(
             @RequestBody @Valid ProduceAssignRequest request,
             HttpServletRequest httpReq
@@ -72,10 +74,11 @@ public class TraceController {
      * 权限细分：
      * - trace:scan = 超级扫码权限，可执行所有扫码动作
      * - trace:inbound / trace:outbound / trace:transfer 仅允许对应动作
-     * - 其他动作（如 EXCEPTION / CORRECTION）仅允许 trace:scan
+     * - trace:exception:handle 仅允许异常上报动作
+     * - 其他动作（如 CORRECTION）仅允许 trace:scan
      */
     @PostMapping("/{traceCode}/events")
-    @RequirePermission({"trace:scan", "trace:inbound", "trace:outbound", "trace:transfer"})
+    @RequirePermission({"trace:scan", "trace:inbound", "trace:outbound", "trace:transfer", "trace:exception:handle"})
     public ResponseEntity<ApiResponse<Void>> createEvent(
             @PathVariable String traceCode,
             @RequestBody @Valid ScanTraceRequest request,
@@ -106,7 +109,7 @@ public class TraceController {
      * POST /api/traces/{traceCode}/print
      */
     @PostMapping("/{traceCode}/print")
-    @RequirePermission("trace:create")
+    @RequirePermission({"trace:code:print", "trace:create"})
     public ResponseEntity<ApiResponse<TraceCodeLabelActionResponse>> printCode(
             @PathVariable String traceCode,
             @RequestBody(required = false) @Valid TraceCodeLabelActionRequest request,
@@ -123,7 +126,7 @@ public class TraceController {
      * POST /api/traces/{traceCode}/reprint
      */
     @PostMapping("/{traceCode}/reprint")
-    @RequirePermission("trace:create")
+    @RequirePermission({"trace:code:print", "trace:create"})
     public ResponseEntity<ApiResponse<TraceCodeLabelActionResponse>> reprintCode(
             @PathVariable String traceCode,
             @RequestBody(required = false) @Valid TraceCodeLabelActionRequest request,
@@ -140,7 +143,7 @@ public class TraceController {
      * POST /api/traces/{traceCode}/void
      */
     @PostMapping("/{traceCode}/void")
-    @RequirePermission("trace:create")
+    @RequirePermission({"trace:code:print", "trace:create"})
     public ResponseEntity<ApiResponse<TraceCodeLabelActionResponse>> voidCode(
             @PathVariable String traceCode,
             @RequestBody(required = false) @Valid TraceCodeLabelActionRequest request,

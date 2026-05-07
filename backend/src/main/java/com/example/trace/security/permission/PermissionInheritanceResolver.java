@@ -18,10 +18,17 @@ public class PermissionInheritanceResolver {
         Map.entry("role:manage", "role:view"),
         Map.entry("part:manage", "part:view"),
         Map.entry("trace:create", "trace:view"),
+        Map.entry("trace:batch:create", "trace:view"),
+        Map.entry("trace:code:print", "trace:view"),
+        Map.entry("trace:code:activate", "trace:view"),
         Map.entry("trace:scan", "trace:view"),
         Map.entry("trace:inbound", "trace:view"),
         Map.entry("trace:outbound", "trace:view"),
         Map.entry("trace:transfer", "trace:view"),
+        Map.entry("trace:task:create", "trace:view"),
+        Map.entry("trace:task:scan", "trace:view"),
+        Map.entry("trace:task:complete", "trace:view"),
+        Map.entry("trace:exception:handle", "trace:view"),
         Map.entry("trace:audit:view", "trace:view")
     );
 

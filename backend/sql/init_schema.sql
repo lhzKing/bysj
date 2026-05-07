@@ -389,6 +389,13 @@ INSERT INTO sys_permission (id, perm_code, perm_name, api_method, api_pattern, r
 (14, 'trace:outbound', 'Outbound scan', 'POST', '/api/traces/*/events', 'Allow outbound scan action'),
 (15, 'trace:transfer', 'Transfer scan', 'POST', '/api/traces/*/events', 'Allow transfer scan action'),
 (16, 'trace:audit:view', 'Trace audit view', NULL, NULL, 'View full trace audit history; checked by view=audit'),
+(17, 'trace:batch:create', 'Create trace assignment batch', 'POST', '/api/traces', 'Create assignment batches and generated single-item trace codes'),
+(18, 'trace:code:print', 'Print trace code label', NULL, NULL, 'Print, reprint, or void trace-code labels; checked by controller annotations'),
+(19, 'trace:code:activate', 'Activate trace code', 'POST', '/api/trace-codes/*/activate', 'Activate or review a single trace code after label attachment'),
+(20, 'trace:task:create', 'Create trace flow task', 'POST', '/api/trace-flow-tasks', 'Create warehouse/logistics flow tasks'),
+(21, 'trace:task:scan', 'Scan trace flow task', 'POST', '/api/trace-flow-tasks/*/scan', 'Scan single, carton, or pallet codes inside flow tasks'),
+(22, 'trace:task:complete', 'Complete trace flow task', 'POST', '/api/trace-flow-tasks/*/complete', 'Complete flow tasks and record discrepancy handling'),
+(23, 'trace:exception:handle', 'Handle trace exception', NULL, NULL, 'Report or handle trace lifecycle exceptions; checked by action policy'),
 -- Dashboard
 (4, 'dashboard:view', 'View dashboard', 'GET', '/api/dashboard/*', 'View dashboard statistics'),
 -- User management
@@ -414,15 +421,15 @@ SELECT 2, id FROM sys_permission;
 
 -- PRODUCER: create trace + view trace + dashboard + part view
 INSERT INTO sys_role_permission (role_id, permission_id) VALUES
-(3, 1), (3, 3), (3, 4), (3, 9);
+(3, 1), (3, 3), (3, 4), (3, 9), (3, 17), (3, 18), (3, 19), (3, 23);
 
 -- WAREHOUSE: inbound/outbound + trace view + dashboard + part view
 INSERT INTO sys_role_permission (role_id, permission_id) VALUES
-(4, 13), (4, 14), (4, 3), (4, 4), (4, 9);
+(4, 13), (4, 14), (4, 3), (4, 4), (4, 9), (4, 20), (4, 21), (4, 22), (4, 23);
 
 -- LOGISTICS: transfer + trace view + dashboard
 INSERT INTO sys_role_permission (role_id, permission_id) VALUES
-(5, 15), (5, 3), (5, 4);
+(5, 15), (5, 3), (5, 4), (5, 20), (5, 21), (5, 22), (5, 23);
 
 -- USER: trace view + dashboard
 INSERT INTO sys_role_permission (role_id, permission_id) VALUES

@@ -51,6 +51,13 @@ class ApiPermissionMatcherDataAuditTest {
         rows.add(perm("trace:outbound", "POST", "/api/traces/*/events"));
         rows.add(perm("trace:transfer", "POST", "/api/traces/*/events"));
         rows.add(perm("trace:audit:view", null, null));
+        rows.add(perm("trace:batch:create", "POST", "/api/traces"));
+        rows.add(perm("trace:code:print", null, null));
+        rows.add(perm("trace:code:activate", "POST", "/api/trace-codes/*/activate"));
+        rows.add(perm("trace:task:create", "POST", "/api/trace-flow-tasks"));
+        rows.add(perm("trace:task:scan", "POST", "/api/trace-flow-tasks/*/scan"));
+        rows.add(perm("trace:task:complete", "POST", "/api/trace-flow-tasks/*/complete"));
+        rows.add(perm("trace:exception:handle", null, null));
         return rows;
     }
 
@@ -155,9 +162,11 @@ class ApiPermissionMatcherDataAuditTest {
     class TraceRoutes {
 
         @Test
-        void traceCreateMatchesOnlyTraceCreate() {
-            // /api/traces is exact (no wildcard), so only trace:create matches.
-            assertThat(matchingCodes("POST", "/api/traces")).containsExactly("trace:create");
+        void traceCreateMatchesLegacyCreateAndBatchCreate() {
+            // /api/traces is exact (no wildcard), so only the legacy create and
+            // explicit batch-create permissions match.
+            assertThat(matchingCodes("POST", "/api/traces"))
+                .containsExactlyInAnyOrder("trace:create", "trace:batch:create");
         }
 
         @Test
@@ -176,6 +185,19 @@ class ApiPermissionMatcherDataAuditTest {
         }
 
         @Test
+        void traceLabelActionsAreAnnotationOnlyToAvoidBroadWildcardEscalation() {
+            assertThat(matchingCodes("POST", "/api/traces/TRACE-001/print")).isEmpty();
+            assertThat(matchingCodes("POST", "/api/traces/TRACE-001/reprint")).isEmpty();
+            assertThat(matchingCodes("POST", "/api/traces/TRACE-001/void")).isEmpty();
+        }
+
+        @Test
+        void traceCodeActivationMatchesCodeActivatePermission() {
+            assertThat(matchingCodes("POST", "/api/trace-codes/TRACE-001/activate"))
+                .containsExactly("trace:code:activate");
+        }
+
+        @Test
         void getPublicKeyIsExcludedAtInterceptorLevelButPathMatcherWouldGrantTraceView() {
             // GET /api/traces/public-key is excluded in WebMvcConfig (both LoginInterceptor
             // and PermissionInterceptor skip it) so the path matcher never runs in production.
@@ -183,6 +205,26 @@ class ApiPermissionMatcherDataAuditTest {
             // with the endpoint's "publicly readable" intent. Lock it in so a future change
             // to either side surfaces here.
             assertThat(matchingCodes("GET", "/api/traces/public-key")).containsExactly("trace:view");
+        }
+    }
+
+    @Nested
+    @DisplayName("TraceFlowTaskController routes")
+    class TraceFlowTaskRoutes {
+
+        @Test
+        void flowTaskBusinessRoutesMatchDedicatedPermissions() {
+            assertThat(matchingCodes("POST", "/api/trace-flow-tasks"))
+                .containsExactly("trace:task:create");
+            assertThat(matchingCodes("POST", "/api/trace-flow-tasks/18/scan"))
+                .containsExactly("trace:task:scan");
+            assertThat(matchingCodes("POST", "/api/trace-flow-tasks/18/complete"))
+                .containsExactly("trace:task:complete");
+        }
+
+        @Test
+        void flowTaskCancelIsAnnotationOnlyBecauseEitherCreatorOrCompleterMayCancel() {
+            assertThat(matchingCodes("POST", "/api/trace-flow-tasks/18/cancel")).isEmpty();
         }
     }
 
@@ -263,6 +305,8 @@ class ApiPermissionMatcherDataAuditTest {
             // but lock the behavior in.
             SysPermission traceCreate = perm("trace:create", "POST", "/api/traces");
             assertThat(matcher.matches(traceCreate, "POST", "/api/traces/TRACE-1/events")).isFalse();
+            SysPermission batchCreate = perm("trace:batch:create", "POST", "/api/traces");
+            assertThat(matcher.matches(batchCreate, "POST", "/api/traces/TRACE-1/events")).isFalse();
         }
 
         @Test
@@ -272,7 +316,8 @@ class ApiPermissionMatcherDataAuditTest {
             for (SysPermission p : seededPermissions()) {
                 if (!p.getPermCode().equals("trace:inbound")
                         && !p.getPermCode().equals("trace:outbound")
-                        && !p.getPermCode().equals("trace:transfer")) {
+                        && !p.getPermCode().equals("trace:transfer")
+                        && !p.getPermCode().equals("trace:task:scan")) {
                     continue;
                 }
                 assertThat(matcher.matches(p, "POST", "/api/traces")).isFalse();

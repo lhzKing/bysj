@@ -11,8 +11,8 @@ import java.util.Set;
 /**
  * Centralized permission policy for trace lifecycle actions.
  *
- * <p>{@code trace:scan} is the super scan permission. Fine-grained scan
- * permissions only unlock their matching normal action.</p>
+ * <p>{@code trace:scan} is kept as the legacy/super scan permission. Newer
+ * business-action permissions unlock only their matching operation.</p>
  */
 @Component
 public class TraceActionPermissionPolicy {
@@ -21,6 +21,10 @@ public class TraceActionPermissionPolicy {
     public static final String TRACE_INBOUND = "trace:inbound";
     public static final String TRACE_OUTBOUND = "trace:outbound";
     public static final String TRACE_TRANSFER = "trace:transfer";
+    public static final String TRACE_CODE_PRINT = "trace:code:print";
+    public static final String TRACE_CODE_ACTIVATE = "trace:code:activate";
+    public static final String TRACE_TASK_SCAN = "trace:task:scan";
+    public static final String TRACE_EXCEPTION_HANDLE = "trace:exception:handle";
 
     private final PermissionService permissionService;
 
@@ -66,9 +70,13 @@ public class TraceActionPermissionPolicy {
 
     private String specificPermission(ActionType actionType) {
         return switch (actionType) {
+            case PRINT_CODE, REPRINT_CODE, VOID_CODE -> TRACE_CODE_PRINT;
+            case ACTIVATE_CODE -> TRACE_CODE_ACTIVATE;
+            case PACK, UNPACK, PALLETIZE, UNPALLETIZE -> TRACE_TASK_SCAN;
             case INBOUND -> TRACE_INBOUND;
             case OUTBOUND -> TRACE_OUTBOUND;
             case TRANSFER -> TRACE_TRANSFER;
+            case EXCEPTION -> TRACE_EXCEPTION_HANDLE;
             default -> null;
         };
     }

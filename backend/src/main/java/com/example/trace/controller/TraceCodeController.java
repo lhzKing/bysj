@@ -32,7 +32,7 @@ public class TraceCodeController {
      * POST /api/trace-codes/{traceCode}/activate
      */
     @PostMapping("/{traceCode}/activate")
-    @RequirePermission("trace:create")
+    @RequirePermission({"trace:code:activate", "trace:create"})
     public ResponseEntity<ApiResponse<TraceCodeActivateResponse>> activateCode(
             @PathVariable String traceCode,
             @RequestBody(required = false) @Valid TraceCodeActivateRequest request,

@@ -12,10 +12,18 @@ const expectedPermissions = [
   'part:manage',
   'trace:view',
   'trace:create',
+  'trace:batch:create',
+  'trace:code:print',
+  'trace:code:activate',
   'trace:scan',
   'trace:inbound',
   'trace:outbound',
-  'trace:transfer'
+  'trace:transfer',
+  'trace:task:create',
+  'trace:task:scan',
+  'trace:task:complete',
+  'trace:exception:handle',
+  'trace:audit:view'
 ]
 
 const exportedPermissions = Object.entries(permissionModule)

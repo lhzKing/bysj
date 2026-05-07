@@ -23,6 +23,28 @@ class PermissionInheritanceResolverTest {
     }
 
     @Test
+    void expand_shouldLetBusinessActionPermissionsInheritBaseTraceView() {
+        assertThat(resolver.expand(Set.of(
+            "trace:batch:create",
+            "trace:code:print",
+            "trace:code:activate",
+            "trace:task:create",
+            "trace:task:scan",
+            "trace:task:complete",
+            "trace:exception:handle"
+        ))).contains(
+            "trace:batch:create",
+            "trace:code:print",
+            "trace:code:activate",
+            "trace:task:create",
+            "trace:task:scan",
+            "trace:task:complete",
+            "trace:exception:handle",
+            "trace:view"
+        );
+    }
+
+    @Test
     void expand_shouldReturnEmptySetForEmptyInput() {
         assertThat(resolver.expand(Set.of())).isEmpty();
         assertThat(resolver.expand(null)).isEmpty();

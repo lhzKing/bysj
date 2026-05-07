@@ -40,7 +40,7 @@ export const layoutNavigation = [
     subtitle: '\u6309\u6279\u6b21\u751f\u6210\u3001\u6253\u5370\u3001\u6fc0\u6d3b\u548c\u5bf9\u8d26\u5355\u54c1\u7801',
     path: '/trace-assignment',
     icon: Factory,
-    permissions: [PERMISSIONS.TRACE.CREATE]
+    permissions: PERMISSIONS.TRACE.ASSIGNMENT_ACCESS
   },
   {
     key: 'trace-flow-tasks',
@@ -50,12 +50,7 @@ export const layoutNavigation = [
     subtitle: '\u6309\u5f85\u529e\u4efb\u52a1\u8fde\u7eed\u626b\u7801\uff0c\u81ea\u52a8\u7d2f\u8ba1\u5df2\u626b/\u5e94\u626b\u6570\u91cf',
     path: '/trace-flow-tasks',
     icon: Truck,
-    permissions: [
-      PERMISSIONS.TRACE.SCAN,
-      PERMISSIONS.TRACE.INBOUND,
-      PERMISSIONS.TRACE.OUTBOUND,
-      PERMISSIONS.TRACE.TRANSFER
-    ]
+    permissions: PERMISSIONS.TRACE.FLOW_TASK_ACCESS
   },
   {
     key: 'traces',

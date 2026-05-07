@@ -56,7 +56,7 @@ public class TraceFlowTaskController {
     }
 
     @PostMapping
-    @RequirePermission({"trace:create", "trace:scan", "trace:inbound", "trace:outbound", "trace:transfer"})
+    @RequirePermission({"trace:task:create", "trace:create", "trace:scan", "trace:inbound", "trace:outbound", "trace:transfer"})
     public ResponseEntity<ApiResponse<TraceFlowTaskResponse>> createTask(
             @Valid @RequestBody TraceFlowTaskCreateRequest request,
             HttpServletRequest httpRequest
@@ -72,13 +72,13 @@ public class TraceFlowTaskController {
     }
 
     @PostMapping("/{id}/cancel")
-    @RequirePermission({"trace:create", "trace:scan", "trace:inbound", "trace:outbound", "trace:transfer"})
+    @RequirePermission({"trace:task:create", "trace:task:complete", "trace:create", "trace:scan", "trace:inbound", "trace:outbound", "trace:transfer"})
     public ApiResponse<TraceFlowTaskResponse> cancelTask(@PathVariable Long id) {
         return ApiResponse.success(traceFlowTaskService.cancelTask(id));
     }
 
     @PostMapping("/{id}/scan")
-    @RequirePermission({"trace:scan", "trace:outbound", "trace:inbound", "trace:transfer"})
+    @RequirePermission({"trace:task:scan", "trace:scan", "trace:outbound", "trace:inbound", "trace:transfer"})
     public ApiResponse<TraceFlowTaskResponse> scanTask(
             @PathVariable Long id,
             @Valid @RequestBody TraceFlowTaskScanRequest request,
@@ -93,7 +93,7 @@ public class TraceFlowTaskController {
     }
 
     @PostMapping("/{id}/complete")
-    @RequirePermission({"trace:create", "trace:scan", "trace:inbound", "trace:outbound", "trace:transfer"})
+    @RequirePermission({"trace:task:complete", "trace:create", "trace:scan", "trace:inbound", "trace:outbound", "trace:transfer"})
     public ApiResponse<TraceFlowTaskResponse> completeTask(
             @PathVariable Long id,
             @RequestBody(required = false) @Valid TraceFlowTaskCompleteRequest request

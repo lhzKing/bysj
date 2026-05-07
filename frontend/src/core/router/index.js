@@ -39,7 +39,7 @@ const router = createRouter({
           component: () => import('@/features/trace/views/TraceAssignmentWorkbench.vue'),
           meta: {
             title: '生产赋码工作台',
-            permissions: [PERMISSIONS.TRACE.CREATE]
+            permissions: PERMISSIONS.TRACE.ASSIGNMENT_ACCESS
           }
         },
         {
@@ -48,12 +48,7 @@ const router = createRouter({
           component: () => import('@/features/trace/views/TraceFlowTaskWorkbench.vue'),
           meta: {
             title: '仓库/物流任务工作台',
-            permissions: [
-              PERMISSIONS.TRACE.SCAN,
-              PERMISSIONS.TRACE.INBOUND,
-              PERMISSIONS.TRACE.OUTBOUND,
-              PERMISSIONS.TRACE.TRANSFER
-            ]
+            permissions: PERMISSIONS.TRACE.FLOW_TASK_ACCESS
           }
         },
         {

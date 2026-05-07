@@ -152,7 +152,15 @@ describe('ScanHub permission model', () => {
     expect(wrapper.text()).not.toContain('生产记录')
   })
 
-  it('exposes the 生产赋码 entry on the welcome screen only when trace:create is granted', async () => {
+  it('exposes the 生产赋码 entry on the welcome screen when assignment permission is granted', async () => {
+    currentUser.permissions = ['trace:batch:create']
+    const wrapper = mountScanHub()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('或者：直接生产赋码')
+  })
+
+  it('keeps the 生产赋码 entry visible for legacy trace:create', async () => {
     currentUser.permissions = ['trace:create']
     const wrapper = mountScanHub()
     await flushPromises()
@@ -160,7 +168,7 @@ describe('ScanHub permission model', () => {
     expect(wrapper.text()).toContain('或者：直接生产赋码')
   })
 
-  it('hides the 生产赋码 entry when trace:create is missing', async () => {
+  it('hides the 生产赋码 entry when assignment permissions are missing', async () => {
     currentUser.permissions = ['trace:scan']
     const wrapper = mountScanHub()
     await flushPromises()

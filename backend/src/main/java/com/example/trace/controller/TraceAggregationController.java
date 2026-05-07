@@ -32,7 +32,7 @@ public class TraceAggregationController {
     private final TraceAggregationService traceAggregationService;
 
     @PostMapping
-    @RequirePermission({"trace:create", "trace:scan", "trace:outbound", "trace:transfer"})
+    @RequirePermission({"trace:task:scan", "trace:create", "trace:scan", "trace:outbound", "trace:transfer"})
     public ResponseEntity<ApiResponse<TraceAggregationResponse>> bindChild(
             @Valid @RequestBody TraceAggregationBindRequest request,
             HttpServletRequest httpRequest
@@ -48,7 +48,7 @@ public class TraceAggregationController {
     }
 
     @PostMapping("/{relationId}/release")
-    @RequirePermission({"trace:create", "trace:scan", "trace:outbound", "trace:transfer"})
+    @RequirePermission({"trace:task:scan", "trace:create", "trace:scan", "trace:outbound", "trace:transfer"})
     public ApiResponse<TraceAggregationResponse> releaseRelation(
             @PathVariable Long relationId,
             @RequestBody(required = false) @Valid TraceAggregationReleaseRequest request,

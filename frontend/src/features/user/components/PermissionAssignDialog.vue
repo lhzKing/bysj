@@ -24,6 +24,17 @@ const handleCancel = () => {
   localVisible.value = false
 }
 
+const isTraceBusinessPermission = (permission) => {
+  return permission?.permCode?.startsWith('trace:') && permission.permCode !== 'trace:view'
+}
+
+const ensureViewPermission = (current, viewCode) => {
+  const viewPermission = props.allPermissions.find(p => p.permCode === viewCode)
+  if (viewPermission && !current.includes(viewPermission.id)) {
+    current.push(viewPermission.id)
+  }
+}
+
 const togglePermission = (permissionId) => {
   const current = [...innerSelectedPermissions.value]
   const index = current.indexOf(permissionId)
@@ -37,20 +48,9 @@ const togglePermission = (permissionId) => {
     const permission = props.allPermissions.find(p => p.id === permissionId)
     if (permission && permission.permCode.endsWith(':manage')) {
       const viewCode = permission.permCode.replace(':manage', ':view')
-      const viewPermission = props.allPermissions.find(p => p.permCode === viewCode)
-      if (viewPermission && !current.includes(viewPermission.id)) {
-        current.push(viewPermission.id)
-      }
-    } else if (permission && permission.permCode === 'trace:create') {
-      const viewPermission = props.allPermissions.find(p => p.permCode === 'trace:view')
-      if (viewPermission && !current.includes(viewPermission.id)) {
-        current.push(viewPermission.id)
-      }
-    } else if (permission && permission.permCode === 'trace:scan') {
-      const viewPermission = props.allPermissions.find(p => p.permCode === 'trace:view')
-      if (viewPermission && !current.includes(viewPermission.id)) {
-        current.push(viewPermission.id)
-      }
+      ensureViewPermission(current, viewCode)
+    } else if (isTraceBusinessPermission(permission)) {
+      ensureViewPermission(current, 'trace:view')
     }
     
     innerSelectedPermissions.value = current

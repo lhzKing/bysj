@@ -22,34 +22,37 @@ describe('scan permission navigation model', () => {
 
     expect(hasAnyPermission(['trace:view'], TRACE_SCAN_HUB_ACCESS)).toBe(false)
     expect(hasAnyPermission(['trace:inbound', 'trace:view'], TRACE_SCAN_HUB_ACCESS)).toBe(true)
+    expect(hasAnyPermission(['trace:exception:handle', 'trace:view'], TRACE_SCAN_HUB_ACCESS)).toBe(true)
     expect(hasAnyPermission(['trace:scan', 'trace:view'], TRACE_SCAN_HUB_ACCESS)).toBe(true)
   })
 
-  it('gates production assignment workbench by trace:create only', () => {
+  it('gates production assignment workbench by assignment business permissions plus legacy trace:create', () => {
     const assignmentNav = layoutNavigation.find((item) => item.key === 'trace-assignment')
     const assignmentRoute = router.getRoutes().find((route) => route.name === 'trace-assignment-workbench')
 
     expect(assignmentNav).toBeTruthy()
     expect(assignmentRoute).toBeTruthy()
-    expect(assignmentNav.permissions).toEqual([PERMISSIONS.TRACE.CREATE])
-    expect(assignmentRoute.meta.permissions).toEqual([PERMISSIONS.TRACE.CREATE])
+    expect(assignmentNav.permissions).toEqual(PERMISSIONS.TRACE.ASSIGNMENT_ACCESS)
+    expect(assignmentRoute.meta.permissions).toEqual(PERMISSIONS.TRACE.ASSIGNMENT_ACCESS)
+    expect(assignmentNav.permissions).toEqual([
+      PERMISSIONS.TRACE.BATCH_CREATE,
+      PERMISSIONS.TRACE.CODE_PRINT,
+      PERMISSIONS.TRACE.CODE_ACTIVATE,
+      PERMISSIONS.TRACE.CREATE
+    ])
   })
 
-  it('gates warehouse logistics task workbench by operational scan permissions', () => {
+  it('gates warehouse logistics task workbench by task business permissions plus legacy scan permissions', () => {
     const taskNav = layoutNavigation.find((item) => item.key === 'trace-flow-tasks')
     const taskRoute = router.getRoutes().find((route) => route.name === 'trace-flow-task-workbench')
 
     expect(taskNav).toBeTruthy()
     expect(taskRoute).toBeTruthy()
-    const flowTaskPermissions = [
-      PERMISSIONS.TRACE.SCAN,
-      PERMISSIONS.TRACE.INBOUND,
-      PERMISSIONS.TRACE.OUTBOUND,
-      PERMISSIONS.TRACE.TRANSFER
-    ]
-
-    expect(taskNav.permissions).toEqual(flowTaskPermissions)
-    expect(taskRoute.meta.permissions).toEqual(flowTaskPermissions)
+    expect(taskNav.permissions).toEqual(PERMISSIONS.TRACE.FLOW_TASK_ACCESS)
+    expect(taskRoute.meta.permissions).toEqual(PERMISSIONS.TRACE.FLOW_TASK_ACCESS)
+    expect(taskNav.permissions).toContain(PERMISSIONS.TRACE.TASK_CREATE)
+    expect(taskNav.permissions).toContain(PERMISSIONS.TRACE.TASK_SCAN)
+    expect(taskNav.permissions).toContain(PERMISSIONS.TRACE.TASK_COMPLETE)
     expect(taskNav.permissions).not.toContain(PERMISSIONS.TRACE.VIEW)
     expect(taskRoute.meta.permissions).not.toContain(PERMISSIONS.TRACE.VIEW)
   })

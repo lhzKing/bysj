@@ -138,7 +138,7 @@
         </button>
 
         <!-- 次要入口：生产赋码（创建新 traceCode），与扫码（消费已有 traceCode）语义独立 -->
-        <div v-if="hasPermission(PERMISSIONS.TRACE.CREATE)" class="mt-8 flex flex-col items-center gap-2">
+        <div v-if="hasAnyPermission(PERMISSIONS.TRACE.ASSIGNMENT_ACCESS)" class="mt-8 flex flex-col items-center gap-2">
           <p class="text-xs text-slate-400 font-medium">生产线赋码、批量入库新批次</p>
           <button
             type="button"
@@ -198,6 +198,9 @@ const permissions = computed(() => user.value?.permissions || [])
 
 const hasPermission = (perm) => {
   return permissions.value.includes(perm)
+}
+const hasAnyPermission = (requiredPermissions = []) => {
+  return requiredPermissions.some((perm) => permissions.value.includes(perm))
 }
 
 const executableActions = computed(() => actionDecision.value?.availableActions || [])
