@@ -6,6 +6,7 @@ import com.example.trace.dto.TraceFlowTaskCompleteRequest;
 import com.example.trace.dto.TraceFlowTaskCreateRequest;
 import com.example.trace.dto.TraceFlowTaskResponse;
 import com.example.trace.dto.TraceFlowTaskScanRequest;
+import com.example.trace.entity.TraceAggregation;
 import com.example.trace.entity.TraceFlowTask;
 import com.example.trace.entity.TraceFlowTaskScan;
 import com.example.trace.entity.TraceNode;
@@ -14,6 +15,7 @@ import com.example.trace.enums.ActionType;
 import com.example.trace.enums.TraceFlowTaskDiscrepancyType;
 import com.example.trace.enums.TraceFlowTaskStatus;
 import com.example.trace.enums.TraceFlowTaskType;
+import com.example.trace.mapper.TraceAggregationMapper;
 import com.example.trace.mapper.TraceFlowTaskScanMapper;
 import com.example.trace.mapper.TraceSnapshotMapper;
 import com.example.trace.mapper.TraceFlowTaskMapper;
@@ -39,6 +41,8 @@ import static org.mockito.Mockito.when;
 class TraceFlowTaskServiceImplTest {
 
     @Mock
+    private TraceAggregationMapper traceAggregationMapper;
+    @Mock
     private TraceFlowTaskMapper traceFlowTaskMapper;
     @Mock
     private TraceFlowTaskScanMapper traceFlowTaskScanMapper;
@@ -54,6 +58,7 @@ class TraceFlowTaskServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new TraceFlowTaskServiceImpl(
+                traceAggregationMapper,
                 traceFlowTaskMapper,
                 traceFlowTaskScanMapper,
                 traceNodeMapper,
@@ -361,6 +366,128 @@ class TraceFlowTaskServiceImplTest {
     }
 
     @Test
+    void scanTask_shouldExpandCartonParentAndCreateChildOutboundScans() {
+        TraceFlowTask task = task(9L, TraceFlowTaskStatus.CREATED);
+        when(traceFlowTaskMapper.selectById(9L)).thenReturn(task);
+        when(traceNodeMapper.selectById(1L)).thenReturn(node(1L, "FACTORY-BJ", "北京工厂", true));
+        when(traceNodeMapper.selectById(2L)).thenReturn(node(2L, "WAREHOUSE-SH", "上海仓库", true));
+        when(traceAggregationMapper.selectActiveChildrenByParent("CARTON-001"))
+                .thenReturn(List.of(
+                        relation("CARTON-001", "TRACE-001"),
+                        relation("CARTON-001", "TRACE-002")
+                ));
+        when(traceSnapshotMapper.selectById("TRACE-001"))
+                .thenReturn(snapshot("TRACE-001", "IN_STOCK", "北京工厂"));
+        when(traceSnapshotMapper.selectById("TRACE-002"))
+                .thenReturn(snapshot("TRACE-002", "IN_STOCK", "北京工厂"));
+        when(traceScanRetryExecutor.executeAndReturnCreated(any(ScanTraceRequest.class), any()))
+                .thenReturn(true);
+
+        TraceFlowTaskResponse response = service.scanTask(9L, scanRequest(" carton-001 "), 7L, "operator-a");
+
+        ArgumentCaptor<ScanTraceRequest> scanCaptor = ArgumentCaptor.forClass(ScanTraceRequest.class);
+        verify(traceScanRetryExecutor, org.mockito.Mockito.times(2))
+                .executeAndReturnCreated(scanCaptor.capture(), org.mockito.ArgumentMatchers.eq("operator-a"));
+        assertThat(scanCaptor.getAllValues())
+                .extracting(ScanTraceRequest::getTraceCode)
+                .containsExactly("TRACE-001", "TRACE-002");
+        assertThat(scanCaptor.getAllValues())
+                .allSatisfy(scan -> {
+                    assertThat(scan.getActionType()).isEqualTo(ActionType.OUTBOUND);
+                    assertThat(scan.getFromNode()).isEqualTo("北京工厂");
+                    assertThat(scan.getToNode()).isEqualTo("上海仓库");
+                });
+        assertThat(task.getActualQuantity()).isEqualTo(2);
+        assertThat(response.getActualQuantity()).isEqualTo(2);
+        assertThat(response.getRemainingQuantity()).isEqualTo(98);
+        assertThat(response.getLastScanTraceCode()).isEqualTo("CARTON-001");
+        assertThat(response.getBatchScan()).isTrue();
+        assertThat(response.getBatchParentCode()).isEqualTo("CARTON-001");
+        assertThat(response.getBatchExpandedQuantity()).isEqualTo(2);
+        assertThat(response.getBatchCreatedQuantity()).isEqualTo(2);
+        assertThat(response.getBatchDuplicateQuantity()).isZero();
+        assertThat(response.getScanMessage()).contains("展开 2 个单品码", "新增 2 个", "本次累计 2 件");
+        org.mockito.Mockito.verify(traceFlowTaskScanMapper, org.mockito.Mockito.times(2))
+                .insert(any(TraceFlowTaskScan.class));
+        verify(traceFlowTaskMapper).updateById(task);
+    }
+
+    @Test
+    void scanTask_shouldExpandPalletParentThroughCartonForReceiveTask() {
+        TraceFlowTask task = task(9L, TraceFlowTaskStatus.CREATED);
+        task.setTaskType(TraceFlowTaskType.RECEIVE.getCode());
+        task.setExpectedQuantity(3);
+        when(traceFlowTaskMapper.selectById(9L)).thenReturn(task);
+        when(traceNodeMapper.selectById(1L)).thenReturn(node(1L, "FACTORY-BJ", "北京工厂", true));
+        when(traceNodeMapper.selectById(2L)).thenReturn(node(2L, "WAREHOUSE-SH", "上海仓库", true));
+        when(traceAggregationMapper.selectActiveChildrenByParent("PALLET-001"))
+                .thenReturn(List.of(
+                        relation("PALLET-001", "CARTON-001"),
+                        relation("PALLET-001", "TRACE-003")
+                ));
+        when(traceAggregationMapper.selectActiveChildrenByParent("CARTON-001"))
+                .thenReturn(List.of(
+                        relation("CARTON-001", "TRACE-001"),
+                        relation("CARTON-001", "TRACE-002")
+                ));
+        when(traceSnapshotMapper.selectById("TRACE-001"))
+                .thenReturn(snapshot("TRACE-001", "IN_TRANSIT", "上海仓库"));
+        when(traceSnapshotMapper.selectById("TRACE-002"))
+                .thenReturn(snapshot("TRACE-002", "IN_TRANSIT", "上海仓库"));
+        when(traceSnapshotMapper.selectById("TRACE-003"))
+                .thenReturn(snapshot("TRACE-003", "IN_TRANSIT", "上海仓库"));
+        when(traceScanRetryExecutor.executeAndReturnCreated(any(ScanTraceRequest.class), any()))
+                .thenReturn(true);
+
+        TraceFlowTaskResponse response = service.scanTask(9L, scanRequest("PALLET-001"), 7L, "receiver-a");
+
+        ArgumentCaptor<ScanTraceRequest> scanCaptor = ArgumentCaptor.forClass(ScanTraceRequest.class);
+        verify(traceScanRetryExecutor, org.mockito.Mockito.times(3))
+                .executeAndReturnCreated(scanCaptor.capture(), org.mockito.ArgumentMatchers.eq("receiver-a"));
+        assertThat(scanCaptor.getAllValues())
+                .extracting(ScanTraceRequest::getTraceCode)
+                .containsExactly("TRACE-001", "TRACE-002", "TRACE-003");
+        assertThat(scanCaptor.getAllValues())
+                .extracting(ScanTraceRequest::getActionType)
+                .containsOnly(ActionType.INBOUND);
+        assertThat(task.getActualQuantity()).isEqualTo(3);
+        assertThat(response.getTaskType()).isEqualTo(TraceFlowTaskType.RECEIVE);
+        assertThat(response.getBatchParentCode()).isEqualTo("PALLET-001");
+        assertThat(response.getBatchExpandedQuantity()).isEqualTo(3);
+        assertThat(response.getBatchCreatedQuantity()).isEqualTo(3);
+    }
+
+    @Test
+    void scanTask_shouldRejectWholeParentScanWhenAnyChildIsInvalid() {
+        TraceFlowTask task = task(9L, TraceFlowTaskStatus.CREATED);
+        when(traceFlowTaskMapper.selectById(9L)).thenReturn(task);
+        when(traceNodeMapper.selectById(1L)).thenReturn(node(1L, "FACTORY-BJ", "北京工厂", true));
+        when(traceNodeMapper.selectById(2L)).thenReturn(node(2L, "WAREHOUSE-SH", "上海仓库", true));
+        when(traceAggregationMapper.selectActiveChildrenByParent("CARTON-001"))
+                .thenReturn(List.of(
+                        relation("CARTON-001", "TRACE-001"),
+                        relation("CARTON-001", "TRACE-002")
+                ));
+        when(traceSnapshotMapper.selectById("TRACE-001"))
+                .thenReturn(snapshot("TRACE-001", "IN_STOCK", "北京工厂"));
+        when(traceSnapshotMapper.selectById("TRACE-002"))
+                .thenReturn(snapshot("TRACE-002", "EXCEPTION", "北京工厂"));
+
+        assertThatThrownBy(() -> service.scanTask(9L, scanRequest("CARTON-001"), 7L, "operator-a"))
+                .isInstanceOf(BizException.class)
+                .satisfies(error -> {
+                    assertThat(((BizException) error).getCode()).isEqualTo(BizCode.INVALID_ACTION_TYPE);
+                    assertThat(error.getMessage()).contains("父码 CARTON-001 内存在不可流转子码");
+                    assertThat(error.getMessage()).contains("TRACE-002");
+                });
+        org.mockito.Mockito.verify(traceScanRetryExecutor, org.mockito.Mockito.never())
+                .executeAndReturnCreated(any(), any());
+        org.mockito.Mockito.verify(traceFlowTaskScanMapper, org.mockito.Mockito.never())
+                .insert(any(TraceFlowTaskScan.class));
+        org.mockito.Mockito.verify(traceFlowTaskMapper, org.mockito.Mockito.never()).updateById(task);
+    }
+
+    @Test
     void scanTask_shouldReturnAlreadyScannedFeedbackForRepeatedCodeWithoutCountingAgain() {
         TraceFlowTask task = task(9L, TraceFlowTaskStatus.PROCESSING);
         task.setActualQuantity(1);
@@ -530,6 +657,14 @@ class TraceFlowTaskServiceImplTest {
         scan.setCounted(counted);
         scan.setDuplicateCount(0);
         return scan;
+    }
+
+    private static TraceAggregation relation(String parentCode, String childCode) {
+        TraceAggregation relation = new TraceAggregation();
+        relation.setParentCode(parentCode);
+        relation.setChildCode(childCode);
+        relation.setActive(true);
+        return relation;
     }
 
     private static TraceNode node(Long id, String code, String name, boolean enabled) {

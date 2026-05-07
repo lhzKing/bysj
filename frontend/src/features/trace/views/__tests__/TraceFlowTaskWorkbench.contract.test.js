@@ -139,6 +139,30 @@ describe('TraceFlowTaskWorkbench', () => {
     expect(wrapper.text()).toContain('该码已在当前任务内扫码，不重复计数')
   })
 
+  it('accepts carton or pallet parent codes and displays backend batch scan feedback', async () => {
+    scanTraceFlowTaskMock.mockResolvedValue(task({
+      actualQuantity: 2,
+      remainingQuantity: 0,
+      batchScan: true,
+      batchParentCode: 'CARTON-001',
+      batchExpandedQuantity: 2,
+      batchCreatedQuantity: 2,
+      duplicateScan: false,
+      lastScanTraceCode: 'CARTON-001',
+      scanMessage: '父码 CARTON-001 展开 2 个单品码，新增 2 个，重复 0 个，跳过 0 个，本次累计 2 件'
+    }))
+    const wrapper = mountWorkbench()
+    await flushPromises()
+
+    await wrapper.find('[data-test="flow-task-scan-input"]').setValue('CARTON-001')
+    await wrapper.find('[data-test="flow-task-scan-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(scanTraceFlowTaskMock).toHaveBeenCalledWith(18, expect.objectContaining({ traceCode: 'CARTON-001' }))
+    expect(toastSuccessMock).toHaveBeenCalledWith(expect.stringContaining('父码 CARTON-001 展开 2 个单品码'))
+    expect(wrapper.text()).toContain('父码 CARTON-001 展开 2 个单品码')
+  })
+
   it('requires discrepancy reason when one-click completion has quantity mismatch', async () => {
     completeTraceFlowTaskMock.mockResolvedValue(task({ status: 'EXCEPTION', discrepancyType: 'SHORTAGE', discrepancyReason: '少件待补扫' }))
     const wrapper = mountWorkbench()

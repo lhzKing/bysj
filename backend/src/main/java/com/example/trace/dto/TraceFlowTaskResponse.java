@@ -54,6 +54,12 @@ public class TraceFlowTaskResponse {
     private Boolean lastScanCreated;
     private Boolean duplicateScan;
     private String scanMessage;
+    private Boolean batchScan;
+    private String batchParentCode;
+    private Integer batchExpandedQuantity;
+    private Integer batchCreatedQuantity;
+    private Integer batchDuplicateQuantity;
+    private Integer batchSkippedQuantity;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime completeTime;

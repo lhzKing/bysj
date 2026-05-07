@@ -8,6 +8,7 @@ import com.example.trace.dto.TraceFlowTaskCompleteRequest;
 import com.example.trace.dto.TraceFlowTaskCreateRequest;
 import com.example.trace.dto.TraceFlowTaskResponse;
 import com.example.trace.dto.TraceFlowTaskScanRequest;
+import com.example.trace.entity.TraceAggregation;
 import com.example.trace.entity.TraceFlowTask;
 import com.example.trace.entity.TraceFlowTaskScan;
 import com.example.trace.entity.TraceNode;
@@ -17,6 +18,7 @@ import com.example.trace.enums.TraceFlowTaskDiscrepancyType;
 import com.example.trace.enums.TraceFlowTaskStatus;
 import com.example.trace.enums.TraceFlowTaskType;
 import com.example.trace.enums.TraceStatus;
+import com.example.trace.mapper.TraceAggregationMapper;
 import com.example.trace.mapper.TraceFlowTaskMapper;
 import com.example.trace.mapper.TraceFlowTaskScanMapper;
 import com.example.trace.mapper.TraceNodeMapper;
@@ -34,9 +36,14 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -49,7 +56,9 @@ public class TraceFlowTaskServiceImpl implements TraceFlowTaskService {
 
     private static final Pattern TASK_NO = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9_-]*$");
     private static final DateTimeFormatter TASK_NO_TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+    private static final int MAX_AGGREGATION_EXPANSION_DEPTH = 8;
 
+    private final TraceAggregationMapper traceAggregationMapper;
     private final TraceFlowTaskMapper traceFlowTaskMapper;
     private final TraceFlowTaskScanMapper traceFlowTaskScanMapper;
     private final TraceNodeMapper traceNodeMapper;
@@ -199,7 +208,21 @@ public class TraceFlowTaskServiceImpl implements TraceFlowTaskService {
 
         TraceNode sourceNode = requireEnabledNode(task.getSourceNodeId(), "sourceNodeId");
         TraceNode targetNode = requireEnabledNode(task.getTargetNodeId(), "targetNodeId");
-        String traceCode = normalizeTraceCode(request.getTraceCode());
+        String scannedCode = normalizeTraceCode(request.getTraceCode());
+        TaskScanTargets scanTargets = resolveTaskScanTargets(scannedCode);
+        if (scanTargets.batchScan()) {
+            return scanTaskBatch(
+                    task,
+                    sourceNode,
+                    targetNode,
+                    scanTargets,
+                    request,
+                    operatorUserId,
+                    operatorUsername
+            );
+        }
+
+        String traceCode = scanTargets.childTraceCodes().get(0);
         TraceSnapshot snapshot = requireSnapshot(traceCode);
         TraceFlowTaskScan latestTaskScan = traceFlowTaskScanMapper.selectLatestByTaskTrace(task.getId(), traceCode);
         TaskScanPlan scanPlan;
@@ -229,17 +252,14 @@ public class TraceFlowTaskServiceImpl implements TraceFlowTaskService {
                 request.getIdempotencyKey()
         );
 
-        ScanTraceRequest scanRequest = new ScanTraceRequest();
-        scanRequest.setTraceCode(traceCode);
-        scanRequest.setOperatorUserId(operatorUserId);
-        scanRequest.setActionType(scanPlan.actionType());
-        scanRequest.setFromNode(scanPlan.fromNode());
-        scanRequest.setToNode(scanPlan.toNode());
-        scanRequest.setProvince(scanPlan.operationNode().getProvince());
-        scanRequest.setCity(scanPlan.operationNode().getCity());
-        scanRequest.setEventTime(request.getEventTime());
-        scanRequest.setIdempotencyKey(taskScanIdempotencyKey);
-        scanRequest.setRemark(resolveTaskScanRemark(task, request.getRemark(), scanPlan.actionType()));
+        ScanTraceRequest scanRequest = buildScanTraceRequest(
+                task,
+                request,
+                traceCode,
+                scanPlan,
+                operatorUserId,
+                taskScanIdempotencyKey
+        );
 
         boolean created = traceScanRetryExecutor.executeAndReturnCreated(scanRequest, operatorForLog(operatorUsername));
         if (!created) {
@@ -279,6 +299,140 @@ public class TraceFlowTaskServiceImpl implements TraceFlowTaskService {
                 scanPlan.countsTowardsActualQuantity()
                         ? "扫码成功，已累计到任务实扫数量"
                         : "扫码成功，已记录接收确认"
+        );
+        return response;
+    }
+
+    private TraceFlowTaskResponse scanTaskBatch(
+            TraceFlowTask task,
+            TraceNode sourceNode,
+            TraceNode targetNode,
+            TaskScanTargets scanTargets,
+            TraceFlowTaskScanRequest request,
+            Long operatorUserId,
+            String operatorUsername
+    ) {
+        List<BatchChildScanPlan> childPlans = new ArrayList<>();
+        List<TraceFlowTaskScan> duplicateScans = new ArrayList<>();
+        List<String> failures = new ArrayList<>();
+
+        for (String childTraceCode : scanTargets.childTraceCodes()) {
+            TraceFlowTaskScan latestTaskScan = traceFlowTaskScanMapper.selectLatestByTaskTrace(
+                    task.getId(),
+                    childTraceCode
+            );
+            TraceSnapshot snapshot = traceSnapshotMapper.selectById(childTraceCode);
+            if (snapshot == null) {
+                if (latestTaskScan != null) {
+                    duplicateScans.add(latestTaskScan);
+                    continue;
+                }
+                failures.add(childTraceCode + ": 单品溯源码快照不存在");
+                continue;
+            }
+
+            TaskScanPlan scanPlan;
+            try {
+                scanPlan = resolveTaskScanPlan(task, sourceNode, targetNode, childTraceCode, snapshot);
+            } catch (BizException e) {
+                if (latestTaskScan != null) {
+                    duplicateScans.add(latestTaskScan);
+                    continue;
+                }
+                failures.add(childTraceCode + ": " + e.getMessage());
+                continue;
+            }
+
+            TraceFlowTaskScan existingScan = traceFlowTaskScanMapper.selectByTaskTraceAction(
+                    task.getId(),
+                    childTraceCode,
+                    scanPlan.actionType().getCode()
+            );
+            if (existingScan != null) {
+                duplicateScans.add(existingScan);
+                continue;
+            }
+            childPlans.add(new BatchChildScanPlan(childTraceCode, scanPlan));
+        }
+
+        if (!failures.isEmpty()) {
+            throw new BizException(BizCode.INVALID_ACTION_TYPE,
+                    "父码 " + scanTargets.parentCode()
+                            + " 内存在不可流转子码，已拒绝整批扫描: "
+                            + summarizeBatchFailures(failures));
+        }
+
+        ensureUniformBatchAction(scanTargets.parentCode(), childPlans);
+        int countedToCreate = (int) childPlans.stream()
+                .filter(childPlan -> childPlan.scanPlan().countsTowardsActualQuantity())
+                .count();
+        ensureTaskBatchCapacity(task, countedToCreate, scanTargets.parentCode());
+
+        duplicateScans.forEach(scan -> {
+            if (scan.getId() != null) {
+                traceFlowTaskScanMapper.incrementDuplicateCount(scan.getId());
+            }
+        });
+
+        int createdQuantity = 0;
+        int countedCreatedQuantity = 0;
+        int idempotentSkippedQuantity = 0;
+        for (BatchChildScanPlan childPlan : childPlans) {
+            TaskScanPlan scanPlan = childPlan.scanPlan();
+            String taskScanIdempotencyKey = resolveTaskScanIdempotencyKey(
+                    task,
+                    childPlan.traceCode(),
+                    scanPlan.actionType(),
+                    request.getIdempotencyKey()
+            );
+            ScanTraceRequest scanRequest = buildScanTraceRequest(
+                    task,
+                    request,
+                    childPlan.traceCode(),
+                    scanPlan,
+                    operatorUserId,
+                    taskScanIdempotencyKey
+            );
+            boolean created = traceScanRetryExecutor.executeAndReturnCreated(
+                    scanRequest,
+                    operatorForLog(operatorUsername)
+            );
+            if (!created) {
+                idempotentSkippedQuantity++;
+                continue;
+            }
+
+            insertTaskScanRecord(
+                    task,
+                    childPlan.traceCode(),
+                    scanPlan.actionType(),
+                    scanPlan.countsTowardsActualQuantity(),
+                    operatorUserId,
+                    operatorUsername,
+                    taskScanIdempotencyKey
+            );
+            createdQuantity++;
+            if (scanPlan.countsTowardsActualQuantity()) {
+                countedCreatedQuantity++;
+            }
+        }
+
+        if (createdQuantity > 0) {
+            task.setActualQuantity((task.getActualQuantity() == null ? 0 : task.getActualQuantity())
+                    + countedCreatedQuantity);
+            task.setStatus(TraceFlowTaskStatus.PROCESSING.getCode());
+            traceFlowTaskMapper.updateById(task);
+        }
+
+        TraceFlowTaskResponse response = toResponse(task, sourceNode, targetNode);
+        applyBatchScanFeedback(
+                response,
+                scanTargets,
+                resolveBatchFeedbackAction(childPlans, duplicateScans),
+                createdQuantity,
+                countedCreatedQuantity,
+                duplicateScans.size(),
+                idempotentSkippedQuantity
         );
         return response;
     }
@@ -428,6 +582,171 @@ public class TraceFlowTaskServiceImpl implements TraceFlowTaskService {
         response.setLastScanCreated(created);
         response.setDuplicateScan(duplicate);
         response.setScanMessage(message);
+        response.setBatchScan(false);
+    }
+
+    private void applyBatchScanFeedback(
+            TraceFlowTaskResponse response,
+            TaskScanTargets scanTargets,
+            ActionType actionType,
+            int createdQuantity,
+            int countedCreatedQuantity,
+            int duplicateQuantity,
+            int skippedQuantity
+    ) {
+        response.setLastScanTraceCode(scanTargets.parentCode());
+        response.setLastScanActionType(actionType);
+        response.setLastScanActionLabel(actionType == null ? null : actionType.getName());
+        response.setLastScanCreated(createdQuantity > 0);
+        response.setDuplicateScan(createdQuantity == 0);
+        response.setBatchScan(true);
+        response.setBatchParentCode(scanTargets.parentCode());
+        response.setBatchExpandedQuantity(scanTargets.childTraceCodes().size());
+        response.setBatchCreatedQuantity(createdQuantity);
+        response.setBatchDuplicateQuantity(duplicateQuantity);
+        response.setBatchSkippedQuantity(skippedQuantity);
+
+        String message = "父码 " + scanTargets.parentCode()
+                + " 展开 " + scanTargets.childTraceCodes().size() + " 个单品码"
+                + "，新增 " + createdQuantity + " 个"
+                + "，重复 " + duplicateQuantity + " 个"
+                + "，跳过 " + skippedQuantity + " 个";
+        if (countedCreatedQuantity > 0) {
+            message += "，本次累计 " + countedCreatedQuantity + " 件";
+        }
+        if (createdQuantity == 0) {
+            message += "，不重复计数";
+        }
+        response.setScanMessage(message);
+    }
+
+    private ScanTraceRequest buildScanTraceRequest(
+            TraceFlowTask task,
+            TraceFlowTaskScanRequest request,
+            String traceCode,
+            TaskScanPlan scanPlan,
+            Long operatorUserId,
+            String idempotencyKey
+    ) {
+        ScanTraceRequest scanRequest = new ScanTraceRequest();
+        scanRequest.setTraceCode(traceCode);
+        scanRequest.setOperatorUserId(operatorUserId);
+        scanRequest.setActionType(scanPlan.actionType());
+        scanRequest.setFromNode(scanPlan.fromNode());
+        scanRequest.setToNode(scanPlan.toNode());
+        scanRequest.setProvince(scanPlan.operationNode().getProvince());
+        scanRequest.setCity(scanPlan.operationNode().getCity());
+        scanRequest.setEventTime(request.getEventTime());
+        scanRequest.setIdempotencyKey(idempotencyKey);
+        scanRequest.setRemark(resolveTaskScanRemark(task, request.getRemark(), scanPlan.actionType()));
+        return scanRequest;
+    }
+
+    private TaskScanTargets resolveTaskScanTargets(String scannedCode) {
+        String aggregationParentCode = scannedCode.toUpperCase(Locale.ROOT);
+        if (selectActiveChildren(aggregationParentCode).isEmpty()) {
+            return new TaskScanTargets(null, false, List.of(scannedCode));
+        }
+        LinkedHashSet<String> childTraceCodes = new LinkedHashSet<>();
+        expandActiveLeafChildren(
+                aggregationParentCode,
+                childTraceCodes,
+                new HashSet<>(),
+                0
+        );
+        if (childTraceCodes.isEmpty()) {
+            throw new BizException(BizCode.BAD_REQUEST,
+                    "聚合父码没有可流转单品子码: parentCode=" + aggregationParentCode);
+        }
+        return new TaskScanTargets(
+                aggregationParentCode,
+                true,
+                List.copyOf(childTraceCodes)
+        );
+    }
+
+    private void expandActiveLeafChildren(
+            String parentCode,
+            LinkedHashSet<String> childTraceCodes,
+            Set<String> visitingParents,
+            int depth
+    ) {
+        if (depth > MAX_AGGREGATION_EXPANSION_DEPTH) {
+            throw new BizException(BizCode.BAD_REQUEST,
+                    "聚合层级过深，无法展开父码: parentCode=" + parentCode);
+        }
+        String normalizedParentCode = parentCode.toUpperCase(Locale.ROOT);
+        if (!visitingParents.add(normalizedParentCode)) {
+            throw new BizException(BizCode.BAD_REQUEST,
+                    "检测到聚合关系循环，无法展开父码: parentCode=" + normalizedParentCode);
+        }
+        for (TraceAggregation relation : selectActiveChildren(normalizedParentCode)) {
+            String childCode = normalizeTraceCode(relation.getChildCode());
+            String childAsParentCode = childCode.toUpperCase(Locale.ROOT);
+            if (selectActiveChildren(childAsParentCode).isEmpty()) {
+                childTraceCodes.add(childCode);
+            } else {
+                expandActiveLeafChildren(childAsParentCode, childTraceCodes, visitingParents, depth + 1);
+            }
+        }
+        visitingParents.remove(normalizedParentCode);
+    }
+
+    private List<TraceAggregation> selectActiveChildren(String parentCode) {
+        List<TraceAggregation> children = traceAggregationMapper.selectActiveChildrenByParent(parentCode);
+        return children == null ? List.of() : children;
+    }
+
+    private void ensureUniformBatchAction(String parentCode, List<BatchChildScanPlan> childPlans) {
+        Set<ActionType> actionTypes = childPlans.stream()
+                .map(BatchChildScanPlan::scanPlan)
+                .map(TaskScanPlan::actionType)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (actionTypes.size() <= 1) {
+            return;
+        }
+        throw new BizException(BizCode.INVALID_ACTION_TYPE,
+                "父码 " + parentCode
+                        + " 内子码可执行动作不一致，已拒绝整批扫描: actions="
+                        + actionTypes.stream().map(ActionType::getCode).toList());
+    }
+
+    private void ensureTaskBatchCapacity(TraceFlowTask task, int countedToCreate, String parentCode) {
+        if (countedToCreate <= 0) {
+            return;
+        }
+        int expectedQuantity = task.getExpectedQuantity() == null ? 0 : task.getExpectedQuantity();
+        int actualQuantity = task.getActualQuantity() == null ? 0 : task.getActualQuantity();
+        int remainingQuantity = expectedQuantity - actualQuantity;
+        if (countedToCreate > remainingQuantity) {
+            throw new BizException(BizCode.CONFLICT,
+                    "父码 " + parentCode
+                            + " 展开后将新增 " + countedToCreate
+                            + " 件，超过任务剩余容量 " + Math.max(remainingQuantity, 0));
+        }
+    }
+
+    private ActionType resolveBatchFeedbackAction(
+            List<BatchChildScanPlan> childPlans,
+            List<TraceFlowTaskScan> duplicateScans
+    ) {
+        if (!childPlans.isEmpty()) {
+            return childPlans.get(0).scanPlan().actionType();
+        }
+        if (!duplicateScans.isEmpty()) {
+            return parseActionType(duplicateScans.get(0));
+        }
+        return null;
+    }
+
+    private String summarizeBatchFailures(List<String> failures) {
+        String summary = failures.stream()
+                .limit(5)
+                .collect(Collectors.joining("; "));
+        if (failures.size() > 5) {
+            summary += "; 等 " + failures.size() + " 个异常子码";
+        }
+        return summary;
     }
 
     private TraceSnapshot requireSnapshot(String traceCode) {
@@ -660,6 +979,19 @@ public class TraceFlowTaskServiceImpl implements TraceFlowTaskService {
             String toNode,
             TraceNode operationNode,
             boolean countsTowardsActualQuantity
+    ) {
+    }
+
+    private record TaskScanTargets(
+            String parentCode,
+            boolean batchScan,
+            List<String> childTraceCodes
+    ) {
+    }
+
+    private record BatchChildScanPlan(
+            String traceCode,
+            TaskScanPlan scanPlan
     ) {
     }
 
