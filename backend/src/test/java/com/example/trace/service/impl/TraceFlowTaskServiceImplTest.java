@@ -458,6 +458,77 @@ class TraceFlowTaskServiceImplTest {
     }
 
     @Test
+    void scanTask_shouldRejectParentScanWhenExpandedQuantityExceedsRemainingCapacity() {
+        TraceFlowTask task = task(9L, TraceFlowTaskStatus.PROCESSING);
+        task.setExpectedQuantity(2);
+        task.setActualQuantity(1);
+        when(traceFlowTaskMapper.selectById(9L)).thenReturn(task);
+        when(traceNodeMapper.selectById(1L)).thenReturn(node(1L, "FACTORY-BJ", "北京工厂", true));
+        when(traceNodeMapper.selectById(2L)).thenReturn(node(2L, "WAREHOUSE-SH", "上海仓库", true));
+        when(traceAggregationMapper.selectActiveChildrenByParent("CARTON-001"))
+                .thenReturn(List.of(
+                        relation("CARTON-001", "TRACE-001"),
+                        relation("CARTON-001", "TRACE-002")
+                ));
+        when(traceSnapshotMapper.selectById("TRACE-001"))
+                .thenReturn(snapshot("TRACE-001", "IN_STOCK", "北京工厂"));
+        when(traceSnapshotMapper.selectById("TRACE-002"))
+                .thenReturn(snapshot("TRACE-002", "IN_STOCK", "北京工厂"));
+
+        assertThatThrownBy(() -> service.scanTask(9L, scanRequest("CARTON-001"), 7L, "operator-a"))
+                .isInstanceOf(BizException.class)
+                .satisfies(error -> {
+                    assertThat(((BizException) error).getCode()).isEqualTo(BizCode.CONFLICT);
+                    assertThat(error.getMessage()).contains("超过任务剩余容量 1");
+                });
+        org.mockito.Mockito.verify(traceScanRetryExecutor, org.mockito.Mockito.never())
+                .executeAndReturnCreated(any(), any());
+        org.mockito.Mockito.verify(traceFlowTaskScanMapper, org.mockito.Mockito.never())
+                .insert(any(TraceFlowTaskScan.class));
+        org.mockito.Mockito.verify(traceFlowTaskMapper, org.mockito.Mockito.never()).updateById(task);
+    }
+
+    @Test
+    void scanTask_shouldReportDuplicateOnlyParentBatchWithoutChangingTaskProgress() {
+        TraceFlowTask task = task(9L, TraceFlowTaskStatus.PROCESSING);
+        task.setActualQuantity(2);
+        TraceFlowTaskScan firstScan = taskScan(77L, 9L, "TRACE-001", ActionType.OUTBOUND, true);
+        TraceFlowTaskScan secondScan = taskScan(78L, 9L, "TRACE-002", ActionType.OUTBOUND, true);
+        when(traceFlowTaskMapper.selectById(9L)).thenReturn(task);
+        when(traceNodeMapper.selectById(1L)).thenReturn(node(1L, "FACTORY-BJ", "北京工厂", true));
+        when(traceNodeMapper.selectById(2L)).thenReturn(node(2L, "WAREHOUSE-SH", "上海仓库", true));
+        when(traceAggregationMapper.selectActiveChildrenByParent("CARTON-001"))
+                .thenReturn(List.of(
+                        relation("CARTON-001", "TRACE-001"),
+                        relation("CARTON-001", "TRACE-002")
+                ));
+        when(traceSnapshotMapper.selectById("TRACE-001"))
+                .thenReturn(snapshot("TRACE-001", "IN_STOCK", "北京工厂"));
+        when(traceSnapshotMapper.selectById("TRACE-002"))
+                .thenReturn(snapshot("TRACE-002", "IN_STOCK", "北京工厂"));
+        when(traceFlowTaskScanMapper.selectByTaskTraceAction(9L, "TRACE-001", ActionType.OUTBOUND.getCode()))
+                .thenReturn(firstScan);
+        when(traceFlowTaskScanMapper.selectByTaskTraceAction(9L, "TRACE-002", ActionType.OUTBOUND.getCode()))
+                .thenReturn(secondScan);
+
+        TraceFlowTaskResponse response = service.scanTask(9L, scanRequest("CARTON-001"), 7L, "operator-a");
+
+        assertThat(task.getActualQuantity()).isEqualTo(2);
+        assertThat(response.getBatchScan()).isTrue();
+        assertThat(response.getBatchParentCode()).isEqualTo("CARTON-001");
+        assertThat(response.getBatchExpandedQuantity()).isEqualTo(2);
+        assertThat(response.getBatchCreatedQuantity()).isZero();
+        assertThat(response.getBatchDuplicateQuantity()).isEqualTo(2);
+        assertThat(response.getDuplicateScan()).isTrue();
+        assertThat(response.getScanMessage()).contains("新增 0 个", "重复 2 个", "不重复计数");
+        verify(traceFlowTaskScanMapper).incrementDuplicateCount(77L);
+        verify(traceFlowTaskScanMapper).incrementDuplicateCount(78L);
+        org.mockito.Mockito.verify(traceScanRetryExecutor, org.mockito.Mockito.never())
+                .executeAndReturnCreated(any(), any());
+        org.mockito.Mockito.verify(traceFlowTaskMapper, org.mockito.Mockito.never()).updateById(task);
+    }
+
+    @Test
     void scanTask_shouldRejectWholeParentScanWhenAnyChildIsInvalid() {
         TraceFlowTask task = task(9L, TraceFlowTaskStatus.CREATED);
         when(traceFlowTaskMapper.selectById(9L)).thenReturn(task);

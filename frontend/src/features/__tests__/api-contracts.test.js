@@ -21,9 +21,11 @@ import { getRoles, getRole, createRole, assignPermissions } from '@/features/use
 import { createPart } from '@/features/part/api/parts'
 import {
   activateTraceCode,
+  cancelTraceFlowTask,
   closeTraceException,
   completeTraceFlowTask,
   createTraceCorrection,
+  createEvent,
   createTrace,
   createTraceFlowTask,
   getTraceAvailableActions,
@@ -198,6 +200,35 @@ describe('feature api contracts', () => {
     })
   })
 
+  it('keeps trace lifecycle scan idempotency and effective/audit view endpoints explicit', async () => {
+    request.post.mockResolvedValue({})
+    request.get.mockResolvedValue({})
+
+    await createEvent('TRACE-001', {
+      actionType: 'INBOUND',
+      toNode: '上海仓库',
+      eventTime: '2026-05-07T10:00:00',
+      idempotencyKey: 'scan-key-001',
+      remark: '任务接收入库'
+    })
+    await getTraceDetail('TRACE-001')
+    await getTraceDetail('TRACE-001', 'audit')
+
+    expect(request.post).toHaveBeenCalledWith('/traces/TRACE-001/events', {
+      actionType: 'INBOUND',
+      toNode: '上海仓库',
+      eventTime: '2026-05-07T10:00:00',
+      idempotencyKey: 'scan-key-001',
+      remark: '任务接收入库'
+    })
+    expect(request.get).toHaveBeenNthCalledWith(1, '/traces/TRACE-001', {
+      params: { view: 'effective' }
+    })
+    expect(request.get).toHaveBeenNthCalledWith(2, '/traces/TRACE-001', {
+      params: { view: 'audit' }
+    })
+  })
+
   it('keeps warehouse logistics flow-task api endpoints explicit', async () => {
     request.post.mockResolvedValue({})
     request.get.mockResolvedValue({})
@@ -207,6 +238,7 @@ describe('feature api contracts', () => {
     await createTraceFlowTask({ taskType: 'OUTBOUND', sourceNodeId: 1, targetNodeId: 2, expectedQuantity: 20 })
     await scanTraceFlowTask(18, { traceCode: 'TRACE-001', eventTime: '2026-05-07T10:00:00' })
     await completeTraceFlowTask(18, { discrepancyReason: '少件待补扫' })
+    await cancelTraceFlowTask(19)
 
     expect(request.get).toHaveBeenNthCalledWith(1, '/trace-flow-tasks', {
       params: { status: 'CREATED', taskType: 'OUTBOUND' }
@@ -225,6 +257,7 @@ describe('feature api contracts', () => {
     expect(request.post).toHaveBeenNthCalledWith(3, '/trace-flow-tasks/18/complete', {
       discrepancyReason: '少件待补扫'
     })
+    expect(request.post).toHaveBeenNthCalledWith(4, '/trace-flow-tasks/19/cancel')
   })
 
 })

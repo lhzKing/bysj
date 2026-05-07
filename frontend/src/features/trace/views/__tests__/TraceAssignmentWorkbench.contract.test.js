@@ -45,7 +45,12 @@ vi.mock('@/features/trace/api', () => ({
 }))
 
 const qrScannerStub = {
-  template: `<div data-test="qr-scanner-stub"><button data-test="scan-code" @click="$emit('scan', 'TRACE-001')">scan</button></div>`
+  template: `
+    <div data-test="qr-scanner-stub">
+      <button data-test="scan-code" @click="$emit('scan', 'TRACE-001')">scan</button>
+      <button data-test="scan-unknown-code" @click="$emit('scan', 'TRACE-404')">scan-unknown</button>
+    </div>
+  `
 }
 
 function mountWorkbench() {
@@ -163,5 +168,21 @@ describe('TraceAssignmentWorkbench', () => {
     expect(activateTraceCodeMock).toHaveBeenCalledWith('TRACE-001', expect.objectContaining({
       remark: '生产工作台扫码激活'
     }))
+  })
+
+  it('rejects scanned codes outside the loaded assignment batch before activation api call', async () => {
+    const wrapper = mountWorkbench()
+    await flushPromises()
+
+    await wrapper.find('[data-test="assignment-lookup-input"]').setValue('9')
+    await wrapper.find('[data-test="assignment-lookup-submit"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.find('[data-test="assignment-scan-activate"]').trigger('click')
+    await wrapper.find('[data-test="scan-unknown-code"]').trigger('click')
+    await flushPromises()
+
+    expect(activateTraceCodeMock).not.toHaveBeenCalled()
+    expect(toastErrorMock).toHaveBeenCalledWith('扫码结果不属于当前赋码批次')
   })
 })

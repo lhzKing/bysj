@@ -74,6 +74,30 @@ class TraceAssignBatchServiceTest {
     }
 
     @Test
+    void createBatch_shouldGenerateBatchNoWhenCallerOmitsIt() {
+        BasePartSpec spu = new BasePartSpec();
+        spu.setId(1L);
+        when(basePartSpecMapper.selectById(1L)).thenReturn(spu);
+
+        TraceAssignBatch batch = service.createBatch(new TraceAssignBatchService.CreateCommand(
+                "   ",
+                null,
+                1L,
+                2,
+                null,
+                7L,
+                "producer"
+        ));
+
+        ArgumentCaptor<TraceAssignBatch> batchCaptor = ArgumentCaptor.forClass(TraceAssignBatch.class);
+        verify(traceAssignBatchMapper).insert(batchCaptor.capture());
+        assertThat(batch).isSameAs(batchCaptor.getValue());
+        assertThat(batch.getBatchNo()).startsWith("ASSIGN-");
+        assertThat(batch.getQuantityRequested()).isEqualTo(2);
+        assertThat(batch.getStatus()).isEqualTo(TraceAssignBatchStatus.CREATED.name());
+    }
+
+    @Test
     void createBatch_shouldRejectDuplicateBatchNo() {
         BasePartSpec spu = new BasePartSpec();
         spu.setId(1L);

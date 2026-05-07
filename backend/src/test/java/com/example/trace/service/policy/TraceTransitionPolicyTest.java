@@ -49,6 +49,9 @@ class TraceTransitionPolicyTest {
     void resolveNextStatus_shouldOpenAndCloseExceptionHoldWithRestoreStatus() {
         assertThat(policy.resolveNextStatus(TraceStatus.IN_STOCK, ActionType.EXCEPTION_OPEN, null))
                 .isEqualTo(TraceStatus.EXCEPTION);
+        assertThat(policy.resolveNextStatus(TraceStatus.IN_STOCK, ActionType.EXCEPTION, null))
+                .as("legacy EXCEPTION remains accepted as an EXCEPTION_OPEN alias")
+                .isEqualTo(TraceStatus.EXCEPTION);
         assertThat(policy.resolveNextStatus(
                 TraceStatus.EXCEPTION,
                 ActionType.EXCEPTION_CLOSE,
@@ -91,5 +94,17 @@ class TraceTransitionPolicyTest {
         assertThat(policy.allowedActions(TraceStatus.IN_TRANSIT))
                 .containsExactly(ActionType.INBOUND, ActionType.TRANSFER, ActionType.EXCEPTION_OPEN);
         assertThat(policy.allowedActions(TraceStatus.EXCEPTION)).containsExactly(ActionType.EXCEPTION_CLOSE);
+        assertThat(policy.allowedActions(TraceStatus.IN_STOCK))
+                .containsExactly(ActionType.OUTBOUND, ActionType.EXCEPTION_OPEN)
+                .doesNotContain(ActionType.EXCEPTION);
+    }
+
+    @Test
+    void canTransit_shouldReflectFrozenAndAuditOnlyBranches() {
+        assertThat(policy.canTransit(TraceStatus.IN_STOCK, ActionType.OUTBOUND)).isTrue();
+        assertThat(policy.canTransit(TraceStatus.EXCEPTION, ActionType.INBOUND)).isFalse();
+        assertThat(policy.canTransit(TraceStatus.EXCEPTION, ActionType.EXCEPTION_CLOSE)).isTrue();
+        assertThat(policy.canTransit(TraceStatus.IN_TRANSIT, ActionType.CORRECTION)).isTrue();
+        assertThat(policy.canTransit(TraceStatus.IN_STOCK, null)).isFalse();
     }
 }

@@ -550,6 +550,51 @@ class TraceScanTransactionServiceTest {
     }
 
     @Test
+    void execute_shouldShortCircuitSucceededIdempotencyBeforeValidatingChangedState() {
+        TraceLogFactory logFactory = new TraceLogFactory(signatureUtil);
+        TraceScanTransactionService service = new TraceScanTransactionService(
+                traceSnapshotMapper,
+                traceLifecycleLogMapper,
+                traceScanIdempotencyMapper,
+                logFactory,
+                traceTransitionPolicy,
+                traceCodeStatusService
+        );
+
+        ScanTraceRequest request = new ScanTraceRequest();
+        request.setTraceCode("trace-1");
+        request.setActionType(ActionType.INBOUND);
+        request.setIdempotencyKey("scan-key-001");
+
+        TraceSnapshot changedSnapshot = new TraceSnapshot();
+        changedSnapshot.setTraceCode("trace-1");
+        changedSnapshot.setSpuId(1L);
+        changedSnapshot.setCurrentStatus("IN_STOCK");
+        changedSnapshot.setCurrentNode("warehouse-B");
+        changedSnapshot.setLastHash("hash-after-first-request");
+        when(traceSnapshotMapper.selectById("trace-1")).thenReturn(changedSnapshot);
+
+        TraceScanIdempotency existing = new TraceScanIdempotency();
+        existing.setId(99L);
+        existing.setTraceCode("trace-1");
+        existing.setActionType(ActionType.INBOUND.getCode());
+        existing.setIdempotencyKey("scan-key-001");
+        existing.setLifecycleLogId(456L);
+        existing.setStatus(TraceScanIdempotency.STATUS_SUCCEEDED);
+        when(traceScanIdempotencyMapper.insert(any(TraceScanIdempotency.class)))
+                .thenThrow(new DuplicateKeyException("duplicate"));
+        when(traceScanIdempotencyMapper.selectOne(any())).thenReturn(existing);
+
+        boolean created = service.executeAndReturnCreated(request, "scanner");
+
+        assertThat(created).isFalse();
+        verify(traceCodeStatusService, never()).ensureLifecycleMovementAllowed(any(), any());
+        verify(traceLifecycleLogMapper, never()).insert(any(TraceLifecycleLog.class));
+        verify(traceSnapshotMapper, never()).updateById(any(TraceSnapshot.class));
+        verify(traceScanIdempotencyMapper, never()).updateById(any(TraceScanIdempotency.class));
+    }
+
+    @Test
     void execute_shouldRejectUnactivatedTraceCodeBeforeAnyPersistence() {
         TraceLogFactory logFactory = new TraceLogFactory(signatureUtil);
         TraceScanTransactionService service = new TraceScanTransactionService(
@@ -803,6 +848,70 @@ class TraceScanTransactionServiceTest {
 
         verify(traceLifecycleLogMapper, never()).insert(any(TraceLifecycleLog.class));
         verify(traceSnapshotMapper, never()).updateById(any(TraceSnapshot.class));
+    }
+
+    @Test
+    void execute_shouldAppendCorrectionLogWithoutChangingSnapshotStatusOrSyncingCodeStatus() {
+        TraceLogFactory logFactory = new TraceLogFactory(signatureUtil);
+        TraceScanTransactionService service = new TraceScanTransactionService(
+                traceSnapshotMapper,
+                traceLifecycleLogMapper,
+                traceScanIdempotencyMapper,
+                logFactory,
+                traceTransitionPolicy,
+                traceCodeStatusService
+        );
+
+        ScanTraceRequest request = new ScanTraceRequest();
+        request.setTraceCode("trace-1");
+        request.setActionType(ActionType.CORRECTION);
+        request.setCorrectionOf(10L);
+        request.setFromNode("warehouse-A");
+        request.setToNode("warehouse-B");
+        request.setRemark("修正原始出库节点");
+
+        TraceSnapshot snapshot = new TraceSnapshot();
+        snapshot.setTraceCode("trace-1");
+        snapshot.setSpuId(1L);
+        snapshot.setCurrentStatus("IN_STOCK");
+        snapshot.setCurrentNode("warehouse-A");
+        snapshot.setCurrentOwner("warehouse-A");
+        snapshot.setLastHash("hash-0");
+        snapshot.setVersion(0);
+        when(traceSnapshotMapper.selectById("trace-1")).thenReturn(snapshot);
+
+        TraceLifecycleLog originalLog = new TraceLifecycleLog();
+        originalLog.setId(10L);
+        originalLog.setTraceCode("trace-1");
+        originalLog.setActionType(ActionType.OUTBOUND.getCode());
+        when(traceLifecycleLogMapper.selectById(10L)).thenReturn(originalLog);
+        when(traceLifecycleLogMapper.selectOne(any())).thenReturn(null);
+        when(signatureUtil.getKeyId()).thenReturn("default");
+        when(signatureUtil.getKeyVersion()).thenReturn(1);
+        when(signatureUtil.sign(any())).thenReturn("signed-correction");
+        doAnswer(invocation -> {
+            TraceLifecycleLog log = invocation.getArgument(0);
+            log.setId(901L);
+            return 1;
+        }).when(traceLifecycleLogMapper).insert(any(TraceLifecycleLog.class));
+        when(traceSnapshotMapper.updateById(any(TraceSnapshot.class))).thenReturn(1);
+
+        service.execute(request, "auditor");
+
+        ArgumentCaptor<TraceLifecycleLog> logCaptor = ArgumentCaptor.forClass(TraceLifecycleLog.class);
+        verify(traceLifecycleLogMapper).insert(logCaptor.capture());
+        assertThat(logCaptor.getValue().getActionType()).isEqualTo(ActionType.CORRECTION.getCode());
+        assertThat(logCaptor.getValue().getCorrectionOf()).isEqualTo(10L);
+        assertThat(logCaptor.getValue().getRemark()).isEqualTo("修正原始出库节点");
+
+        ArgumentCaptor<TraceSnapshot> snapshotCaptor = ArgumentCaptor.forClass(TraceSnapshot.class);
+        verify(traceSnapshotMapper).updateById(snapshotCaptor.capture());
+        TraceSnapshot updatedSnapshot = snapshotCaptor.getValue();
+        assertThat(updatedSnapshot.getCurrentStatus()).isEqualTo("IN_STOCK");
+        assertThat(updatedSnapshot.getCurrentNode()).isEqualTo("warehouse-B");
+        assertThat(updatedSnapshot.getCurrentOwner()).isEqualTo("warehouse-B");
+        assertThat(updatedSnapshot.getLastLogId()).isEqualTo(901L);
+        verify(traceCodeStatusService, never()).syncAfterLifecycleTransition(any(), any());
     }
 
     @Test

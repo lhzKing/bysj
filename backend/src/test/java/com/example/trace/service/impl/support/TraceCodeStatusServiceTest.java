@@ -112,7 +112,7 @@ class TraceCodeStatusServiceTest {
     @Test
     void markActivated_shouldMoveGeneratedOrPrintedCodeToActivated() {
         TraceCode code = code("TRACE-PRINTED", TraceCodeStatus.PRINTED);
-        when(traceCodeMapper.selectById("TRACE-PRINTED")).thenReturn(code);
+        when(traceCodeMapper.selectById("TRACE-PRINTED")).thenReturn(code, code);
         LocalDateTime activatedTime = LocalDateTime.of(2026, 5, 5, 20, 0);
 
         TraceCode returned = service.markActivated("TRACE-PRINTED", 7L, " producer ", activatedTime);
@@ -128,6 +128,21 @@ class TraceCodeStatusServiceTest {
         assertThat(updated.getCurrentSnapshotId()).isEqualTo("TRACE-PRINTED");
 
         service.ensureLifecycleMovementAllowed("TRACE-PRINTED", ActionType.INBOUND);
+    }
+
+    @Test
+    void markActivated_shouldAllowGeneratedCodeWithoutPriorPrintForSimplifiedProductionMode() {
+        TraceCode code = code("TRACE-GEN", TraceCodeStatus.GENERATED);
+        when(traceCodeMapper.selectById("TRACE-GEN")).thenReturn(code, code);
+        LocalDateTime activatedTime = LocalDateTime.of(2026, 5, 6, 8, 15);
+
+        TraceCode updated = service.markActivated("TRACE-GEN", 7L, "producer", activatedTime);
+
+        assertThat(updated.getCodeStatus()).isEqualTo(TraceCodeStatus.ACTIVATED.name());
+        assertThat(updated.getActivatedTime()).isEqualTo(activatedTime);
+        verify(traceCodeMapper).updateById(code);
+
+        service.ensureLifecycleMovementAllowed("TRACE-GEN", ActionType.OUTBOUND);
     }
 
     @Test

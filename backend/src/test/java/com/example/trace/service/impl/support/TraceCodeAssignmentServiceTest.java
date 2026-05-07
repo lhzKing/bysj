@@ -5,6 +5,7 @@ import com.example.trace.common.BizException;
 import com.example.trace.config.TraceBatchProperties;
 import com.example.trace.dto.ProduceAssignRequest;
 import com.example.trace.dto.ProduceAssignResponse;
+import com.example.trace.entity.BasePartSpec;
 import com.example.trace.entity.TraceAssignBatch;
 import com.example.trace.entity.TraceCode;
 import com.example.trace.entity.TraceLifecycleLog;
@@ -31,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -192,6 +194,55 @@ class TraceCodeAssignmentServiceTest {
     }
 
     @Test
+    void produceAssign_shouldResolvePartCodeAndCreateAssignmentBatchBeforeGeneratingSingleItemCodes() {
+        ProduceAssignRequest request = validRequest(2);
+        request.setSpuId(null);
+        request.setPartCode("P-001");
+        request.setManufacturerNodeId(7L);
+        BasePartSpec part = new BasePartSpec();
+        part.setId(88L);
+        when(basePartSpecMapper.selectByPartCode("P-001")).thenReturn(part);
+        TraceAssignBatch batch = new TraceAssignBatch();
+        batch.setId(15L);
+        batch.setBatchNo("ASSIGN-006");
+        batch.setSpuId(88L);
+        batch.setQuantityRequested(2);
+        when(traceAssignBatchService.createBatch(any(TraceAssignBatchService.CreateCommand.class)))
+                .thenReturn(batch);
+        stubLogFactory();
+
+        ProduceAssignResponse response = service.produceAssign(request, "producer-a");
+
+        assertThat(response.getBatchId()).isEqualTo(15L);
+        assertThat(response.getGeneratedCount()).isEqualTo(2);
+        verify(traceAssignBatchService).createBatch(argThat(command ->
+                "ASSIGN-REQ".equals(command.batchNo())
+                        && "PO-REQ".equals(command.productionOrderNo())
+                        && Long.valueOf(88L).equals(command.spuId())
+                        && Integer.valueOf(2).equals(command.quantityRequested())
+                        && Long.valueOf(7L).equals(command.manufacturerNodeId())
+                        && "producer-a".equals(command.operatorUsername())
+        ));
+        verify(traceAssignBatchService).markGenerating(15L);
+        verify(traceAssignBatchService).markGenerationResult(15L, 2);
+
+        ArgumentCaptor<TraceLifecycleLog> logCaptor = ArgumentCaptor.forClass(TraceLifecycleLog.class);
+        verify(traceLifecycleLogMapper, times(2)).insert(logCaptor.capture());
+        assertThat(logCaptor.getAllValues())
+                .extracting(TraceLifecycleLog::getSpuId)
+                .containsOnly(88L);
+
+        ArgumentCaptor<TraceSnapshot> snapshotCaptor = ArgumentCaptor.forClass(TraceSnapshot.class);
+        verify(traceSnapshotMapper, times(2)).insert(snapshotCaptor.capture());
+        assertThat(snapshotCaptor.getAllValues()).allSatisfy(snapshot -> {
+            assertThat(snapshot.getSpuId()).isEqualTo(88L);
+            assertThat(snapshot.getCurrentNode()).isEqualTo("工厂A");
+            assertThat(snapshot.getProvince()).isEqualTo("浙江省");
+            assertThat(snapshot.getLastLogId()).isNotNull();
+        });
+    }
+
+    @Test
     void produceAssign_shouldMarkBatchPartialAndReturnOnlyCommittedCodesWhenLaterChunkFails() {
         batchProperties.setCommitSize(2);
         ProduceAssignRequest request = validRequest(5);
@@ -279,6 +330,15 @@ class TraceCodeAssignmentServiceTest {
         )).thenAnswer(invocation -> {
             long id = idSequence.incrementAndGet();
             TraceLifecycleLog log = new TraceLifecycleLog();
+            log.setTraceCode(invocation.getArgument(0));
+            log.setSpuId(invocation.getArgument(1));
+            log.setActionType(((ActionType) invocation.getArgument(2)).getCode());
+            log.setFromNode(invocation.getArgument(3));
+            log.setToNode(invocation.getArgument(4));
+            log.setProvince(invocation.getArgument(5));
+            log.setCity(invocation.getArgument(6));
+            log.setRemark(invocation.getArgument(7));
+            log.setEventTime(invocation.getArgument(8));
             log.setCurrentHash("hash-" + id);
             return log;
         });
