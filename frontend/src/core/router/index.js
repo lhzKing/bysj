@@ -56,7 +56,7 @@ const router = createRouter({
           name: 'traces',
           component: () => import('@/features/trace/views/TraceList.vue'),
           meta: {
-            title: '溯源管理',
+            title: '追溯查询',
             permissions: [PERMISSIONS.TRACE.VIEW]
           }
         },
@@ -65,7 +65,7 @@ const router = createRouter({
           name: 'scan-hub',
           component: () => import('@/features/trace/views/ScanHub.vue'),
           meta: {
-            title: '扫码中心',
+            title: '扫码工位',
             permissions: TRACE_SCAN_HUB_ACCESS
           }
         },

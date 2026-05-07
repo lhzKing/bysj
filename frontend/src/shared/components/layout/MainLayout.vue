@@ -4,9 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/core/stores/user'
 import { useConfirm } from '@/shared/composables/useConfirm'
 import { useToast } from '@/shared/composables/useToast'
-import AppFloatingNav from './AppFloatingNav.vue'
-import AppMobileNavDrawer from './AppMobileNavDrawer.vue'
-import AppContentFrame from './AppContentFrame.vue'
+import AppSidebarNav from './AppSidebarNav.vue'
+import AppTopbar from './AppTopbar.vue'
+import MobileSidebarDrawer from './MobileSidebarDrawer.vue'
 import { layoutNavigation, resolveActivePath } from './layoutNavigation'
 
 const route = useRoute()
@@ -17,9 +17,9 @@ const toast = useToast()
 
 const drawerVisible = ref(false)
 const mediaQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-  ? window.matchMedia('(max-width: 1023px)')
+  ? window.matchMedia('(max-width: 1023.98px)')
   : null
-const isMobile = ref(Boolean(mediaQuery?.matches))
+const isCompact = ref(Boolean(mediaQuery?.matches))
 
 const navigation = computed(() =>
   layoutNavigation.filter((item) =>
@@ -30,46 +30,39 @@ const navigation = computed(() =>
 )
 
 const activePath = computed(() => resolveActivePath(route.path))
-const username = computed(() => userStore.user?.username || '\u7528\u6237')
+const username = computed(() => userStore.user?.username || '用户')
+const userRole = computed(() => userStore.user?.roleName || '当前账号')
+const pageTitle = computed(() => route.meta?.title || '')
 
-const syncViewport = (event) => {
-  const matches = typeof event?.matches === 'boolean' ? event.matches : Boolean(mediaQuery?.matches)
-  isMobile.value = matches
-
-  if (!matches) {
+const syncViewport = () => {
+  isCompact.value = Boolean(mediaQuery?.matches)
+  if (!isCompact.value) {
     drawerVisible.value = false
   }
 }
 
-const openMobileDrawer = () => {
+const openDrawer = () => {
   drawerVisible.value = true
 }
 
-const closeMobileDrawer = () => {
+const closeDrawer = () => {
   drawerVisible.value = false
 }
 
 const navigateTo = async (path) => {
-  if (!path) {
-    drawerVisible.value = false
-    return
-  }
-
   drawerVisible.value = false
-
-  if (path === route.path) {
+  if (!path || path === route.path) {
     return
   }
-
   await router.push(path)
 }
 
 const logout = async () => {
   const accepted = await confirm({
-    title: '\u9000\u51fa\u767b\u5f55',
-    message: '\u786e\u5b9a\u8981\u9000\u51fa\u5f53\u524d\u8d26\u53f7\u5417\uff1f',
-    confirmText: '\u9000\u51fa',
-    cancelText: '\u53d6\u6d88',
+    title: '退出登录',
+    message: '确定要退出当前账号吗？',
+    confirmText: '退出',
+    cancelText: '取消',
     type: 'danger'
   })
 
@@ -79,7 +72,7 @@ const logout = async () => {
 
   await userStore.logout()
   await router.replace('/login')
-  toast.success('\u5df2\u9000\u51fa\u767b\u5f55')
+  toast.success('已退出登录')
   drawerVisible.value = false
 }
 
@@ -117,37 +110,64 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-shell relative min-h-screen" data-test="app-shell">
-    <div class="mesh-bg"></div>
-    <div class="grid-accent"></div>
-
-    <AppFloatingNav
+  <div class="app-shell" data-test="app-shell">
+    <AppSidebarNav
+      v-if="!isCompact"
       :items="navigation"
       :active-path="activePath"
       :username="username"
-      :is-mobile="isMobile"
+      :user-role="userRole"
       @navigate="navigateTo"
       @logout="logout"
-      @toggle-menu="openMobileDrawer"
     />
 
-    <AppContentFrame>
-      <RouterView v-slot="{ Component }">
-        <Transition name="app-shell-fade" mode="out-in">
-          <component :is="Component" />
-        </Transition>
-      </RouterView>
-    </AppContentFrame>
+    <div class="app-shell__main" :class="{ 'app-shell__main--compact': isCompact }">
+      <AppTopbar
+        :page-title="pageTitle"
+        :is-compact="isCompact"
+        @toggle-menu="openDrawer"
+      />
 
-    <AppMobileNavDrawer
-      v-if="isMobile"
+      <main class="app-shell__content" data-test="app-content">
+        <RouterView v-slot="{ Component }">
+          <component :is="Component" />
+        </RouterView>
+      </main>
+    </div>
+
+    <MobileSidebarDrawer
+      v-if="isCompact"
       :visible="drawerVisible"
       :items="navigation"
       :active-path="activePath"
       :username="username"
-      @close="closeMobileDrawer"
+      :user-role="userRole"
+      @close="closeDrawer"
       @navigate="navigateTo"
       @logout="logout"
     />
   </div>
 </template>
+
+<style scoped>
+.app-shell {
+  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--ink-muted);
+}
+
+.app-shell__main {
+  margin-left: 240px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-shell__main--compact {
+  margin-left: 0;
+}
+
+.app-shell__content {
+  flex: 1 1 auto;
+}
+</style>

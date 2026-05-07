@@ -1,60 +1,178 @@
 <script setup>
-const COPY = {
-  workspace: '\u7cfb\u7edf\u5de5\u4f5c\u53f0',
-  currentUser: '\u5f53\u524d\u7528\u6237\uff1a'
-}
+import { Bell, Menu, Search } from 'lucide-vue-next'
+import KbdShortcut from '@/shared/components/ui/KbdShortcut.vue'
 
 const props = defineProps({
-  eyebrow: {
-    type: String,
-    default: '\u7cfb\u7edf\u5de5\u4f5c\u53f0'
-  },
-  title: {
-    type: String,
-    default: '\u4eea\u8868\u76d8'
-  },
-  username: {
-    type: String,
-    default: '\u7528\u6237'
-  },
-  isMobile: {
-    type: Boolean,
-    default: false
-  }
+  pageTitle: { type: String, default: '' },
+  isCompact: { type: Boolean, default: false },
+  brand: { type: String, default: 'trace.' }
 })
 
-const emit = defineEmits(['toggle-menu'])
+const emit = defineEmits(['toggle-menu', 'open-search'])
 </script>
 
 <template>
-  <header class="app-topbar" data-test="app-topbar">
-    <div class="app-topbar__actions">
+  <header class="topbar" data-test="app-topbar">
+    <div class="topbar__lead">
       <button
-        v-if="isMobile"
+        v-if="isCompact"
         type="button"
-        class="app-icon-button"
+        class="topbar__icon-btn"
         data-test="mobile-nav-toggle"
-        :aria-label="'\u6253\u5f00\u5bfc\u822a\u83dc\u5355'"
+        :aria-label="'打开导航菜单'"
         @click="emit('toggle-menu')"
       >
-        <span class="app-icon-button__line"></span>
-        <span class="app-icon-button__line"></span>
-        <span class="app-icon-button__line"></span>
+        <Menu :size="16" :stroke-width="2" />
       </button>
-      <span v-else class="app-topbar__meta">{{ COPY.workspace }}</span>
+
+      <nav v-if="!isCompact" class="topbar__trail" aria-label="面包屑">
+        <span class="topbar__seg">{{ brand }}</span>
+        <span class="topbar__sep">/</span>
+        <span class="topbar__now" data-test="page-title">{{ pageTitle }}</span>
+      </nav>
+
+      <span v-else class="topbar__compact-title" data-test="page-title">{{ pageTitle }}</span>
     </div>
 
-    <div class="app-topbar__content">
-      <p class="app-topbar__eyebrow">{{ eyebrow }}</p>
-      <h2 class="app-topbar__title" data-test="page-title">{{ title }}</h2>
-    </div>
+    <div class="topbar__actions">
+      <button
+        v-if="!isCompact"
+        type="button"
+        class="topbar__search"
+        data-test="topbar-search"
+        @click="emit('open-search')"
+      >
+        <Search :size="13" :stroke-width="2" />
+        <span class="topbar__search-text">搜索追溯码</span>
+        <KbdShortcut keys="⌘ K" class="topbar__search-kbd" />
+      </button>
 
-    <div class="app-user-chip app-topbar__user">
-      <span class="app-user-chip__avatar" aria-hidden="true">{{ username.slice(0, 1).toUpperCase() }}</span>
-      <span class="app-user-chip__body">
-        <span class="app-user-chip__name">{{ username }}</span>
-        <span class="app-user-chip__meta">{{ COPY.currentUser }}{{ username }}</span>
-      </span>
+      <button
+        type="button"
+        class="topbar__icon-btn"
+        :aria-label="'通知'"
+      >
+        <Bell :size="13" :stroke-width="2" />
+      </button>
     </div>
   </header>
 </template>
+
+<style scoped>
+.topbar {
+  height: 48px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--hairline);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  gap: 16px;
+}
+
+.topbar__lead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.topbar__trail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.topbar__seg {
+  color: var(--ink-subtle);
+}
+
+.topbar__sep {
+  color: var(--ink-tertiary);
+}
+
+.topbar__now {
+  color: var(--ink);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar__compact-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.topbar__search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.topbar__search:hover,
+.topbar__search:focus-visible {
+  border-color: var(--ink-subtle);
+  color: var(--ink);
+  outline: none;
+}
+
+.topbar__search-text {
+  color: var(--ink-muted);
+}
+
+.topbar__search-kbd {
+  margin-left: 4px;
+}
+
+.topbar__icon-btn {
+  height: 32px;
+  width: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.topbar__icon-btn:hover,
+.topbar__icon-btn:focus-visible {
+  border-color: var(--ink-subtle);
+  background: var(--surface-2);
+  outline: none;
+}
+
+@media (max-width: 767.98px) {
+  .topbar {
+    padding: 0 16px;
+  }
+}
+</style>

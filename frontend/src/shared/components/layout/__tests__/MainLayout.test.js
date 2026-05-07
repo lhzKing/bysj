@@ -19,13 +19,13 @@ const grantedPermissions = reactive({
   values: ['dashboard:view', 'trace:view', 'part:view']
 })
 
-function setMobile(matches) {
+function setCompactViewport(matches) {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     configurable: true,
     value: vi.fn().mockImplementation(() => ({
       matches,
-      media: '(max-width: 767px)',
+      media: '(max-width: 1023.98px)',
       addEventListener: vi.fn(),
       removeEventListener: vi.fn()
     }))
@@ -43,7 +43,8 @@ vi.mock('vue-router', () => ({
 vi.mock('@/core/stores/user', () => ({
   useUserStore: () => ({
     user: {
-      username: 'demo-admin'
+      username: 'demo-admin',
+      roleName: '管理员'
     },
     logout: logoutMock,
     hasAnyPermission: (requiredPermissions = []) =>
@@ -85,60 +86,65 @@ describe('MainLayout', () => {
     logoutMock.mockReset()
     confirmMock.mockReset()
     toastSuccessMock.mockReset()
-    setMobile(false)
+    setCompactViewport(false)
   })
 
-  it('renders the desktop shell with filtered navigation and routed content', () => {
+  it('renders the desktop shell with sidebar, topbar and routed content', () => {
     const wrapper = renderWithPrime(MainLayout, {
       global: {
         stubs: {
-          LogOut: true,
-          X: true,
           RouterView: routerViewStub
         }
       }
     })
 
     expect(wrapper.find('[data-test="app-shell"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="floating-nav"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="desktop-nav"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="content-frame"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="app-sidebar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="app-topbar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="app-content"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="layout-view"]').text()).toContain('Layout page')
-    expect(wrapper.text()).toContain('仪表盘')
-    expect(wrapper.text()).toContain('生产赋码')
-    expect(wrapper.text()).toContain('仓库物流')
-    expect(wrapper.text()).toContain('溯源管理')
-    expect(wrapper.text()).toContain('配件管理')
-    expect(wrapper.text()).not.toContain('用户管理')
-    expect(wrapper.text()).not.toContain('角色管理')
-    expect(wrapper.text()).toContain('扫码中心')
+
+    const sidebarText = wrapper.find('[data-test="app-sidebar"]').text()
+    expect(sidebarText).toContain('trace.')
+    expect(sidebarText).toContain('仪表盘')
+    expect(sidebarText).toContain('扫码工位')
+    expect(sidebarText).toContain('生产赋码')
+    expect(sidebarText).toContain('仓库物流')
+    expect(sidebarText).toContain('追溯查询')
+    expect(sidebarText).toContain('配件管理')
+    expect(sidebarText).not.toContain('用户管理')
+    expect(sidebarText).not.toContain('角色管理')
+
+    expect(wrapper.find('[data-test="page-title"]').text()).toBe('仪表盘')
   })
 
-  it('opens the mobile drawer and closes it after navigation', async () => {
-    setMobile(true)
+  it('hides desktop sidebar on compact viewport and exposes hamburger toggle', async () => {
+    setCompactViewport(true)
     const wrapper = renderWithPrime(MainLayout, {
       global: {
         stubs: {
-          LogOut: true,
-          X: true,
           Teleport: true,
           RouterView: routerViewStub
         }
       }
     })
 
-    const mobileNavToggle = wrapper.find('[data-test="mobile-nav-toggle"]')
-    expect(mobileNavToggle.exists()).toBe(true)
-    await mobileNavToggle.trigger('click')
-    expect(wrapper.find('[data-test="mobile-drawer"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="app-sidebar"]').exists()).toBe(false)
 
-    const tracesNavItem = wrapper.find('[data-nav-path="/traces"]')
-    expect(tracesNavItem.exists()).toBe(true)
-    await tracesNavItem.trigger('click')
+    const toggle = wrapper.find('[data-test="mobile-nav-toggle"]')
+    expect(toggle.exists()).toBe(true)
+    await toggle.trigger('click')
+
+    const drawer = wrapper.find('[data-test="mobile-sidebar-drawer"]')
+    expect(drawer.exists()).toBe(true)
+
+    const tracesEntry = drawer.find('[data-nav-path="/traces"]')
+    expect(tracesEntry.exists()).toBe(true)
+    await tracesEntry.trigger('click')
     await flushPromises()
 
     expect(pushMock).toHaveBeenCalledWith('/traces')
-    expect(wrapper.find('[data-test="mobile-drawer"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="mobile-sidebar-drawer"]').exists()).toBe(false)
   })
 
   it('confirms before logging out and redirects back to /login', async () => {
@@ -146,8 +152,6 @@ describe('MainLayout', () => {
     const wrapper = renderWithPrime(MainLayout, {
       global: {
         stubs: {
-          LogOut: true,
-          X: true,
           RouterView: routerViewStub
         }
       }
