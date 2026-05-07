@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { renderWithPrime } from '@/test/renderWithPrime'
-import PrimePromptDialog from '@/shared/components/prime/PrimePromptDialog.vue'
+import PromptDialog from '@/shared/components/ui/PromptDialog.vue'
 import { usePrompt } from '@/shared/composables/usePrompt'
 import { resetPromptState } from '@/shared/composables/promptState'
 
@@ -11,7 +11,7 @@ describe('usePrompt', () => {
   })
 
   it('resolves entered value after confirm', async () => {
-    const wrapper = renderWithPrime(PrimePromptDialog)
+    const wrapper = renderWithPrime(PromptDialog)
     const { prompt } = usePrompt()
 
     const resultPromise = prompt({
@@ -29,7 +29,7 @@ describe('usePrompt', () => {
   })
 
   it('returns null when prompt is cancelled', async () => {
-    const wrapper = renderWithPrime(PrimePromptDialog)
+    const wrapper = renderWithPrime(PromptDialog)
     const { prompt } = usePrompt()
 
     const resultPromise = prompt({ title: 'Please enter notes' })
