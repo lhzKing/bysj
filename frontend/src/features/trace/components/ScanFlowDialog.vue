@@ -81,6 +81,10 @@ const props = defineProps({
     type: String,
     required: true,
     validator: (value) => ['inbound', 'outbound', 'transfer'].includes(value)
+  },
+  idempotencyKey: {
+    type: String,
+    default: ''
   }
 })
 
@@ -201,6 +205,9 @@ const handleSubmit = async () => {
       eventTime: formatToBackend(formData.eventTime),
       correctionOf: formData.correctionOf,
       remark: formData.remark?.trim() || ''
+    }
+    if (props.idempotencyKey) {
+      apiData.idempotencyKey = props.idempotencyKey
     }
     await createEvent(props.traceCode, apiData)
     toast.success(`${operationTitle.value}记录提交成功`)

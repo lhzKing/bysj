@@ -34,30 +34,33 @@ vi.mock('@/features/trace/api', () => ({
   getTraceAvailableActions: (...args) => getTraceAvailableActionsMock(...args)
 }))
 
-const traceScannerStub = {
+const qrScannerStub = {
   template: `
-    <div data-test="trace-scanner-stub">
+    <div data-test="qr-scanner-stub">
       <button data-test="emit-scan" @click="$emit('scan', 'TRACE-001')">emit-scan</button>
     </div>
   `
 }
 
 const scanFlowDialogStub = {
-  props: ['modelValue', 'actionType'],
-  template: '<div data-test="scan-flow-dialog-stub" :data-open="modelValue" :data-action="actionType"></div>'
+  props: ['modelValue', 'actionType', 'idempotencyKey'],
+  template:
+    '<div data-test="scan-flow-dialog-stub" :data-open="modelValue" :data-action="actionType" :data-idem="idempotencyKey"></div>'
 }
 
 const scanExceptionDialogStub = {
-  props: ['modelValue'],
-  template: '<div data-test="scan-exception-dialog-stub" :data-open="modelValue"></div>'
+  props: ['modelValue', 'idempotencyKey'],
+  template:
+    '<div data-test="scan-exception-dialog-stub" :data-open="modelValue" :data-idem="idempotencyKey"></div>'
 }
 
 const createTraceDialogStub = {
-  template: '<div data-test="create-trace-dialog-stub"></div>'
+  props: ['modelValue'],
+  template: '<div data-test="create-trace-dialog-stub" :data-open="modelValue"></div>'
 }
 
 const stubs = {
-  TraceScanner: traceScannerStub,
+  QRScanner: qrScannerStub,
   ScanFlowDialog: scanFlowDialogStub,
   ScanExceptionDialog: scanExceptionDialogStub,
   CreateTraceDialog: createTraceDialogStub
@@ -71,7 +74,8 @@ function mountScanHub() {
 
 async function openActionMatrix() {
   const wrapper = mountScanHub()
-  await wrapper.find('button').trigger('click')
+  await wrapper.find('[data-test="scan-start"]').trigger('click')
+  await flushPromises()
   await wrapper.find('[data-test="emit-scan"]').trigger('click')
   await flushPromises()
   return wrapper

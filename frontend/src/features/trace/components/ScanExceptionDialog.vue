@@ -151,6 +151,10 @@ const props = defineProps({
   traceCode: {
     type: String,
     required: true
+  },
+  idempotencyKey: {
+    type: String,
+    default: ''
   }
 })
 
@@ -240,6 +244,9 @@ const handleSubmit = async () => {
       city: formData.city,
       remark: trimmedRemark,
       eventTime: formatToBackend(formData.eventTime)
+    }
+    if (props.idempotencyKey) {
+      payload.idempotencyKey = props.idempotencyKey
     }
     await createEvent(props.traceCode, payload)
     toast.success('异常上报已提交')

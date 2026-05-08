@@ -17,7 +17,7 @@ export function createTrace(data) {
 /**
  * Create a trace lifecycle event.
  * @param {string} traceCode
- * @param {{ actionType: string, fromNode?: string, toNode?: string, province?: string, city?: string, eventTime?: string, correctionOf?: number | null, remark?: string }} data
+ * @param {{ actionType: string, fromNode?: string, toNode?: string, province?: string, city?: string, eventTime?: string, correctionOf?: number | null, remark?: string, idempotencyKey?: string }} data
  * @returns {Promise<Object>}
  */
 export function createEvent(traceCode, data) {
