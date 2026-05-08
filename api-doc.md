@@ -377,6 +377,69 @@ Access-Control-Max-Age: 3600
 
 新版溯源码核心业务已从“自由扫码填表”扩展为“批次赋码 + 单品码状态 + 结构化节点 + 任务驱动连续扫码 + 箱码/托盘码聚合 + 异常/纠错审计”。接口响应仍统一使用 `ApiResponse`，前端请求可使用 `camelCase` 或 `snake_case`，响应统一为 `snake_case`。
 
+### 2.0 追溯码分页列表（多条件筛选）
+
+- **GET** `/api/traces`
+- **权限**：`trace:view`
+- **Headers**：`Authorization: Bearer <token>`
+- **Query Params**
+
+  | 参数 | 类型 | 必填 | 说明 |
+  |------|------|------|------|
+  | keyword | string | ❌ | 模糊匹配 trace_code / SPU 名称 / SPU 编码 / current_owner |
+  | status | string | ❌ | 状态精确匹配；多值用逗号分隔（INIT/IN_STOCK/IN_TRANSIT/TRANSFERRED/EXCEPTION） |
+  | spu_id | number | ❌ | SPU 主键精确匹配 |
+  | batch_no | string | ❌ | 赋码批次号精确匹配 |
+  | current_node | string | ❌ | 当前节点（模糊） |
+  | current_owner | string | ❌ | 当前持有方（模糊） |
+  | province | string | ❌ | 省份精确匹配 |
+  | event_time_from | string | ❌ | last_event_time 起始（含），ISO-8601 `yyyy-MM-ddTHH:mm:ss` |
+  | event_time_to | string | ❌ | last_event_time 截止（含） |
+  | page | number | ❌ | 页码（默认 1） |
+  | size | number | ❌ | 每页数量（默认 10，最大 200） |
+  | sort | string | ❌ | 排序列：`last_event_time`(默认) / `trace_code` / `update_time` / `current_status` |
+  | order | string | ❌ | `asc` / `desc`（默认 desc） |
+
+  > 入参非法（如未知 `status` 值或 `event_time_*` 不是 ISO-8601）将返回 `code=400`，错误消息会指出具体字段。
+
+- **Response** (HTTP 200)
+  ```json
+  {
+    "code": 0,
+    "status": 200,
+    "message": "success",
+    "data": {
+      "list": [
+        {
+          "trace_code": "TRC-20260507-000001",
+          "spu_id": 1,
+          "spu_part_code": "SPU-VALVE-001",
+          "spu_part_name": "工业高压阀门",
+          "spu_part_type": "阀门类",
+          "current_status": "IN_STOCK",
+          "current_node": "上海仓库",
+          "current_owner": "warehouse",
+          "province": "上海市",
+          "city": "上海市",
+          "last_event_time": "2026-05-07 11:00:00",
+          "last_log_id": 95,
+          "last_action_type": "INBOUND",
+          "batch_id": 12,
+          "batch_no": "ASSIGN-20260507-0001",
+          "code_status": "IN_STOCK",
+          "update_time": "2026-05-07 11:00:00"
+        }
+      ],
+      "total": 1,
+      "page": 1,
+      "size": 10,
+      "total_pages": 1
+    }
+  }
+  ```
+
+> **链验证说明**：列表接口为聚合查询，**不**返回 `prev_hash` / `current_hash` / `signature`，不在列表层执行链完整性校验。需校验某条码请走 `GET /api/traces/{trace_code}/verify`（见 2.12）。
+
 ### 2.1 生产赋码（创建赋码批次并生成单品码）
 
 - **POST** `/api/traces`
@@ -1693,6 +1756,7 @@ curl http://localhost:8080/api/traces/TC-20260119-0001/verify \
 
 | 能力 | 当前接口路径 |
 |---|---|
+| 追溯码分页列表（多条件筛选） | `GET /api/traces?keyword&status&spu_id&batch_no&current_node&current_owner&province&event_time_from&event_time_to&page&size&sort&order` |
 | 扫码后动作推荐 | `GET /api/traces/{trace_code}/available-actions` |
 | 打印 / 重打 / 作废 | `POST /api/traces/{trace_code}/print` / `reprint` / `void` |
 | 单品码激活 | `POST /api/trace-codes/{trace_code}/activate` |

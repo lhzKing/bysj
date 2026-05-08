@@ -5,6 +5,7 @@ import com.example.trace.common.ApiResponse;
 import com.example.trace.common.BizCode;
 import com.example.trace.common.BizException;
 import com.example.trace.dto.ChainVerifyResponse;
+import com.example.trace.dto.PageResponse;
 import com.example.trace.dto.ProduceAssignRequest;
 import com.example.trace.dto.ProduceAssignResponse;
 import com.example.trace.dto.ScanTraceRequest;
@@ -14,6 +15,8 @@ import com.example.trace.dto.TraceCodeLabelActionResponse;
 import com.example.trace.dto.TraceCorrectionRequest;
 import com.example.trace.dto.TraceDetailResponse;
 import com.example.trace.dto.TraceExceptionCloseRequest;
+import com.example.trace.dto.TraceListItemResponse;
+import com.example.trace.dto.TracePageRequest;
 import com.example.trace.service.policy.TraceActionPermissionPolicy;
 import com.example.trace.service.TraceService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -67,6 +70,48 @@ public class TraceController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.created(response, "赋码成功"));
+    }
+
+    /**
+     * 分页查询追溯列表（trace_snapshot 视图 + SPU/批次/最近动作聚合）。
+     * GET /api/traces
+     *
+     * 查询参数：keyword / status (多值用逗号) / spu_id / batch_no / current_node /
+     *           current_owner / province / event_time_from / event_time_to / page / size /
+     *           sort (last_event_time|trace_code|update_time|current_status) / order (asc|desc)
+     */
+    @GetMapping
+    @RequirePermission("trace:view")
+    public ResponseEntity<ApiResponse<PageResponse<TraceListItemResponse>>> listTraces(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String status,
+            @RequestParam(name = "spu_id", required = false) Long spuId,
+            @RequestParam(name = "batch_no", required = false) String batchNo,
+            @RequestParam(name = "current_node", required = false) String currentNode,
+            @RequestParam(name = "current_owner", required = false) String currentOwner,
+            @RequestParam(required = false) String province,
+            @RequestParam(name = "event_time_from", required = false) String eventTimeFrom,
+            @RequestParam(name = "event_time_to", required = false) String eventTimeTo,
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "10") Integer size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(defaultValue = "desc") String order
+    ) {
+        TracePageRequest request = new TracePageRequest();
+        request.setKeyword(keyword);
+        request.setStatus(status);
+        request.setSpuId(spuId);
+        request.setBatchNo(batchNo);
+        request.setCurrentNode(currentNode);
+        request.setCurrentOwner(currentOwner);
+        request.setProvince(province);
+        request.setEventTimeFrom(eventTimeFrom);
+        request.setEventTimeTo(eventTimeTo);
+        request.setPage(page);
+        request.setSize(size);
+        request.setSort(sort);
+        request.setOrder(order);
+        return ResponseEntity.ok(ApiResponse.success(traceService.listTraces(request)));
     }
 
     /**

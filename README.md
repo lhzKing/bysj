@@ -451,6 +451,7 @@ mysql -u root -p trace_db < backend/sql/sample_data_full.sql
 | 认证 | `POST /api/auth/refresh` | 刷新 Token |
 | 认证 | `GET /api/auth/me` | 获取当前用户信息 |
 | 溯源 | `POST /api/traces` | 创建赋码批次并生成单品码（单次 `quantity<=500`） |
+| 溯源 | `GET /api/traces?keyword&status&spu_id&batch_no&page&size&sort&order` | 追溯码分页列表（多条件筛选） |
 | 溯源 | `POST /api/traces/{traceCode}/events` | 普通扫码流转（状态机校验 + 幂等） |
 | 溯源 | `GET /api/traces/{traceCode}/available-actions` | 扫码后可执行动作推荐 |
 | 溯源 | `GET /api/traces/{traceCode}?view=effective|audit` | 溯源详情；audit 需 `trace:audit:view` |

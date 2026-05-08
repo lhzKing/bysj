@@ -3,6 +3,7 @@ package com.example.trace.controller;
 import com.example.trace.common.BizCode;
 import com.example.trace.common.BizException;
 import com.example.trace.common.ApiResponse;
+import com.example.trace.dto.PageResponse;
 import com.example.trace.dto.ProduceAssignRequest;
 import com.example.trace.dto.ProduceAssignResponse;
 import com.example.trace.dto.ScanTraceRequest;
@@ -12,6 +13,8 @@ import com.example.trace.dto.TraceCodeLabelActionResponse;
 import com.example.trace.dto.TraceCorrectionRequest;
 import com.example.trace.dto.TraceDetailResponse;
 import com.example.trace.dto.TraceExceptionCloseRequest;
+import com.example.trace.dto.TraceListItemResponse;
+import com.example.trace.dto.TracePageRequest;
 import com.example.trace.entity.TraceLifecycleLog;
 import com.example.trace.entity.TraceSnapshot;
 import com.example.trace.enums.ActionType;
@@ -267,6 +270,70 @@ class TraceControllerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getData()).isSameAs(serviceResponse);
         verify(traceService).detail("TRACE-006", "audit", 2L);
+    }
+
+    @Test
+    void listTraces_shouldBindQueryParamsAndReturnPagedResponse() {
+        TraceListItemResponse row = TraceListItemResponse.builder()
+                .traceCode("TRC-LIST-001")
+                .currentStatus("IN_STOCK")
+                .build();
+        PageResponse<TraceListItemResponse> serviceResponse =
+                PageResponse.of(List.of(row), 1L, 1, 10);
+        when(traceService.listTraces(any(TracePageRequest.class))).thenReturn(serviceResponse);
+
+        ResponseEntity<ApiResponse<PageResponse<TraceListItemResponse>>> response =
+                traceController.listTraces(
+                        "TRC", "IN_STOCK,IN_TRANSIT", 5L, "ASSIGN-001",
+                        "上海仓库", "warehouse", "上海市",
+                        "2026-05-01T00:00:00", "2026-05-08T23:59:59",
+                        2, 20, "last_event_time", "asc"
+                );
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getData().getTotal()).isEqualTo(1L);
+        assertThat(response.getBody().getData().getList()).hasSize(1);
+
+        ArgumentCaptor<TracePageRequest> captor = ArgumentCaptor.forClass(TracePageRequest.class);
+        verify(traceService).listTraces(captor.capture());
+        TracePageRequest captured = captor.getValue();
+        assertThat(captured.getKeyword()).isEqualTo("TRC");
+        assertThat(captured.getStatus()).isEqualTo("IN_STOCK,IN_TRANSIT");
+        assertThat(captured.getSpuId()).isEqualTo(5L);
+        assertThat(captured.getBatchNo()).isEqualTo("ASSIGN-001");
+        assertThat(captured.getCurrentNode()).isEqualTo("上海仓库");
+        assertThat(captured.getCurrentOwner()).isEqualTo("warehouse");
+        assertThat(captured.getProvince()).isEqualTo("上海市");
+        assertThat(captured.getEventTimeFrom()).isEqualTo("2026-05-01T00:00:00");
+        assertThat(captured.getEventTimeTo()).isEqualTo("2026-05-08T23:59:59");
+        assertThat(captured.getPage()).isEqualTo(2);
+        assertThat(captured.getSize()).isEqualTo(20);
+        assertThat(captured.getSort()).isEqualTo("last_event_time");
+        assertThat(captured.getOrder()).isEqualTo("asc");
+        assertThat(captured.isAsc()).isTrue();
+    }
+
+    @Test
+    void listTraces_shouldUseDefaultsWhenOptionalParamsAreNull() {
+        when(traceService.listTraces(any(TracePageRequest.class)))
+                .thenReturn(PageResponse.of(List.of(), 0L, 1, 10));
+
+        traceController.listTraces(
+                null, null, null, null, null, null, null,
+                null, null, 1, 10, null, "desc"
+        );
+
+        ArgumentCaptor<TracePageRequest> captor = ArgumentCaptor.forClass(TracePageRequest.class);
+        verify(traceService).listTraces(captor.capture());
+        TracePageRequest captured = captor.getValue();
+        assertThat(captured.getKeyword()).isNull();
+        assertThat(captured.getStatus()).isNull();
+        assertThat(captured.getSpuId()).isNull();
+        assertThat(captured.getPage()).isEqualTo(1);
+        assertThat(captured.getSize()).isEqualTo(10);
+        assertThat(captured.getOrder()).isEqualTo("desc");
+        assertThat(captured.isAsc()).isFalse();
     }
 
     private static ScanTraceRequest scanRequest(ActionType actionType) {

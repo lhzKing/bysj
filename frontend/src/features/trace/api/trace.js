@@ -15,6 +15,29 @@ export function createTrace(data) {
 }
 
 /**
+ * Paged trace list with multi-criteria filters.
+ *
+ * @param {Object} params
+ * @param {string=} params.keyword         模糊匹配 trace_code / SPU 名称 / SPU 编码 / current_owner
+ * @param {string=} params.status          状态精确（多值用逗号），INIT/IN_STOCK/IN_TRANSIT/TRANSFERRED/EXCEPTION
+ * @param {number=} params.spuId
+ * @param {string=} params.batchNo
+ * @param {string=} params.currentNode
+ * @param {string=} params.currentOwner
+ * @param {string=} params.province
+ * @param {string=} params.eventTimeFrom   ISO-8601
+ * @param {string=} params.eventTimeTo     ISO-8601
+ * @param {number=} params.page            默认 1
+ * @param {number=} params.size            默认 10，最大 200
+ * @param {string=} params.sort            last_event_time(默认) / trace_code / update_time / current_status
+ * @param {string=} params.order           asc / desc(默认)
+ * @returns {Promise<{list: Array, total: number, page: number, size: number, totalPages: number}>}
+ */
+export function listTraces(params = {}) {
+  return request.get('/traces', { params })
+}
+
+/**
  * Create a trace lifecycle event.
  * @param {string} traceCode
  * @param {{ actionType: string, fromNode?: string, toNode?: string, province?: string, city?: string, eventTime?: string, correctionOf?: number | null, remark?: string, idempotencyKey?: string }} data

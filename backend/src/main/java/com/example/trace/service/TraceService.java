@@ -1,6 +1,7 @@
 package com.example.trace.service;
 
 import com.example.trace.dto.ChainVerifyResponse;
+import com.example.trace.dto.PageResponse;
 import com.example.trace.dto.ProduceAssignRequest;
 import com.example.trace.dto.ProduceAssignResponse;
 import com.example.trace.dto.ScanTraceRequest;
@@ -12,6 +13,8 @@ import com.example.trace.dto.TraceCodeLabelActionResponse;
 import com.example.trace.dto.TraceCorrectionRequest;
 import com.example.trace.dto.TraceDetailResponse;
 import com.example.trace.dto.TraceExceptionCloseRequest;
+import com.example.trace.dto.TraceListItemResponse;
+import com.example.trace.dto.TracePageRequest;
 
 public interface TraceService {
 
@@ -19,6 +22,11 @@ public interface TraceService {
      * 生产赋码 - 创建溯源实例
      */
     ProduceAssignResponse produceAssign(ProduceAssignRequest request, String operator);
+
+    /**
+     * 分页查询追溯列表（trace_snapshot 视角，附 SPU/批次/最近动作聚合字段）。
+     */
+    PageResponse<TraceListItemResponse> listTraces(TracePageRequest request);
 
     /**
      * 扫码流转 - 记录流转事件

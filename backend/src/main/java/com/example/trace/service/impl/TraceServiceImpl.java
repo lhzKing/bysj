@@ -3,6 +3,7 @@ package com.example.trace.service.impl;
 import com.example.trace.common.BizCode;
 import com.example.trace.common.BizException;
 import com.example.trace.dto.ChainVerifyResponse;
+import com.example.trace.dto.PageResponse;
 import com.example.trace.dto.ProduceAssignRequest;
 import com.example.trace.dto.ProduceAssignResponse;
 import com.example.trace.dto.ScanTraceRequest;
@@ -15,9 +16,12 @@ import com.example.trace.dto.TraceCodeLabelActionResponse;
 import com.example.trace.dto.TraceCorrectionRequest;
 import com.example.trace.dto.TraceDetailResponse;
 import com.example.trace.dto.TraceExceptionCloseRequest;
+import com.example.trace.dto.TraceListItemResponse;
+import com.example.trace.dto.TracePageRequest;
 import com.example.trace.entity.TraceAggregation;
 import com.example.trace.entity.TraceSnapshot;
 import com.example.trace.enums.TraceAggregationRelationType;
+import com.example.trace.enums.TraceStatus;
 import com.example.trace.mapper.TraceAggregationMapper;
 import com.example.trace.mapper.TraceLifecycleLogMapper;
 import com.example.trace.mapper.TraceSnapshotMapper;
@@ -30,12 +34,18 @@ import com.example.trace.service.impl.support.TraceCodeAssignmentService;
 import com.example.trace.service.impl.support.TraceCodeLabelService;
 import com.example.trace.service.impl.support.TraceExceptionWorkflowService;
 import com.example.trace.service.impl.support.TraceScanRetryExecutor;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class TraceServiceImpl implements TraceService {
@@ -85,6 +95,75 @@ public class TraceServiceImpl implements TraceService {
     @Override
     public ProduceAssignResponse produceAssign(ProduceAssignRequest request, String operator) {
         return traceCodeAssignmentService.produceAssign(request, operator);
+    }
+
+    private static final Set<String> ALLOWED_SORT_COLUMNS = Set.of(
+            "last_event_time", "trace_code", "update_time", "current_status"
+    );
+
+    @Override
+    public PageResponse<TraceListItemResponse> listTraces(TracePageRequest request) {
+        int pageNum = request.getPage() == null || request.getPage() < 1 ? 1 : request.getPage();
+        int pageSize = request.getSize() == null || request.getSize() < 1 ? 10 : Math.min(request.getSize(), 200);
+
+        List<String> statuses = parseStatuses(request.getStatus());
+        LocalDateTime from = parseDateTime(request.getEventTimeFrom(), "event_time_from");
+        LocalDateTime to = parseDateTime(request.getEventTimeTo(), "event_time_to");
+
+        String sortColumn = request.getSort() != null && ALLOWED_SORT_COLUMNS.contains(request.getSort())
+                ? request.getSort()
+                : "last_event_time";
+
+        IPage<TraceListItemResponse> page = new Page<>(pageNum, pageSize);
+        IPage<TraceListItemResponse> result = traceSnapshotMapper.selectTracePage(
+                page,
+                blankToNull(request.getKeyword()),
+                statuses,
+                request.getSpuId(),
+                blankToNull(request.getBatchNo()),
+                blankToNull(request.getCurrentNode()),
+                blankToNull(request.getCurrentOwner()),
+                blankToNull(request.getProvince()),
+                from,
+                to,
+                sortColumn,
+                request.isAsc()
+        );
+
+        return PageResponse.of(result.getRecords(), result.getTotal(), pageNum, pageSize);
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static List<String> parseStatuses(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(s -> {
+                    try {
+                        return TraceStatus.fromString(s).getCode();
+                    } catch (IllegalArgumentException e) {
+                        throw new BizException(BizCode.PARAM_ERROR, "非法的 status: " + s);
+                    }
+                })
+                .distinct()
+                .toList();
+    }
+
+    private static LocalDateTime parseDateTime(String raw, String fieldName) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(raw.trim());
+        } catch (DateTimeParseException e) {
+            throw new BizException(BizCode.PARAM_ERROR, fieldName + " 必须为 ISO-8601 (yyyy-MM-ddTHH:mm:ss)");
+        }
     }
 
     @Override

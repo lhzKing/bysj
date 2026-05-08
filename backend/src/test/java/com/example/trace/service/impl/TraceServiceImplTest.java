@@ -1,6 +1,7 @@
 package com.example.trace.service.impl;
 
 import com.example.trace.dto.ChainVerifyResponse;
+import com.example.trace.dto.PageResponse;
 import com.example.trace.dto.ProduceAssignRequest;
 import com.example.trace.dto.ProduceAssignResponse;
 import com.example.trace.dto.ScanTraceRequest;
@@ -12,6 +13,8 @@ import com.example.trace.dto.TraceCodeLabelActionResponse;
 import com.example.trace.dto.TraceCorrectionRequest;
 import com.example.trace.dto.TraceDetailResponse;
 import com.example.trace.dto.TraceExceptionCloseRequest;
+import com.example.trace.dto.TraceListItemResponse;
+import com.example.trace.dto.TracePageRequest;
 import com.example.trace.common.BizCode;
 import com.example.trace.common.BizException;
 import com.example.trace.entity.TraceAggregation;
@@ -40,6 +43,11 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -107,6 +115,128 @@ class TraceServiceImplTest {
         service.scan(request, "tester");
 
         verify(traceScanRetryExecutor).execute(request, "tester");
+    }
+
+    @Test
+    void listTraces_shouldDelegateToMapperWithDefaultsAndReturnPagedResponse() {
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<TraceListItemResponse> mapperPage =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 10);
+        TraceListItemResponse row = TraceListItemResponse.builder()
+                .traceCode("TRC-PAGE-001")
+                .currentStatus("IN_STOCK")
+                .build();
+        mapperPage.setRecords(List.of(row));
+        mapperPage.setTotal(1L);
+        when(traceSnapshotMapper.selectTracePage(
+                any(),
+                isNull(),
+                eq(List.of()),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                eq("last_event_time"),
+                eq(false)
+        )).thenReturn(mapperPage);
+
+        TracePageRequest request = new TracePageRequest();
+        PageResponse<TraceListItemResponse> response = service.listTraces(request);
+
+        assertThat(response.getTotal()).isEqualTo(1L);
+        assertThat(response.getList()).hasSize(1);
+        assertThat(response.getList().get(0).getTraceCode()).isEqualTo("TRC-PAGE-001");
+        assertThat(response.getPage()).isEqualTo(1);
+        assertThat(response.getSize()).isEqualTo(10);
+    }
+
+    @Test
+    void listTraces_shouldParseStatusCsvAndDateRange() {
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<TraceListItemResponse> mapperPage =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(2, 20);
+        mapperPage.setRecords(List.of());
+        mapperPage.setTotal(0L);
+        when(traceSnapshotMapper.selectTracePage(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyString(), anyBoolean()
+        )).thenReturn(mapperPage);
+
+        TracePageRequest request = new TracePageRequest();
+        request.setStatus("IN_STOCK,IN_TRANSIT");
+        request.setEventTimeFrom("2026-05-01T00:00:00");
+        request.setEventTimeTo("2026-05-08T23:59:59");
+        request.setKeyword("  TRC  ");
+        request.setSpuId(7L);
+        request.setSort("trace_code");
+        request.setOrder("asc");
+        request.setPage(2);
+        request.setSize(20);
+
+        service.listTraces(request);
+
+        verify(traceSnapshotMapper).selectTracePage(
+                any(),
+                eq("TRC"),
+                eq(List.of("IN_STOCK", "IN_TRANSIT")),
+                eq(7L),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                eq(LocalDateTime.parse("2026-05-01T00:00:00")),
+                eq(LocalDateTime.parse("2026-05-08T23:59:59")),
+                eq("trace_code"),
+                eq(true)
+        );
+    }
+
+    @Test
+    void listTraces_shouldRejectIllegalStatus() {
+        TracePageRequest request = new TracePageRequest();
+        request.setStatus("UNKNOWN");
+
+        assertThatThrownBy(() -> service.listTraces(request))
+                .isInstanceOf(BizException.class)
+                .satisfies(error -> {
+                    BizException exception = (BizException) error;
+                    assertThat(exception.getCode()).isEqualTo(BizCode.PARAM_ERROR);
+                    assertThat(exception.getMessage()).contains("UNKNOWN");
+                });
+        verify(traceSnapshotMapper, never()).selectTracePage(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyString(), anyBoolean()
+        );
+    }
+
+    @Test
+    void listTraces_shouldRejectIllegalDateTime() {
+        TracePageRequest request = new TracePageRequest();
+        request.setEventTimeFrom("not-a-date");
+
+        assertThatThrownBy(() -> service.listTraces(request))
+                .isInstanceOf(BizException.class)
+                .satisfies(error -> {
+                    BizException exception = (BizException) error;
+                    assertThat(exception.getCode()).isEqualTo(BizCode.PARAM_ERROR);
+                    assertThat(exception.getMessage()).contains("event_time_from");
+                });
+    }
+
+    @Test
+    void listTraces_shouldClampPageSizeToTwoHundred() {
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<TraceListItemResponse> mapperPage =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 200);
+        mapperPage.setRecords(List.of());
+        mapperPage.setTotal(0L);
+        when(traceSnapshotMapper.selectTracePage(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyString(), anyBoolean()
+        )).thenReturn(mapperPage);
+
+        TracePageRequest request = new TracePageRequest();
+        request.setSize(500);
+        PageResponse<TraceListItemResponse> response = service.listTraces(request);
+
+        assertThat(response.getSize()).isEqualTo(200);
     }
 
     @Test

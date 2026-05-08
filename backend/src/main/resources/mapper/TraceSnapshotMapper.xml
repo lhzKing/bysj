@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.trace.mapper.TraceSnapshotMapper">
+
+    <resultMap id="TraceListItemResultMap" type="com.example.trace.dto.TraceListItemResponse">
+        <id property="traceCode" column="trace_code"/>
+        <result property="spuId" column="spu_id"/>
+        <result property="spuPartCode" column="spu_part_code"/>
+        <result property="spuPartName" column="spu_part_name"/>
+        <result property="spuPartType" column="spu_part_type"/>
+        <result property="currentStatus" column="current_status"/>
+        <result property="currentNode" column="current_node"/>
+        <result property="currentOwner" column="current_owner"/>
+        <result property="province" column="province"/>
+        <result property="city" column="city"/>
+        <result property="lastEventTime" column="last_event_time"/>
+        <result property="lastLogId" column="last_log_id"/>
+        <result property="lastActionType" column="last_action_type"/>
+        <result property="batchId" column="batch_id"/>
+        <result property="batchNo" column="batch_no"/>
+        <result property="codeStatus" column="code_status"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <!--
+        Trace list page query.
+
+        Joins:
+          - base_part_spec p:   SPU 详情用于展示与 keyword 模糊匹配
+          - trace_lifecycle_log l: 取最近一条 lifecycle 的 action_type
+          - trace_code c:        单品码状态与所属批次
+          - trace_assign_batch b: 批次号
+
+        所有过滤参数均可空；使用 mp 分页插件统一加 LIMIT。
+    -->
+    <select id="selectTracePage" resultMap="TraceListItemResultMap">
+        SELECT
+            s.trace_code             AS trace_code,
+            s.spu_id                 AS spu_id,
+            p.part_code              AS spu_part_code,
+            p.part_name              AS spu_part_name,
+            p.part_type              AS spu_part_type,
+            s.current_status         AS current_status,
+            s.current_node           AS current_node,
+            s.current_owner          AS current_owner,
+            s.province               AS province,
+            s.city                   AS city,
+            s.last_event_time        AS last_event_time,
+            s.last_log_id            AS last_log_id,
+            l.action_type            AS last_action_type,
+            c.batch_id               AS batch_id,
+            b.batch_no               AS batch_no,
+            c.code_status            AS code_status,
+            s.update_time            AS update_time
+        FROM trace_snapshot s
+        LEFT JOIN base_part_spec p     ON p.id = s.spu_id
+        LEFT JOIN trace_lifecycle_log l ON l.id = s.last_log_id
+        LEFT JOIN trace_code c         ON c.trace_code = s.trace_code
+        LEFT JOIN trace_assign_batch b ON b.id = c.batch_id
+        <where>
+            <if test="keyword != null and keyword != ''">
+                AND (
+                    s.trace_code LIKE CONCAT('%', #{keyword}, '%')
+                    OR p.part_name LIKE CONCAT('%', #{keyword}, '%')
+                    OR p.part_code LIKE CONCAT('%', #{keyword}, '%')
+                    OR s.current_owner LIKE CONCAT('%', #{keyword}, '%')
+                )
+            </if>
+            <if test="statuses != null and statuses.size() > 0">
+                AND s.current_status IN
+                <foreach collection="statuses" item="st" open="(" separator="," close=")">
+                    #{st}
+                </foreach>
+            </if>
+            <if test="spuId != null">
+                AND s.spu_id = #{spuId}
+            </if>
+            <if test="batchNo != null and batchNo != ''">
+                AND b.batch_no = #{batchNo}
+            </if>
+            <if test="currentNode != null and currentNode != ''">
+                AND s.current_node LIKE CONCAT('%', #{currentNode}, '%')
+            </if>
+            <if test="currentOwner != null and currentOwner != ''">
+                AND s.current_owner LIKE CONCAT('%', #{currentOwner}, '%')
+            </if>
+            <if test="province != null and province != ''">
+                AND s.province = #{province}
+            </if>
+            <if test="eventTimeFrom != null">
+                AND s.last_event_time &gt;= #{eventTimeFrom}
+            </if>
+            <if test="eventTimeTo != null">
+                AND s.last_event_time &lt;= #{eventTimeTo}
+            </if>
+        </where>
+        ORDER BY
+        <choose>
+            <when test="sortColumn == 'trace_code'">s.trace_code</when>
+            <when test="sortColumn == 'update_time'">s.update_time</when>
+            <when test="sortColumn == 'current_status'">s.current_status</when>
+            <otherwise>s.last_event_time</otherwise>
+        </choose>
+        <choose>
+            <when test="asc">ASC</when>
+            <otherwise>DESC</otherwise>
+        </choose>
+        , s.trace_code DESC
+    </select>
+
+</mapper>
