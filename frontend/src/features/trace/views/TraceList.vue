@@ -1,134 +1,275 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import BaseCard from '@/shared/components/ui/BaseCard.vue'
-import BaseInput from '@/shared/components/ui/BaseInput.vue'
+import { Camera, Plus, Search, Trash2, X } from 'lucide-vue-next'
+import dayjs from 'dayjs'
 import BaseButton from '@/shared/components/ui/BaseButton.vue'
+import EmptyState from '@/shared/components/ui/EmptyState.vue'
+import KbdShortcut from '@/shared/components/ui/KbdShortcut.vue'
+import PageHeader from '@/shared/components/ui/PageHeader.vue'
+import TraceCodeChip from '@/shared/components/ui/TraceCodeChip.vue'
 import QRScanner from '@/shared/components/QRScanner.vue'
 import CreateTraceDialog from '@/features/trace/components/CreateTraceDialog.vue'
-import { Search, Plus, Expand, Camera } from 'lucide-vue-next'
 import { useToast } from '@/shared/composables/useToast'
 import { logger } from '@/shared/utils/logger'
 
+const RECENT_KEY = 'recent_traces'
+const RECENT_MAX = 20
+
 const router = useRouter()
 const toast = useToast()
+
 const searchQuery = ref('')
 const recentTraces = ref([])
 const showScanner = ref(false)
 const showCreateModal = ref(false)
 
 onMounted(() => {
-  const saved = localStorage.getItem('recent_traces')
-  if (saved) {
-    recentTraces.value = JSON.parse(saved)
+  try {
+    const saved = localStorage.getItem(RECENT_KEY)
+    if (saved) recentTraces.value = JSON.parse(saved)
+  } catch (err) {
+    logger.error('读取最近访问失败:', err)
+    recentTraces.value = []
   }
 })
 
-const handleSearch = () => {
-  if (!searchQuery.value) return
-  router.push(`/traces/${searchQuery.value}`)
-}
+const filteredRecent = computed(() => {
+  const q = searchQuery.value.trim().toUpperCase()
+  if (!q) return recentTraces.value
+  return recentTraces.value.filter((item) => item.code.toUpperCase().includes(q))
+})
 
-// 处理扫码结果
-const handleScan = async (traceCode) => {
+const persistRecent = () => {
   try {
-    showScanner.value = false
-    router.push(`/traces/${traceCode}`)
-  } catch (error) {
-    logger.error('扫码处理失败:', error)
-    toast.error('扫码处理失败: ' + error.message)
+    localStorage.setItem(RECENT_KEY, JSON.stringify(recentTraces.value))
+  } catch (err) {
+    logger.error('写入最近访问失败:', err)
   }
 }
 
-/**
- * CreateTraceDialog 通过 emit('success', traceCodes) 回传新生成的溯源码数组。
- * 此处只取首条作为"最近交互记录"展示项，并跳转详情页。
- * @param {string[]} traceCodes
- */
+const pushRecent = (code) => {
+  const dedup = recentTraces.value.filter((item) => item.code !== code)
+  recentTraces.value = [{ code, time: new Date().toISOString() }, ...dedup].slice(0, RECENT_MAX)
+  persistRecent()
+}
+
+const handleSearch = () => {
+  const code = searchQuery.value.trim()
+  if (!code) {
+    toast.warning('请输入追溯码')
+    return
+  }
+  pushRecent(code)
+  router.push(`/traces/${code}`)
+}
+
+const handleScan = (traceCode) => {
+  try {
+    showScanner.value = false
+    if (traceCode) {
+      pushRecent(traceCode)
+      router.push(`/traces/${traceCode}`)
+    }
+  } catch (err) {
+    logger.error('扫码处理失败:', err)
+    toast.error(`扫码处理失败: ${err.message}`)
+  }
+}
+
+const handleRowClick = (item) => {
+  pushRecent(item.code)
+  router.push(`/traces/${item.code}`)
+}
+
+const handleRemoveRecent = (code, event) => {
+  event?.stopPropagation()
+  recentTraces.value = recentTraces.value.filter((item) => item.code !== code)
+  persistRecent()
+}
+
+const handleClearRecent = () => {
+  recentTraces.value = []
+  persistRecent()
+}
+
 const onCreateSuccess = (traceCodes) => {
   if (!traceCodes || traceCodes.length === 0) return
   const newCode = traceCodes[0]
-  const newItem = { code: newCode, time: new Date().toISOString() }
-  recentTraces.value = [newItem, ...recentTraces.value].slice(0, 20)
-  localStorage.setItem('recent_traces', JSON.stringify(recentTraces.value))
+  pushRecent(newCode)
   router.push(`/traces/${newCode}`)
+}
+
+const formatTime = (iso) => (iso ? dayjs(iso).format('YYYY-MM-DD HH:mm') : '-')
+const formatRelative = (iso) => {
+  if (!iso) return '-'
+  const now = dayjs()
+  const t = dayjs(iso)
+  const diffMin = now.diff(t, 'minute')
+  if (diffMin < 1) return '刚刚'
+  if (diffMin < 60) return `${diffMin} 分钟前`
+  const diffHour = now.diff(t, 'hour')
+  if (diffHour < 24) return `${diffHour} 小时前`
+  const diffDay = now.diff(t, 'day')
+  if (diffDay < 7) return `${diffDay} 天前`
+  return t.format('YYYY-MM-DD')
 }
 </script>
 
 <template>
-  <div class="max-w-4xl mx-auto py-12 px-4 relative z-10">
-    <div class="text-center mb-16 relative">
-      <div class="absolute left-1/2 -top-12 -translate-x-1/2 size-40 bg-indigo-200 rounded-full blur-[80px] opacity-40 -z-10"></div>
-      <h1 class="text-5xl font-black tracking-tighter text-slate-900 leading-[1.1] mb-6">全链路 <span class="text-indigo-600">溯源引擎</span></h1>
-      <p class="text-lg text-slate-500 font-medium">输入核心编码或扫描光学纹理，唤醒全生命周期数字档案</p>
-    </div>
+  <div class="trace-list">
+    <PageHeader
+      title="追溯查询"
+      :subtitle="`已访问 ${recentTraces.length} 条追溯码 · 通过码或扫码进入详情，凭证哈希链上自动校验`"
+    >
+      <template #actions>
+        <BaseButton variant="secondary" size="sm" @click="showScanner = true">
+          <template #icon><Camera class="trace-list__btn-icon" /></template>
+          扫码
+        </BaseButton>
+        <BaseButton variant="primary" size="sm" @click="showCreateModal = true">
+          <template #icon><Plus class="trace-list__btn-icon" /></template>
+          生产赋码
+        </BaseButton>
+      </template>
+    </PageHeader>
 
-    <!-- Search Box -->
-    <div class="relative max-w-2xl mx-auto mb-16 premium-card rounded-full p-3 flex gap-3 items-center shadow-lg shadow-indigo-100/50">
-      <BaseInput
-        v-model="searchQuery"
-        placeholder="输入 Trace Code..."
-        :icon="Search"
-        class="flex-1 bg-transparent border-0 shadow-none text-lg font-mono placeholder:text-slate-400 focus:ring-0 px-4"
-        @keyup.enter="handleSearch"
-      />
-      <button @click="handleSearch" class="h-12 px-8 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-full transition-all shadow-md shadow-indigo-200 hover:shadow-indigo-300">
-        神经元检索
-      </button>
-      <button @click="showScanner = true" class="h-12 w-12 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-500 font-bold rounded-full transition-all flex items-center justify-center">
-        <Camera class="w-5 h-5" />
-      </button>
-    </div>
+    <section class="trace-list__search-card" data-testid="trace-list-search-card">
+      <div class="trace-list__search-box">
+        <Search class="trace-list__search-icon" />
+        <input
+          v-model="searchQuery"
+          class="trace-list__search-input"
+          type="text"
+          placeholder="输入追溯码（TC-... / TRC-...）回车进入详情，或在最近访问中过滤"
+          spellcheck="false"
+          autocomplete="off"
+          data-testid="trace-list-search-input"
+          @keydown.enter.prevent="handleSearch"
+        />
+        <KbdShortcut keys="Enter" />
+      </div>
+      <BaseButton variant="primary" size="sm" data-testid="trace-list-search-submit" @click="handleSearch">
+        进入详情
+      </BaseButton>
+    </section>
 
-    <div class="flex justify-center mb-16">
-        <button @click="showCreateModal = true" class="h-12 px-8 bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-slate-600 font-bold rounded-full transition-all shadow-sm flex items-center gap-2">
-          <Plus class="w-4 h-4" />
-          <span>注入新节点</span>
-        </button>
-    </div>
+    <section class="trace-list__hint">
+      <span class="trace-list__hint-eyebrow">说明</span>
+      <span class="trace-list__hint-body">
+        当前后端尚未开放追溯码分页列表 / 多条件筛选接口，本页用于「按追溯码精确进入详情 + 浏览本机最近访问记录」。
+        若需批量筛选，请前往
+        <router-link class="trace-list__hint-link" to="/dashboard">仪表盘</router-link>
+        查看异常 / 流转中等聚合 KPI，或前往生产赋码工作台按批次查询。
+      </span>
+    </section>
 
-    <!-- QR Scanner -->
+    <section class="trace-list__recents-card">
+      <header class="trace-list__recents-header">
+        <div>
+          <p class="trace-list__eyebrow">最近访问</p>
+          <p class="trace-list__caption">仅存于本设备 localStorage，最多保留 {{ RECENT_MAX }} 条；切换浏览器或清空缓存后重置。</p>
+        </div>
+        <BaseButton
+          v-if="recentTraces.length > 0"
+          variant="text"
+          size="sm"
+          data-testid="trace-list-clear-recent"
+          @click="handleClearRecent"
+        >
+          <template #icon><Trash2 class="trace-list__btn-icon" /></template>
+          清空
+        </BaseButton>
+      </header>
+
+      <div v-if="filteredRecent.length === 0" class="trace-list__empty">
+        <EmptyState
+          v-if="recentTraces.length === 0"
+          :icon="Search"
+          title="还没有访问过任何追溯码"
+          subtitle="在上方输入框敲入码字符串回车进入详情，访问过的码会自动出现在此处。"
+        />
+        <EmptyState
+          v-else
+          :icon="Search"
+          title="未匹配到任何追溯码"
+          :subtitle="`本机最近访问 ${recentTraces.length} 条中没有包含「${searchQuery}」的码`"
+        />
+      </div>
+
+      <div v-else class="trace-list__table-wrapper">
+        <table class="trace-list__table">
+          <thead>
+            <tr>
+              <th class="trace-list__th">追溯码</th>
+              <th class="trace-list__th">访问时间</th>
+              <th class="trace-list__th trace-list__th--rel">距今</th>
+              <th class="trace-list__th trace-list__th--actions">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="item in filteredRecent"
+              :key="item.code"
+              class="trace-list__tr"
+              data-testid="trace-list-recent-row"
+              :data-code="item.code"
+              @click="handleRowClick(item)"
+            >
+              <td class="trace-list__td trace-list__td--code">
+                <TraceCodeChip :code="item.code" :copyable="false" size="md" />
+              </td>
+              <td class="trace-list__td mono trace-list__td--time">{{ formatTime(item.time) }}</td>
+              <td class="trace-list__td trace-list__td--rel">{{ formatRelative(item.time) }}</td>
+              <td class="trace-list__td trace-list__td--actions" @click.stop>
+                <button
+                  type="button"
+                  class="trace-list__row-action"
+                  data-testid="trace-list-recent-remove"
+                  :aria-label="`移除 ${item.code}`"
+                  @click="handleRemoveRecent(item.code, $event)"
+                >
+                  <X class="trace-list__btn-icon" />
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <ul class="trace-list__cards">
+          <li
+            v-for="item in filteredRecent"
+            :key="item.code"
+            class="trace-list__card-item"
+            data-testid="trace-list-recent-card"
+            @click="handleRowClick(item)"
+          >
+            <div class="trace-list__card-row">
+              <TraceCodeChip :code="item.code" :copyable="false" size="md" />
+              <button
+                type="button"
+                class="trace-list__row-action"
+                @click="handleRemoveRecent(item.code, $event)"
+              >
+                <X class="trace-list__btn-icon" />
+              </button>
+            </div>
+            <p class="trace-list__card-meta">
+              <span class="mono">{{ formatTime(item.time) }}</span>
+              <span class="trace-list__sep">·</span>
+              <span>{{ formatRelative(item.time) }}</span>
+            </p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
     <QRScanner
       v-if="showScanner"
       @scan="handleScan"
       @close="showScanner = false"
     />
 
-    <!-- Recent History (Local) -->
-    <div v-if="recentTraces.length > 0">
-      <div class="flex items-center justify-between mb-6">
-        <h3 class="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">最近交互记录 (Recent Traces)</h3>
-      </div>
-      <div class="space-y-4">
-        <div
-            v-for="item in recentTraces"
-            :key="item.code"
-            class="premium-card hover-lift rounded-[32px] p-6 flex items-center justify-between cursor-pointer group"
-            @click="router.push('/traces/' + item.code)"
-        >
-          <div class="flex items-center gap-6">
-            <div class="size-14 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
-              <Expand class="w-6 h-6" />
-            </div>
-            <div>
-              <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Identifier</p>
-              <p class="font-mono text-lg font-black text-slate-900 group-hover:text-indigo-600 transition-colors">{{ item.code }}</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-8">
-            <div class="hidden sm:block text-right">
-              <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Timestamp</p>
-              <p class="text-sm font-bold text-slate-600">{{ new Date(item.time).toLocaleString() }}</p>
-            </div>
-            <div class="size-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 赋码弹窗：复用统一组件 CreateTraceDialog（字段、校验、API 调用都在该组件内） -->
     <CreateTraceDialog
       v-model="showCreateModal"
       @success="onCreateSuccess"
@@ -136,3 +277,268 @@ const onCreateSuccess = (traceCodes) => {
   </div>
 </template>
 
+<style scoped>
+.trace-list {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 24px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.trace-list__btn-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.trace-list__search-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.trace-list__search-box {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.trace-list__search-box:focus-within {
+  border-color: var(--primary-focus);
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.15);
+}
+
+.trace-list__search-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--ink-tertiary);
+  flex-shrink: 0;
+}
+
+.trace-list__search-input {
+  flex: 1 1 auto;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 13px;
+  color: var(--ink);
+  min-width: 0;
+}
+.trace-list__search-input::placeholder {
+  font-family: 'Inter', -apple-system, sans-serif;
+  color: var(--ink-tertiary);
+}
+
+.trace-list__hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--primary-soft);
+  border: 1px solid #d9def5;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+.trace-list__hint-eyebrow {
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--primary);
+  background: var(--surface-1);
+  border: 1px solid #d9def5;
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.trace-list__hint-body {
+  flex: 1 1 auto;
+}
+.trace-list__hint-link {
+  color: var(--primary);
+  font-weight: 500;
+  text-decoration: none;
+}
+.trace-list__hint-link:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+.trace-list__recents-card {
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.trace-list__recents-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.trace-list__eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--ink-subtle);
+  margin: 0 0 4px 0;
+}
+.trace-list__caption {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-subtle);
+}
+
+.trace-list__empty {
+  padding: 16px 0;
+}
+
+.trace-list__table-wrapper {
+  width: 100%;
+}
+
+.trace-list__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.trace-list__th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--ink-subtle);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-2);
+}
+.trace-list__th--rel { width: 120px; }
+.trace-list__th--actions { width: 56px; padding-right: 16px; }
+
+.trace-list__tr {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.trace-list__tr:hover .trace-list__td {
+  background: var(--surface-2);
+}
+
+.trace-list__td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--ink);
+  vertical-align: middle;
+  background: var(--surface-1);
+  transition: background 0.15s;
+}
+.trace-list__tr:last-child .trace-list__td {
+  border-bottom: 0;
+}
+.trace-list__td--time { color: var(--ink-muted); font-size: 12px; }
+.trace-list__td--rel { color: var(--ink-subtle); font-size: 12.5px; }
+.trace-list__td--actions { padding-right: 16px; text-align: right; }
+
+.trace-list__row-action {
+  width: 26px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink-tertiary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.trace-list__row-action:hover {
+  color: var(--ink);
+  background: var(--surface-1);
+  border-color: var(--hairline);
+}
+
+.trace-list__cards {
+  display: none;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+.trace-list__sep {
+  color: var(--ink-tertiary);
+  margin: 0 4px;
+}
+
+@media (max-width: 768px) {
+  .trace-list__search-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 640px) {
+  .trace-list {
+    padding: 16px 12px 32px;
+  }
+  .trace-list__table {
+    display: none;
+  }
+  .trace-list__cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .trace-list__card-item {
+    list-style: none;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--hairline);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .trace-list__card-item:last-child {
+    border-bottom: 0;
+  }
+  .trace-list__card-item:active {
+    background: var(--surface-2);
+  }
+  .trace-list__card-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .trace-list__card-meta {
+    margin: 0;
+    font-size: 12px;
+    color: var(--ink-subtle);
+  }
+  .trace-list__hint {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+</style>
