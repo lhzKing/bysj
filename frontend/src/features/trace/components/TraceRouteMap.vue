@@ -1,52 +1,49 @@
 <template>
-  <div class="trace-route-map bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100">
-    <div class="map-header p-4 border-b border-gray-50">
-      <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
-        <MapPin class="w-5 h-5 text-blue-500" />
-        流转轨迹地图
-      </h3>
-      <p class="text-sm text-gray-500 mt-1">
-        展示产品从生产到当前位置的完整供应链路径
-      </p>
-    </div>
-    
-    <div v-if="loading" class="map-loading w-full h-[400px] flex flex-col items-center justify-center bg-gray-50 text-gray-500">
-      <div class="w-10 h-10 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin mb-3"></div>
-      <p>正在加载地图...</p>
-    </div>
-    
-    <div v-else-if="!AMAP_KEY" class="map-fallback w-full h-[400px] flex flex-col items-center justify-center bg-gray-50 text-gray-500 p-6 text-center">
-      <Map class="w-12 h-12 text-gray-300 mb-3" />
-      <p class="text-gray-600 font-medium mb-1">轨迹地图暂不可用</p>
-      <p class="text-sm text-gray-400">系统未配置高德地图密钥，仅支持查看列表流转记录。</p>
+  <div class="trace-route-map">
+    <div class="trace-route-map__header">
+      <div class="trace-route-map__title">
+        <MapPin class="trace-route-map__title-icon" />
+        <span>流转地理</span>
+      </div>
+      <p class="trace-route-map__subtitle">展示产品从生产到当前位置的完整供应链路径</p>
     </div>
 
-    <div v-else-if="error" class="map-error w-full h-[400px] flex flex-col items-center justify-center bg-gray-50 text-gray-500 p-6 text-center">
-      <AlertCircle class="w-10 h-10 text-red-400 mb-3" />
-      <p class="text-gray-600 font-medium mb-1">{{ error }}</p>
-      <button @click="initMap" class="mt-3 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors">重试加载</button>
+    <div v-if="loading" class="trace-route-map__placeholder">
+      <div class="trace-route-map__spinner" />
+      <p>正在加载地图…</p>
     </div>
-    
-    <div v-show="!loading && !error && AMAP_KEY" ref="mapContainer" class="w-full h-[400px]"></div>
-    
-    <!-- 图例 -->
-    <div v-if="!error && AMAP_KEY" class="flex flex-wrap gap-4 p-3 border-t border-gray-50 bg-gray-50/50">
-      <div class="flex items-center gap-1.5 text-xs text-gray-600">
-        <span class="w-3 h-3 rounded-full bg-green-500 border-2 border-white shadow-sm"></span>
-        <span>起点（生产）</span>
-      </div>
-      <div class="flex items-center gap-1.5 text-xs text-gray-600">
-        <span class="w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow-sm"></span>
-        <span>途经节点</span>
-      </div>
-      <div class="flex items-center gap-1.5 text-xs text-gray-600">
-        <span class="w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm"></span>
-        <span>当前位置</span>
-      </div>
-      <div class="flex items-center gap-1.5 text-xs text-gray-600">
-        <span class="w-6 h-1 bg-blue-500 rounded"></span>
-        <span>流转路线</span>
-      </div>
+
+    <div v-else-if="!AMAP_KEY" class="trace-route-map__placeholder">
+      <Map class="trace-route-map__placeholder-icon" />
+      <p class="trace-route-map__placeholder-title">轨迹地图暂不可用</p>
+      <p class="trace-route-map__placeholder-subtitle">未配置高德地图密钥，仅支持查看列表流转记录。</p>
+    </div>
+
+    <div v-else-if="error" class="trace-route-map__placeholder">
+      <AlertCircle class="trace-route-map__placeholder-icon trace-route-map__placeholder-icon--error" />
+      <p class="trace-route-map__placeholder-title">{{ error }}</p>
+      <button type="button" class="trace-route-map__retry" @click="initMap">重试加载</button>
+    </div>
+
+    <div v-show="!loading && !error && AMAP_KEY" ref="mapContainer" class="trace-route-map__canvas"></div>
+
+    <div v-if="!error && AMAP_KEY" class="trace-route-map__legend">
+      <span class="trace-route-map__legend-item">
+        <span class="trace-route-map__dot trace-route-map__dot--start" />
+        起点
+      </span>
+      <span class="trace-route-map__legend-item">
+        <span class="trace-route-map__dot trace-route-map__dot--mid" />
+        途经
+      </span>
+      <span class="trace-route-map__legend-item">
+        <span class="trace-route-map__dot trace-route-map__dot--end" />
+        当前
+      </span>
+      <span class="trace-route-map__legend-item">
+        <span class="trace-route-map__line" />
+        流转路线
+      </span>
     </div>
   </div>
 </template>
@@ -191,9 +188,9 @@ const drawRoute = () => {
       isOutline: true,
       outlineColor: '#ffffff',
       borderWeight: 2,
-      strokeColor: '#3b82f6',
-      strokeOpacity: 0.8,
-      strokeWeight: 4,
+      strokeColor: '#5e6ad2',
+      strokeOpacity: 0.85,
+      strokeWeight: 3,
       strokeStyle: 'solid',
       lineJoin: 'round',
       lineCap: 'round'
@@ -210,18 +207,19 @@ const drawRoute = () => {
       offset: new AMap.Pixel(-12, -12),
       content: `
         <div style="
-          width: 24px; 
-          height: 24px; 
-          border-radius: 50%; 
-          background: ${isStart ? '#10B981' : isEnd ? '#EF4444' : '#3B82F6'}; 
-          border: 3px solid white;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+          width: 22px;
+          height: 22px;
+          border-radius: 9999px;
+          background: ${isStart ? '#27a644' : isEnd ? '#e5484d' : '#5e6ad2'};
+          border: 2px solid #ffffff;
+          box-shadow: 0 2px 6px rgba(15,23,42,0.2);
           display: flex;
           align-items: center;
           justify-content: center;
-          color: white;
-          font-size: 12px;
-          font-weight: bold;
+          color: #ffffff;
+          font-family: 'JetBrains Mono', ui-monospace, monospace;
+          font-size: 11px;
+          font-weight: 600;
         ">${index + 1}</div>
       `
     })
@@ -260,3 +258,138 @@ onUnmounted(() => {
   }
 })
 </script>
+
+<style scoped>
+.trace-route-map {
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.trace-route-map__header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+.trace-route-map__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.trace-route-map__title-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--primary);
+}
+.trace-route-map__subtitle {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  color: var(--ink-subtle);
+}
+
+.trace-route-map__placeholder {
+  width: 100%;
+  height: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--surface-2);
+  color: var(--ink-subtle);
+  padding: 24px;
+  text-align: center;
+}
+.trace-route-map__placeholder-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  margin: 0;
+}
+.trace-route-map__placeholder-subtitle {
+  font-size: 12px;
+  color: var(--ink-subtle);
+  margin: 0;
+}
+.trace-route-map__placeholder-icon {
+  width: 36px;
+  height: 36px;
+  color: var(--ink-tertiary);
+}
+.trace-route-map__placeholder-icon--error {
+  color: var(--error);
+}
+.trace-route-map__spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--hairline);
+  border-top-color: var(--primary);
+  border-radius: 9999px;
+  animation: trace-route-map-spin 0.8s linear infinite;
+}
+@keyframes trace-route-map-spin {
+  to { transform: rotate(360deg); }
+}
+.trace-route-map__retry {
+  margin-top: 4px;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.trace-route-map__retry:hover {
+  border-color: var(--ink-subtle);
+}
+
+.trace-route-map__canvas {
+  width: 100%;
+  height: 360px;
+}
+
+.trace-route-map__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--hairline);
+  background: var(--surface-2);
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+.trace-route-map__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.trace-route-map__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  border: 1.5px solid var(--surface-1);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+.trace-route-map__dot--start { background: var(--success); }
+.trace-route-map__dot--mid { background: var(--primary); }
+.trace-route-map__dot--end { background: var(--error); }
+.trace-route-map__line {
+  width: 18px;
+  height: 2px;
+  background: var(--primary);
+  border-radius: 9999px;
+}
+
+@media (max-width: 640px) {
+  .trace-route-map__canvas { height: 280px; }
+}
+</style>

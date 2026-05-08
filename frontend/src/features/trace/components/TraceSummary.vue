@@ -1,48 +1,95 @@
 <script setup>
-import { MapPin, Clock, User } from 'lucide-vue-next'
+import { computed } from 'vue'
 import dayjs from 'dayjs'
 
 const props = defineProps({
   snapshot: {
     type: Object,
     required: true
+  },
+  historyCount: {
+    type: Number,
+    default: 0
+  },
+  layout: {
+    type: String,
+    default: 'compact',
+    validator: (v) => ['compact', 'full'].includes(v)
   }
 })
 
 const formatDate = (date) => (date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-')
+
+const formatLocation = (s) => {
+  if (!s) return '-'
+  const parts = [s.province, s.city].filter(Boolean)
+  return parts.length ? parts.join(' · ') : '-'
+}
+
+const items = computed(() => [
+  { key: 'spu', label: 'SPU', value: props.snapshot?.spuId ? `SPU-${props.snapshot.spuId}` : '-', mono: true },
+  { key: 'status', label: '当前状态', value: props.snapshot?.currentStatus || '-' },
+  { key: 'node', label: '所在节点', value: props.snapshot?.currentNode || '-' },
+  { key: 'location', label: '当前位置', value: formatLocation(props.snapshot) },
+  { key: 'owner', label: '持有方', value: props.snapshot?.currentOwner || '-' },
+  { key: 'lastEvent', label: '最近更新', value: formatDate(props.snapshot?.lastEventTime), mono: true },
+  { key: 'history', label: '累计流转', value: `${props.historyCount} 次` },
+  { key: 'lastHash', label: '最后哈希', value: props.snapshot?.lastHash ? `${props.snapshot.lastHash.slice(0, 12)}…` : '-', mono: true, hideInCompact: true }
+])
+
+const visibleItems = computed(() =>
+  props.layout === 'full' ? items.value : items.value.filter((i) => !i.hideInCompact)
+)
 </script>
 
 <template>
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 premium-card rounded-[40px] p-8 border-none shadow-sm">
-    <div class="flex items-start gap-4">
-      <div class="p-3 bg-indigo-50 rounded-2xl text-indigo-600 shadow-sm shadow-indigo-100">
-        <MapPin class="w-6 h-6" />
-      </div>
-      <div>
-        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">当前位置</p>
-        <p class="mt-1 font-black text-slate-900 text-lg">{{ snapshot.city || '-' }} {{ snapshot.province }}</p>
-        <p class="text-xs font-bold text-indigo-600 mt-0.5">{{ snapshot.currentNode || '未知节点' }}</p>
-      </div>
+  <dl class="trace-summary" :data-layout="layout">
+    <div v-for="item in visibleItems" :key="item.key" class="trace-summary__row">
+      <dt class="trace-summary__label">{{ item.label }}</dt>
+      <dd class="trace-summary__value" :class="{ 'mono': item.mono }">{{ item.value }}</dd>
     </div>
-
-    <div class="flex items-start gap-4">
-      <div class="p-3 bg-emerald-50 rounded-2xl text-emerald-600 shadow-sm shadow-emerald-100">
-        <Clock class="w-6 h-6" />
-      </div>
-      <div>
-        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">最后更新</p>
-        <p class="mt-1 font-black text-slate-900 text-lg">{{ formatDate(snapshot.lastEventTime) }}</p>
-      </div>
-    </div>
-
-    <div class="flex items-start gap-4">
-      <div class="p-3 bg-slate-50 rounded-2xl text-slate-600 shadow-sm shadow-slate-100">
-        <User class="w-6 h-6" />
-      </div>
-      <div>
-        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">持有者</p>
-        <p class="mt-1 font-black text-slate-900 text-lg">{{ snapshot.currentOwner || '-' }}</p>
-      </div>
-    </div>
-  </div>
+  </dl>
 </template>
+
+<style scoped>
+.trace-summary {
+  margin: 0;
+  display: grid;
+  gap: 2px;
+}
+.trace-summary[data-layout='full'] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 32px;
+}
+
+.trace-summary__row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: baseline;
+  font-size: 13px;
+  padding: 6px 0;
+}
+.trace-summary__label {
+  color: var(--ink-subtle);
+  font-weight: 400;
+}
+.trace-summary__value {
+  color: var(--ink);
+  font-weight: 500;
+  margin: 0;
+  word-break: break-all;
+}
+.trace-summary__value.mono {
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .trace-summary[data-layout='full'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .trace-summary__row {
+    grid-template-columns: 88px 1fr;
+  }
+}
+</style>

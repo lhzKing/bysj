@@ -220,13 +220,13 @@ describe('TraceDetail route reuse and detail views', () => {
     const wrapper = mountTraceDetail()
 
     await flushPromises()
-    expect(wrapper.text()).toContain('链上数据已验证')
+    expect(wrapper.text()).toContain('链上完整')
 
     routeMock.params.code = 'TRACE-002'
     await nextTick()
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('链上数据已验证')
+    expect(wrapper.text()).not.toContain('链上完整')
   })
 
   it('allows audit-permitted users to switch to full audit history and marks corrected records', async () => {
@@ -263,5 +263,53 @@ describe('TraceDetail route reuse and detail views', () => {
 
     expect(wrapper.find('[data-testid="exception-close-dialog"]').attributes('data-open')).toBe('true')
     expect(wrapper.find('[data-testid="correction-dialog"]').attributes('data-open')).toBe('true')
+  })
+
+  it('renders verify stripe driven by verification result counts', async () => {
+    verifyTraceChainMock.mockResolvedValue({
+      valid: true,
+      totalLogs: 4,
+      hashVerifiedCount: 4,
+      signatureVerifiedCount: 4,
+      errors: []
+    })
+
+    const wrapper = mountTraceDetail()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('链上完整 · 4 / 4 节点验签通过')
+    expect(wrapper.text()).toContain('RSA-2048 · SHA-256 链式哈希')
+  })
+
+  it('toggles hash row visibility per timeline event', async () => {
+    const wrapper = mountTraceDetail()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="trace-hash-row"]').exists()).toBe(false)
+
+    const toggle = wrapper.find('[data-testid="trace-hash-toggle-2"]')
+    expect(toggle.exists()).toBe(true)
+    await toggle.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="trace-hash-row"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('currentHash')
+  })
+
+  it('switches between flow / part / aggregation / audit tabs without remount', async () => {
+    const wrapper = mountTraceDetail()
+    await flushPromises()
+
+    const aggregationTab = wrapper.find('[data-testid="trace-detail-tab-aggregation"]')
+    expect(aggregationTab.exists()).toBe(true)
+    await aggregationTab.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('箱码 / 托盘码聚合历史')
+
+    const auditTab = wrapper.find('[data-testid="trace-detail-tab-audit"]')
+    expect(auditTab.exists()).toBe(true)
+    await auditTab.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('仅展示 CORRECTION / EXCEPTION 类事件')
   })
 })

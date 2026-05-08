@@ -1,119 +1,215 @@
 <script setup>
-import { ref } from 'vue'
-import BaseCard from '@/shared/components/ui/BaseCard.vue'
-import { CheckCircle2, XCircle, ChevronDown, ChevronUp } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
+import VerifyBadge from '@/shared/components/ui/VerifyBadge.vue'
 
 const props = defineProps({
   verification: {
     type: Object,
     required: true
+  },
+  verifiedAt: {
+    type: [String, Date, null],
+    default: null
   }
 })
 
 const showErrorDetails = ref(false)
+
+const validNodes = computed(() => {
+  const v = props.verification || {}
+  if (typeof v.hashVerifiedCount === 'number' && typeof v.signatureVerifiedCount === 'number') {
+    return Math.min(v.hashVerifiedCount, v.signatureVerifiedCount)
+  }
+  return v.hashVerifiedCount ?? v.signatureVerifiedCount ?? 0
+})
+
+const totalNodes = computed(() => props.verification?.totalLogs ?? 0)
+
+const errorCount = computed(() => props.verification?.errors?.length || 0)
+
+const isValid = computed(() => Boolean(props.verification?.valid))
+
+const toggleErrors = () => {
+  showErrorDetails.value = !showErrorDetails.value
+}
 </script>
 
 <template>
-  <div>
-    <!-- 验证状态触发器 -->
-    <div
-      :class="[
-        'flex items-center px-4 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer',
-        verification.valid
-          ? 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100'
-          : 'bg-red-50 text-red-700 border-red-100 hover:bg-red-100'
-      ]"
-      @click="!verification.valid && (showErrorDetails = !showErrorDetails)"
+  <div class="trace-verification">
+    <VerifyBadge
+      :valid="isValid"
+      :valid-nodes="validNodes"
+      :total-nodes="totalNodes"
+      :verified-at="verifiedAt"
     >
-      <div class="mr-2">
-        <CheckCircle2 v-if="verification.valid" class="w-5 h-5" />
-        <XCircle v-else class="w-5 h-5" />
-      </div>
-      <div class="flex flex-col">
-        <span>{{ verification.valid ? '链上数据已验证' : '数据校验失败' }}</span>
-        <span class="text-xs opacity-80 font-normal">
-          Hash: {{ verification.hashVerifiedCount }}/{{ verification.totalLogs }} 通过
-          | 签名: {{ verification.signatureVerifiedCount }}/{{ verification.totalLogs }} 通过
-        </span>
-      </div>
-      <div class="ml-2" v-if="!verification.valid && verification.errors?.length > 0">
-        <ChevronUp v-if="showErrorDetails" class="w-5 h-5" />
-        <ChevronDown v-else class="w-5 h-5" />
-      </div>
-    </div>
+      <template v-if="!isValid && errorCount" #actions>
+        <button
+          type="button"
+          class="trace-verification__link"
+          :aria-expanded="showErrorDetails"
+          data-testid="trace-verification-toggle-errors"
+          @click="toggleErrors"
+        >
+          {{ showErrorDetails ? '收起出错节点' : `查看 ${errorCount} 个出错节点` }}
+        </button>
+      </template>
+    </VerifyBadge>
 
-    <!-- 错误详情面板 -->
-    <transition name="slide-down">
-      <BaseCard v-if="!verification.valid && showErrorDetails && verification.errors?.length > 0" class="border-l-4 border-red-500 mt-4">
-        <div class="flex items-start gap-3 mb-4">
-          <XCircle class="w-5 h-5 text-red-500 flex-shrink-0 mt-1" />
-          <div>
-            <h3 class="text-lg font-semibold text-red-700">证据链校验失败详情</h3>
-            <p class="text-sm text-red-600 mt-1">检测到 {{ verification.errors.length }} 个节点存在数据完整性问题</p>
-          </div>
-        </div>
-        
-        <div class="space-y-3">
-          <div 
-            v-for="(err, idx) in verification.errors" 
-            :key="idx"
-            class="bg-red-50 border border-red-200 rounded-lg p-4"
+    <transition name="trace-verification-slide">
+      <div v-if="!isValid && showErrorDetails && errorCount" class="trace-verification__errors" data-testid="trace-verification-errors">
+        <p class="trace-verification__errors-title">证据链校验失败 · {{ errorCount }} 个节点</p>
+
+        <ul class="trace-verification__errors-list">
+          <li
+            v-for="(err, idx) in verification.errors"
+            :key="`${err.logId || idx}-${idx}`"
+            class="trace-verification__error"
           >
-            <div class="flex items-center justify-between mb-2">
-              <span class="font-mono text-sm font-medium text-red-800">
-                节点 #{{ err.logId || idx + 1 }}
-              </span>
-              <span class="text-xs px-2 py-1 bg-red-200 text-red-800 rounded">
-                {{ err.errorType || '未知错误' }}
-              </span>
+            <div class="trace-verification__error-row">
+              <span class="trace-verification__error-id mono">节点 #{{ err.logId || idx + 1 }}</span>
+              <span class="trace-verification__error-tag">{{ err.errorType || '校验失败' }}</span>
             </div>
-            
-            <p class="text-sm text-red-700 mb-3">{{ err.message || '数据校验失败' }}</p>
-            
-            <div class="grid grid-cols-1 gap-2 text-xs">
-              <div v-if="err.expectedHash" class="flex items-start gap-2">
-                <span class="text-red-600 font-medium whitespace-nowrap">期望Hash:</span>
-                <span class="font-mono text-red-800 break-all">{{ err.expectedHash }}</span>
-              </div>
-              <div v-if="err.actualHash" class="flex items-start gap-2">
-                <span class="text-red-600 font-medium whitespace-nowrap">实际Hash:</span>
-                <span class="font-mono text-red-800 break-all">{{ err.actualHash }}</span>
-              </div>
-              <div v-if="err.traceCode" class="flex items-start gap-2">
-                <span class="text-red-600 font-medium whitespace-nowrap">溯源码:</span>
-                <span class="font-mono text-red-800">{{ err.traceCode }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <p class="text-sm text-yellow-800">
-            <strong>⚠️ 安全提示：</strong>
-            检测到的Hash不匹配或签名失败表明该溯源记录可能已被篡改。建议立即联系管理员进行进一步调查，并暂停该批次产品的流转。
-          </p>
-        </div>
-      </BaseCard>
+            <p class="trace-verification__error-msg">{{ err.message || '哈希或签名校验未通过' }}</p>
+            <dl class="trace-verification__error-fields">
+              <template v-if="err.expectedHash">
+                <dt>期望 Hash</dt>
+                <dd class="mono">{{ err.expectedHash }}</dd>
+              </template>
+              <template v-if="err.actualHash">
+                <dt>实际 Hash</dt>
+                <dd class="mono">{{ err.actualHash }}</dd>
+              </template>
+              <template v-if="err.traceCode">
+                <dt>溯源码</dt>
+                <dd class="mono">{{ err.traceCode }}</dd>
+              </template>
+            </dl>
+          </li>
+        </ul>
+
+        <p class="trace-verification__hint">
+          检测到的 Hash 不匹配或签名失败表明该溯源记录可能已被篡改。建议立即联系管理员暂停该批次流转并启动审计。
+        </p>
+      </div>
     </transition>
   </div>
 </template>
 
 <style scoped>
-.slide-down-enter-active,
-.slide-down-leave-active {
-  transition: all 0.3s ease;
+.trace-verification {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.trace-verification__link {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--error);
+  cursor: pointer;
+}
+.trace-verification__link:hover { color: var(--ink); }
+
+.trace-verification__errors {
+  border: 1px solid #f8c8ca;
+  background: var(--error-soft);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.trace-verification__errors-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--error);
+  margin: 0 0 10px 0;
+}
+
+.trace-verification__errors-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.trace-verification__error {
+  background: var(--surface-1);
+  border: 1px solid #f8c8ca;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.trace-verification__error-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.trace-verification__error-id {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.trace-verification__error-tag {
+  font-size: 11px;
+  color: var(--error);
+  background: var(--error-soft);
+  border: 1px solid #f8c8ca;
+  border-radius: 9999px;
+  padding: 1px 8px;
+}
+.trace-verification__error-msg {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin: 0 0 8px 0;
+}
+
+.trace-verification__error-fields {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  font-size: 11.5px;
+  margin: 0;
+  gap: 4px 8px;
+}
+.trace-verification__error-fields dt {
+  color: var(--ink-subtle);
+}
+.trace-verification__error-fields dd {
+  margin: 0;
+  color: var(--ink-muted);
+  word-break: break-all;
+}
+
+.trace-verification__hint {
+  margin: 12px 0 0 0;
+  font-size: 12px;
+  color: var(--ink-muted);
+  background: var(--warn-soft);
+  border: 1px solid #f9d7a6;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.trace-verification-slide-enter-active,
+.trace-verification-slide-leave-active {
+  transition: all 0.2s ease;
   overflow: hidden;
 }
-.slide-down-enter-from,
-.slide-down-leave-to {
+.trace-verification-slide-enter-from,
+.trace-verification-slide-leave-to {
   opacity: 0;
   max-height: 0;
-  transform: translateY(-10px);
 }
-.slide-down-enter-to,
-.slide-down-leave-from {
+.trace-verification-slide-enter-to,
+.trace-verification-slide-leave-from {
   opacity: 1;
-  max-height: 1000px;
-  transform: translateY(0);
+  max-height: 600px;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
 </style>
