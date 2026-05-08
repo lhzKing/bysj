@@ -133,7 +133,6 @@ describe('BaseInput', () => {
   })
 })
 
-// LoadingSkeleton 在 F07 已切到原生 Linear 实现；保留对其 type/rows/count API 的兜底契约。
 describe('LoadingSkeleton', () => {
   it('renders rows for type=table', () => {
     const wrapper = mount(LoadingSkeleton, {
@@ -150,9 +149,9 @@ describe('LoadingSkeleton', () => {
     expect(wrapper.findAll('[data-test="skeleton-card"]')).toHaveLength(3)
   })
 
-  it('falls back to default skeleton', () => {
+  it('defaults to table layout when no type is provided', () => {
     const wrapper = mount(LoadingSkeleton)
-    expect(wrapper.find('[data-skeleton-type="default"]').exists()).toBe(true)
-    expect(wrapper.findAll('.skel-bar').length).toBeGreaterThan(0)
+    expect(wrapper.find('[data-skeleton-type="table"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-test="skeleton-row"]').length).toBe(5)
   })
 })

@@ -2,19 +2,20 @@
 import { computed } from 'vue'
 
 /**
- * LoadingSkeleton —— Linear-light 原生骨架屏，零 PrimeVue 依赖。
+ * LoadingSkeleton —— Linear-light 原生骨架屏。
  *
- * 视觉契约：surface-1 卡 + 1px hairline + 12px 圆角；shimmer 行用 surface-2 底色 +
- * surface-3 高亮，linear-gradient 1.4s ease-in-out 无限循环；行高基于 13/14px 文本节奏。
+ * 视觉契约：surface-1 卡 + 1px hairline + 12px 圆角；shimmer 行用 surface-2/3
+ * 灰阶 1.4s ease-in-out 循环；行高基于 13/14px 文本节奏。
  *
- * 兼容契约：保留原 PrimeLoadingSkeleton 的 type / rows / count props 与 `data-test=skeleton-card` /
- * `skeleton-row` 选择器，以便 RoleList、UserTable 等已有调用点零代码改动。
+ * 仅实现两种调用方现存使用的 type：
+ *   - table：dense 表格态（RoleList.vue:243）。header 一行 + body N 行，rows 控制行数。
+ *   - card：堆叠卡片态（UserTable.vue:157）。count 控制卡片数。
  */
 const props = defineProps({
   type: {
     type: String,
-    default: 'default',
-    validator: (v) => ['default', 'card', 'table', 'chart', 'kpi', 'detail', 'list'].includes(v)
+    default: 'table',
+    validator: (v) => ['card', 'table'].includes(v)
   },
   rows: {
     type: Number,
@@ -28,7 +29,6 @@ const props = defineProps({
 
 const rowIndexes = computed(() => Array.from({ length: props.rows }, (_, i) => i))
 const cardIndexes = computed(() => Array.from({ length: props.count }, (_, i) => i))
-const chartHeights = ['35%', '58%', '42%', '76%', '54%']
 </script>
 
 <template>
@@ -46,7 +46,7 @@ const chartHeights = ['35%', '58%', '42%', '76%', '54%']
       </div>
     </template>
 
-    <div v-else-if="type === 'table'" class="skel-card skel-card--flush">
+    <div v-else class="skel-card skel-card--flush">
       <div class="skel-card__header">
         <span class="skel-bar" style="width: 8rem; height: 22px;" />
         <span class="skel-bar" style="width: 6rem; height: 28px;" />
@@ -68,63 +68,6 @@ const chartHeights = ['35%', '58%', '42%', '76%', '54%']
           </div>
         </div>
       </div>
-    </div>
-
-    <div v-else-if="type === 'chart'" class="skel-card">
-      <span class="skel-bar" style="width: 25%; height: 16px;" />
-      <div class="skel-chart">
-        <span
-          v-for="(height, index) in chartHeights"
-          :key="index"
-          class="skel-bar skel-bar--bar"
-          :style="{ width: '12%', height }"
-        />
-      </div>
-    </div>
-
-    <div v-else-if="type === 'kpi'" class="skel-kpi-grid">
-      <div v-for="cardIndex in 4" :key="cardIndex" class="skel-card">
-        <div class="skel-row__head">
-          <span class="skel-bar" style="width: 6rem; height: 12px;" />
-          <span class="skel-bar skel-bar--circle" style="width: 32px; height: 32px;" />
-        </div>
-        <span class="skel-bar" style="width: 7rem; height: 24px; margin-top: 14px;" />
-        <span class="skel-bar" style="width: 4rem; height: 10px; margin-top: 8px;" />
-      </div>
-    </div>
-
-    <div v-else-if="type === 'detail'" class="skel-card">
-      <div class="skel-card__detail-header">
-        <span class="skel-bar" style="width: 34%; height: 22px;" />
-        <span class="skel-bar" style="width: 46%; height: 12px; margin-top: 10px;" />
-      </div>
-      <div class="skel-detail-grid">
-        <div v-for="fieldIndex in 6" :key="fieldIndex" class="skel-detail-field">
-          <span class="skel-bar" style="width: 5rem; height: 10px;" />
-          <span class="skel-bar" style="width: 100%; height: 14px; margin-top: 8px;" />
-        </div>
-      </div>
-      <div class="skel-card__detail-footer">
-        <span class="skel-bar" style="width: 7rem; height: 14px;" />
-        <span class="skel-bar" style="width: 100%; height: 10rem; margin-top: 14px;" />
-      </div>
-    </div>
-
-    <div v-else-if="type === 'list'" class="skel-list">
-      <div v-for="row in rowIndexes" :key="row" class="skel-card skel-card--list">
-        <span class="skel-bar skel-bar--circle" style="width: 36px; height: 36px;" />
-        <div class="skel-row__main">
-          <span class="skel-bar" style="width: 72%; height: 14px;" />
-          <span class="skel-bar" style="width: 48%; height: 10px; margin-top: 8px;" />
-        </div>
-        <span class="skel-bar" style="width: 5rem; height: 24px;" />
-      </div>
-    </div>
-
-    <div v-else class="skel-default">
-      <span class="skel-bar" style="width: 75%; height: 14px;" />
-      <span class="skel-bar" style="width: 100%; height: 14px;" />
-      <span class="skel-bar" style="width: 84%; height: 14px;" />
     </div>
   </div>
 </template>
@@ -157,22 +100,6 @@ const chartHeights = ['35%', '58%', '42%', '76%', '54%']
 .skel-card__body {
   padding: 4px 20px 12px;
 }
-.skel-card__detail-header {
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--hairline);
-  margin-bottom: 16px;
-}
-.skel-card__detail-footer {
-  padding-top: 16px;
-  border-top: 1px solid var(--hairline);
-  margin-top: 16px;
-}
-.skel-card--list {
-  flex-direction: row;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-}
 
 .skel-row {
   display: flex;
@@ -193,60 +120,6 @@ const chartHeights = ['35%', '58%', '42%', '76%', '54%']
   gap: 8px;
   margin-left: 16px;
 }
-.skel-row__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.skel-chart {
-  margin-top: 16px;
-  height: 220px;
-  padding: 16px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-  background: var(--surface-2);
-  border-radius: 8px;
-}
-
-.skel-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-}
-@media (max-width: 1023.98px) {
-  .skel-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 639.98px) {
-  .skel-kpi-grid { grid-template-columns: 1fr; }
-}
-
-.skel-detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-@media (max-width: 639.98px) {
-  .skel-detail-grid { grid-template-columns: 1fr; }
-}
-.skel-detail-field {
-  display: flex;
-  flex-direction: column;
-}
-
-.skel-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.skel-default {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
 
 .skel-bar {
   display: block;
@@ -259,12 +132,6 @@ const chartHeights = ['35%', '58%', '42%', '76%', '54%']
   );
   background-size: 200% 100%;
   animation: skel-shimmer 1.4s ease-in-out infinite;
-}
-.skel-bar--circle {
-  border-radius: 9999px;
-}
-.skel-bar--bar {
-  border-radius: 4px;
 }
 
 @keyframes skel-shimmer {
