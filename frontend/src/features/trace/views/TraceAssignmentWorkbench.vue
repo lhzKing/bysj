@@ -1,28 +1,30 @@
-
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import {
-  Activity,
-  AlertTriangle,
-  CheckCircle2,
-  ClipboardList,
+  ClipboardCopy,
   ExternalLink,
   Factory,
-  FileText,
+  FileSearch,
   PackageCheck,
   Printer,
   QrCode,
   RefreshCw,
-  ScanLine,
-  Search,
-  ShieldX,
-  XCircle
+  ScanLine
 } from 'lucide-vue-next'
+import PageHeader from '@/shared/components/ui/PageHeader.vue'
+import BaseButton from '@/shared/components/ui/BaseButton.vue'
+import BaseInput from '@/shared/components/ui/BaseInput.vue'
+import StatusPill from '@/shared/components/ui/StatusPill.vue'
+import TraceCodeChip from '@/shared/components/ui/TraceCodeChip.vue'
+import EmptyState from '@/shared/components/ui/EmptyState.vue'
+import LoadingSkeleton from '@/shared/components/ui/LoadingSkeleton.vue'
+import KbdShortcut from '@/shared/components/ui/KbdShortcut.vue'
 import QRScanner from '@/shared/components/QRScanner.vue'
 import { useConfirm } from '@/shared/composables/useConfirm'
 import { useToast } from '@/shared/composables/useToast'
+import { usePrompt } from '@/shared/composables/usePrompt'
 import { getParts } from '@/features/part/api'
 import {
   activateTraceCode,
@@ -39,6 +41,7 @@ import { logger } from '@/shared/utils/logger'
 const router = useRouter()
 const toast = useToast()
 const { confirm } = useConfirm()
+const { prompt } = usePrompt()
 
 const parts = ref([])
 const nodes = ref([])
@@ -65,18 +68,32 @@ const createForm = reactive({
   city: ''
 })
 
-const statusTextMap = {
+const STATUS_TEXT = {
   GENERATED: '已生成',
   PRINTED: '已打印',
   ACTIVATED: '已激活',
   IN_STOCK: '已入库',
   IN_TRANSIT: '运输中',
+  TRANSFERRED: '已转移',
   EXCEPTION: '异常',
   VOIDED: '已作废',
   SCRAPPED: '已报废'
 }
 
+const RECONCILIATION_TONE = {
+  CONSISTENT: 'success',
+  PASS: 'success',
+  OK: 'success',
+  COMPLETE: 'success',
+  DISCREPANCY: 'warn',
+  MISMATCH: 'warn',
+  WARNING: 'warn',
+  IN_PROGRESS: 'mute',
+  PENDING: 'mute'
+}
+
 const hasBatch = computed(() => Boolean(batchDetail.value?.batchId))
+
 const sortedBatchCodes = computed(() =>
   [...batchCodes.value].sort((left, right) => {
     const serialDiff = Number(left.serialNo || 0) - Number(right.serialNo || 0)
@@ -84,31 +101,88 @@ const sortedBatchCodes = computed(() =>
     return String(left.traceCode || '').localeCompare(String(right.traceCode || ''))
   })
 )
+
 const activeCode = computed(() =>
   sortedBatchCodes.value.find((code) => code.traceCode === selectedTraceCode.value) || null
 )
+
 const generatedCount = computed(() => sortedBatchCodes.value.length)
-const printedCount = computed(() => sortedBatchCodes.value.filter((code) => Number(code.printCount || 0) > 0).length)
-const activatedCount = computed(() => sortedBatchCodes.value.filter((code) => isActivatedStatus(code.codeStatus)).length)
-const voidedCount = computed(() => sortedBatchCodes.value.filter((code) => code.codeStatus === 'VOIDED').length)
-const selectedNode = computed(() =>
-  nodes.value.find((node) => String(node.id) === String(createForm.manufacturerNodeId)) || null
+const printedCount = computed(
+  () => sortedBatchCodes.value.filter((code) => Number(code.printCount || 0) > 0).length
 )
-const selectedProgressText = computed(() => {
-  if (!hasBatch.value) return '尚未创建批次'
-  const total = typeof batchDetail.value?.quantityRequested === 'number' ? batchDetail.value.quantityRequested : sortedBatchCodes.value.length
-  return `${activatedCount.value}/${total} 已激活`
+const activatedCount = computed(
+  () => sortedBatchCodes.value.filter((code) => isActivatedStatus(code.codeStatus)).length
+)
+const voidedCount = computed(
+  () => sortedBatchCodes.value.filter((code) => code.codeStatus === 'VOIDED').length
+)
+
+const selectedNode = computed(
+  () => nodes.value.find((node) => String(node.id) === String(createForm.manufacturerNodeId)) || null
+)
+
+const reconciliationCards = computed(() => [
+  {
+    key: 'requested',
+    label: '计划',
+    value: pickNumber(batchDetail.value?.quantityRequested, Number(createForm.quantity || 0)),
+    hint: '本次目标数量'
+  },
+  {
+    key: 'generated',
+    label: '已生成',
+    value: pickNumber(batchDetail.value?.quantityGenerated, generatedCount.value),
+    hint: '落库单品码'
+  },
+  {
+    key: 'printed',
+    label: '已打印',
+    value: pickNumber(batchDetail.value?.quantityPrinted, printedCount.value),
+    hint: `${pickNumber(batchDetail.value?.printOperationCount, 0)} 次操作`
+  },
+  {
+    key: 'activated',
+    label: '已激活',
+    value: pickNumber(batchDetail.value?.quantityActivated, activatedCount.value),
+    hint: '贴码后扫码复核'
+  },
+  {
+    key: 'inbound',
+    label: '已入库',
+    value: pickNumber(batchDetail.value?.quantityInbound, 0),
+    hint: '进入库存'
+  },
+  {
+    key: 'voided',
+    label: '已作废',
+    value: pickNumber(batchDetail.value?.quantityVoided, voidedCount.value),
+    hint: '损坏 / 余码作废',
+    tone: 'danger'
+  }
+])
+
+const reconciliationTone = computed(() => {
+  if (!batchDetail.value) return 'mute'
+  if (batchDetail.value.consistent) return 'success'
+  return RECONCILIATION_TONE[String(batchDetail.value.reconciliationStatus || '').toUpperCase()] || 'warn'
 })
 
-const hasNumber = (value) => typeof value === 'number'
-const reconciliationCards = computed(() => [
-  { key: 'requested', label: '计划数量', value: hasNumber(batchDetail.value?.quantityRequested) ? batchDetail.value.quantityRequested : Number(createForm.quantity || 0), hint: '本次赋码批次目标', icon: ClipboardList, tone: 'slate' },
-  { key: 'generated', label: '生成数量', value: hasNumber(batchDetail.value?.quantityGenerated) ? batchDetail.value.quantityGenerated : generatedCount.value, hint: '已落库单品码', icon: QrCode, tone: 'indigo' },
-  { key: 'printed', label: '打印数量', value: hasNumber(batchDetail.value?.quantityPrinted) ? batchDetail.value.quantityPrinted : printedCount.value, hint: `${hasNumber(batchDetail.value?.printOperationCount) ? batchDetail.value.printOperationCount : 0} 次打印操作`, icon: Printer, tone: 'cyan' },
-  { key: 'activated', label: '激活数量', value: hasNumber(batchDetail.value?.quantityActivated) ? batchDetail.value.quantityActivated : activatedCount.value, hint: '贴码后扫码复核', icon: PackageCheck, tone: 'emerald' },
-  { key: 'inbound', label: '入库数量', value: hasNumber(batchDetail.value?.quantityInbound) ? batchDetail.value.quantityInbound : 0, hint: '进入库存的实物', icon: CheckCircle2, tone: 'blue' },
-  { key: 'voided', label: '作废数量', value: hasNumber(batchDetail.value?.quantityVoided) ? batchDetail.value.quantityVoided : voidedCount.value, hint: '未使用/损坏标签', icon: ShieldX, tone: 'rose' }
-])
+const reconciliationStatusLabel = computed(() => batchDetail.value?.reconciliationStatus || '-')
+const reconciliationConsistent = computed(() => Boolean(batchDetail.value?.consistent))
+const discrepancyReasons = computed(() => batchDetail.value?.discrepancyReasons || [])
+const batchPillLabel = computed(() => {
+  if (!batchDetail.value) return ''
+  return batchDetail.value.batchNo || `#${batchDetail.value.batchId}`
+})
+
+const headerSubtitle = computed(() => {
+  if (!hasBatch.value) {
+    return '按 SPU 创建赋码批次，生成单品追溯码并完成打印 / 激活 / 作废对账。'
+  }
+  const batch = batchDetail.value
+  const total = pickNumber(batch?.quantityRequested, generatedCount.value)
+  return `批次 ${batch.batchNo || batch.batchId} · ${activatedCount.value}/${total} 已激活 · ${printedCount.value}/${total} 已打印`
+})
 
 onMounted(() => {
   loadOptions()
@@ -143,8 +217,9 @@ function handleNodeChange() {
 }
 
 function validateCreateForm() {
-  if (!createForm.partCode) return '请选择产品/配件'
-  if (!createForm.quantity || Number(createForm.quantity) < 1 || Number(createForm.quantity) > 500) {
+  if (!createForm.partCode) return '请选择产品 / 配件'
+  const quantityNumber = Number(createForm.quantity)
+  if (!quantityNumber || quantityNumber < 1 || quantityNumber > 500) {
     return '生产数量必须在 1 到 500 之间'
   }
   if (!createForm.manufacturerNode?.trim()) return '请选择或填写生产节点'
@@ -257,14 +332,20 @@ async function runCodeAction(code, action) {
       await printTraceCode(code.traceCode, { remark: '生产工作台打印标签' })
       toast.success('标签打印已记录')
     } else if (action === 'reprint') {
-      const reason = promptReason('重打标签', `请填写 ${code.traceCode} 的重打原因`)
+      const reason = await promptReason('重打标签', `请填写 ${code.traceCode} 的重打原因`)
       if (!reason) return
       await reprintTraceCode(code.traceCode, { remark: reason })
       toast.success('标签重打已记录')
     } else if (action === 'void') {
-      const accepted = await confirm({ title: '作废标签', message: `确定作废 ${code.traceCode} 吗？作废后不能激活或流转。`, confirmText: '确认作废', cancelText: '取消', type: 'danger' })
+      const accepted = await confirm({
+        title: '作废标签',
+        message: `确定作废 ${code.traceCode} 吗？作废后不能激活或流转。`,
+        confirmText: '确认作废',
+        cancelText: '取消',
+        type: 'danger'
+      })
       if (!accepted) return
-      const reason = promptReason('作废标签', '请填写标签丢失、损坏或余码作废原因')
+      const reason = await promptReason('作废标签', '请填写标签丢失、损坏或余码作废原因')
       if (!reason) return
       await voidTraceCode(code.traceCode, { remark: reason })
       toast.success('标签作废已记录')
@@ -280,6 +361,7 @@ async function runCodeAction(code, action) {
     actionLoadingKey.value = ''
   }
 }
+
 async function handleBatchPrint() {
   const printableCodes = sortedBatchCodes.value.filter((code) => canPrint(code))
   if (printableCodes.length === 0) {
@@ -349,14 +431,20 @@ function buildActivationPayload(remark) {
   return payload
 }
 
-function promptReason(title, message) {
-  const reason = window.prompt(`${title}\n${message || ''}`, '')
-  const normalizedReason = reason?.trim() || ''
-  if (!normalizedReason) {
-    toast.error('必须填写原因')
-    return null
-  }
-  return normalizedReason
+async function promptReason(title, message) {
+  const reason = await prompt({
+    title,
+    message,
+    placeholder: '请输入原因（必填）',
+    confirmText: '提交',
+    cancelText: '取消',
+    validator: (value) => (String(value || '').trim().length > 0 ? true : '必须填写原因')
+  })
+  return reason ? String(reason).trim() : null
+}
+
+function pickNumber(value, fallback) {
+  return typeof value === 'number' ? value : fallback
 }
 
 function canPrint(code) {
@@ -375,38 +463,32 @@ function isActivatedStatus(status) {
   return ['ACTIVATED', 'IN_STOCK', 'IN_TRANSIT', 'EXCEPTION'].includes(status)
 }
 function formatStatus(status) {
-  return statusTextMap[status] || status || '未知'
+  return STATUS_TEXT[status] || status || '未知'
 }
-function rowClass(code) {
-  if (code.traceCode === selectedTraceCode.value) return 'border-indigo-300 bg-indigo-50/80 shadow-indigo-100'
-  if (code.codeStatus === 'VOIDED') return 'border-rose-100 bg-rose-50/70'
-  if (isActivatedStatus(code.codeStatus)) return 'border-emerald-100 bg-emerald-50/60'
-  if (Number(code.printCount || 0) > 0) return 'border-cyan-100 bg-cyan-50/60'
-  return 'border-slate-200 bg-white/70'
+
+function statusTone(status) {
+  if (status === 'VOIDED' || status === 'SCRAPPED') return 'mute'
+  if (status === 'EXCEPTION') return 'error'
+  if (status === 'IN_TRANSIT' || status === 'TRANSFERRED') return 'warn'
+  if (isActivatedStatus(status)) return 'success'
+  if (status === 'PRINTED') return 'primary'
+  return 'mute'
 }
-function statusBadgeClass(status) {
-  if (status === 'VOIDED') return 'bg-rose-100 text-rose-700 ring-rose-200'
-  if (isActivatedStatus(status)) return 'bg-emerald-100 text-emerald-700 ring-emerald-200'
-  if (status === 'PRINTED') return 'bg-cyan-100 text-cyan-700 ring-cyan-200'
-  return 'bg-slate-100 text-slate-600 ring-slate-200'
+
+function formatTime(value) {
+  if (!value) return '-'
+  const stamp = dayjs(value)
+  if (!stamp.isValid()) return String(value)
+  return stamp.format('MM-DD HH:mm')
 }
-function cardToneClass(tone) {
-  const toneMap = {
-    slate: 'from-slate-50 to-white text-slate-600',
-    indigo: 'from-indigo-50 to-white text-indigo-600',
-    cyan: 'from-cyan-50 to-white text-cyan-600',
-    emerald: 'from-emerald-50 to-white text-emerald-600',
-    blue: 'from-blue-50 to-white text-blue-600',
-    rose: 'from-rose-50 to-white text-rose-600'
-  }
-  return toneMap[tone] || toneMap.slate
-}
+
 function copyCodes() {
   const text = sortedBatchCodes.value.map((code) => code.traceCode).join('\n')
   if (!text) return
   navigator.clipboard?.writeText(text)
   toast.success('批次码列表已复制')
 }
+
 function goTraceDetail(traceCode) {
   if (!traceCode) return
   router.push(`/traces/${traceCode}`)
@@ -414,194 +496,431 @@ function goTraceDetail(traceCode) {
 </script>
 
 <template>
-  <div class="relative z-10 mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">
-    <header class="premium-card overflow-hidden rounded-[40px] p-8 lg:p-10">
-      <div class="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-        <div class="max-w-3xl">
-          <p class="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[0.24em] text-indigo-500">
-            <Factory class="h-4 w-4" /> Production Assignment Workbench
-          </p>
-          <h1 class="text-3xl font-black tracking-tight text-slate-950 sm:text-5xl">生产赋码工作台</h1>
-          <p class="mt-4 text-base font-medium leading-8 text-slate-500">
-            按赋码批次完成生成、打印、重打/作废、贴码激活和数量对账。生产人员只围绕批次和单品码操作，不需要理解底层生命周期日志。
-          </p>
-        </div>
-        <div class="grid min-w-[260px] grid-cols-2 gap-3 rounded-[32px] bg-white/70 p-4 shadow-inner shadow-indigo-50">
-          <div>
-            <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">当前批次</p>
-            <p class="mt-1 font-mono text-sm font-black text-slate-900">{{ batchDetail?.batchNo || '未创建' }}</p>
-          </div>
-          <div>
-            <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">进度</p>
-            <p class="mt-1 text-sm font-black text-indigo-600">{{ selectedProgressText }}</p>
-          </div>
-        </div>
-      </div>
-    </header>
+  <div class="assignment">
+    <PageHeader
+      title="生产赋码工作台"
+      :subtitle="headerSubtitle"
+      data-testid="assignment-page-header"
+    >
+      <template #actions>
+        <BaseButton
+          variant="secondary"
+          :disabled="!hasBatch || sortedBatchCodes.length === 0"
+          @click="copyCodes"
+        >
+          <template #icon><ClipboardCopy :size="13" /></template>
+          复制码列表
+        </BaseButton>
+        <BaseButton
+          variant="secondary"
+          :disabled="!hasBatch"
+          data-test="assignment-scan-activate"
+          @click="scannerOpen = true"
+        >
+          <template #icon><ScanLine :size="13" /></template>
+          扫码激活
+        </BaseButton>
+        <BaseButton
+          variant="primary"
+          :disabled="!hasBatch || actionLoadingKey === 'batch:print'"
+          :loading="actionLoadingKey === 'batch:print'"
+          data-test="assignment-batch-print"
+          @click="handleBatchPrint"
+        >
+          <template #icon><Printer :size="13" /></template>
+          批量打印
+          <template #kbd><KbdShortcut keys="P" tone="inverse" /></template>
+        </BaseButton>
+      </template>
+    </PageHeader>
 
-    <section class="grid gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
-      <form class="premium-card rounded-[36px] p-6 lg:p-8" data-test="assignment-create-form" @submit.prevent="handleCreateBatch">
-        <div class="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Step 1</p>
-            <h2 class="mt-2 text-2xl font-black text-slate-900">创建赋码批次</h2>
-          </div>
-          <div class="rounded-2xl bg-indigo-50 p-3 text-indigo-600"><FileText class="h-6 w-6" /></div>
-        </div>
-        <div v-if="createError" class="mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{{ createError }}</div>
+    <section class="assignment__layout">
 
-        <div class="space-y-5">
-          <label class="block">
-            <span class="mb-2 block text-sm font-bold text-slate-700">产品/配件 <span class="text-rose-500">*</span></span>
-            <select v-model="createForm.partCode" :disabled="loadingOptions" class="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 disabled:opacity-60" data-test="assignment-part-select">
-              <option value="">请选择配件</option>
-              <option v-for="part in parts" :key="part.id || part.partCode" :value="part.partCode">{{ part.partCode }} - {{ part.partName }}</option>
-            </select>
-          </label>
-          <div class="grid gap-4 sm:grid-cols-2">
-            <label class="block">
-              <span class="mb-2 block text-sm font-bold text-slate-700">生产数量 <span class="text-rose-500">*</span></span>
-              <input v-model="createForm.quantity" type="number" min="1" max="500" class="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" data-test="assignment-quantity-input" />
-            </label>
-            <label class="block">
-              <span class="mb-2 block text-sm font-bold text-slate-700">生产工单号</span>
-              <input v-model="createForm.productionOrderNo" type="text" maxlength="64" placeholder="PO-20260507-001" class="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" />
-            </label>
+      <!-- 左栏：创建批次 form -->
+      <form
+        class="assignment__form"
+        data-test="assignment-create-form"
+        @submit.prevent="handleCreateBatch"
+      >
+        <div class="assignment__form-head">
+          <div class="assignment__form-eyebrow">
+            <Factory :size="13" />
+            <span>STEP 1 · 创建批次</span>
           </div>
-          <label class="block">
-            <span class="mb-2 block text-sm font-bold text-slate-700">批次号（可选）</span>
-            <input v-model="createForm.batchNo" type="text" maxlength="64" placeholder="留空则后端自动生成" class="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" />
-          </label>
-          <label class="block">
-            <span class="mb-2 block text-sm font-bold text-slate-700">结构化生产节点</span>
-            <select v-model="createForm.manufacturerNodeId" :disabled="loadingOptions" class="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 disabled:opacity-60" data-test="assignment-node-select" @change="handleNodeChange">
-              <option value="">不选择，手填节点</option>
-              <option v-for="node in nodes" :key="node.id" :value="node.id">{{ node.nodeCode }} - {{ node.nodeName }}</option>
-            </select>
-          </label>
-          <label class="block">
-            <span class="mb-2 block text-sm font-bold text-slate-700">生产节点 <span class="text-rose-500">*</span></span>
-            <input v-model="createForm.manufacturerNode" type="text" placeholder="北京工厂 / BJ_FACTORY" class="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" data-test="assignment-node-input" />
-          </label>
-          <div class="grid gap-4 sm:grid-cols-2">
-            <label class="block">
-              <span class="mb-2 block text-sm font-bold text-slate-700">省份 <span class="text-rose-500">*</span></span>
-              <input v-model="createForm.province" type="text" placeholder="北京" class="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" />
-            </label>
-            <label class="block">
-              <span class="mb-2 block text-sm font-bold text-slate-700">城市 <span class="text-rose-500">*</span></span>
-              <input v-model="createForm.city" type="text" placeholder="北京市" class="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" />
-            </label>
+          <h2 class="assignment__form-title">创建赋码批次</h2>
+          <p class="assignment__form-subtitle">
+            一次最多生成 500 个单品码；批次落库后立即可打印 / 激活。
+          </p>
+        </div>
+
+        <div v-if="createError" class="assignment__error" role="alert" data-testid="assignment-create-error">
+          {{ createError }}
+        </div>
+
+        <div class="assignment__field">
+          <label class="assignment__label" for="assignment-part">产品 / 配件 <span class="assignment__required">*</span></label>
+          <select
+            id="assignment-part"
+            v-model="createForm.partCode"
+            :disabled="loadingOptions"
+            class="assignment__control"
+            data-test="assignment-part-select"
+          >
+            <option value="">请选择配件</option>
+            <option v-for="part in parts" :key="part.id || part.partCode" :value="part.partCode">
+              {{ part.partCode }} · {{ part.partName }}
+            </option>
+          </select>
+        </div>
+
+        <div class="assignment__row">
+          <div class="assignment__field">
+            <label class="assignment__label" for="assignment-quantity">生产数量 <span class="assignment__required">*</span></label>
+            <input
+              id="assignment-quantity"
+              v-model="createForm.quantity"
+              type="number"
+              min="1"
+              max="500"
+              class="assignment__control assignment__control--mono"
+              data-test="assignment-quantity-input"
+            />
+          </div>
+          <div class="assignment__field">
+            <label class="assignment__label" for="assignment-order">生产工单号</label>
+            <input
+              id="assignment-order"
+              v-model="createForm.productionOrderNo"
+              type="text"
+              maxlength="64"
+              placeholder="PO-20260507-001"
+              class="assignment__control"
+            />
           </div>
         </div>
-        <button type="submit" :disabled="creating" class="mt-8 flex min-h-[52px] w-full items-center justify-center gap-3 rounded-2xl bg-indigo-600 px-5 py-4 text-sm font-black text-white shadow-xl shadow-indigo-200 transition hover:bg-indigo-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60" data-test="assignment-create-submit">
-          <RefreshCw v-if="creating" class="h-5 w-5 animate-spin" /><QrCode v-else class="h-5 w-5" />{{ creating ? '正在创建批次...' : '创建批次并生成单品码' }}
-        </button>
+
+        <div class="assignment__field">
+          <label class="assignment__label" for="assignment-batchno">批次号（可选）</label>
+          <input
+            id="assignment-batchno"
+            v-model="createForm.batchNo"
+            type="text"
+            maxlength="64"
+            placeholder="留空则后端自动生成"
+            class="assignment__control"
+          />
+        </div>
+
+        <div class="assignment__field">
+          <label class="assignment__label" for="assignment-node">结构化生产节点</label>
+          <select
+            id="assignment-node"
+            v-model="createForm.manufacturerNodeId"
+            :disabled="loadingOptions"
+            class="assignment__control"
+            data-test="assignment-node-select"
+            @change="handleNodeChange"
+          >
+            <option value="">不选择，手填节点</option>
+            <option v-for="node in nodes" :key="node.id" :value="node.id">
+              {{ node.nodeCode }} · {{ node.nodeName }}
+            </option>
+          </select>
+        </div>
+
+        <div class="assignment__field">
+          <label class="assignment__label" for="assignment-node-text">生产节点 <span class="assignment__required">*</span></label>
+          <input
+            id="assignment-node-text"
+            v-model="createForm.manufacturerNode"
+            type="text"
+            placeholder="北京工厂 / BJ_FACTORY"
+            class="assignment__control"
+            data-test="assignment-node-input"
+          />
+        </div>
+
+        <div class="assignment__row">
+          <div class="assignment__field">
+            <label class="assignment__label" for="assignment-province">省份 <span class="assignment__required">*</span></label>
+            <input
+              id="assignment-province"
+              v-model="createForm.province"
+              type="text"
+              placeholder="北京"
+              class="assignment__control"
+            />
+          </div>
+          <div class="assignment__field">
+            <label class="assignment__label" for="assignment-city">城市 <span class="assignment__required">*</span></label>
+            <input
+              id="assignment-city"
+              v-model="createForm.city"
+              type="text"
+              placeholder="北京市"
+              class="assignment__control"
+            />
+          </div>
+        </div>
+
+        <BaseButton
+          type="submit"
+          variant="primary"
+          size="md"
+          block
+          :loading="creating"
+          :disabled="creating"
+          data-test="assignment-create-submit"
+        >
+          <template #icon><QrCode :size="14" /></template>
+          {{ creating ? '正在创建批次…' : '创建批次并生成单品码' }}
+        </BaseButton>
       </form>
-      <div class="flex flex-col gap-6">
-        <section class="premium-card rounded-[36px] p-6 lg:p-8">
-          <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Step 2</p>
-              <h2 class="mt-2 text-2xl font-black text-slate-900">数量对账</h2>
-            </div>
-            <div class="flex gap-2">
-              <input v-model="lookupBatchId" type="number" min="1" placeholder="批次 ID" class="h-11 w-32 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" data-test="assignment-lookup-input" @keyup.enter="handleLookupBatch" />
-              <button type="button" class="flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-600 transition hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-60" :disabled="loadingBatch" data-test="assignment-lookup-submit" @click="handleLookupBatch"><Search class="h-4 w-4" /> 查询</button>
-            </div>
-          </div>
 
-          <div v-if="!hasBatch" class="rounded-[28px] border border-dashed border-slate-200 bg-white/50 p-8 text-center">
-            <Activity class="mx-auto h-10 w-10 text-slate-300" />
-            <p class="mt-3 text-sm font-bold text-slate-500">创建或查询一个赋码批次后，这里会展示计划、生成、打印、激活、入库和作废数量。</p>
+      <!-- 右栏：批次详情 + 码列表 -->
+      <div class="assignment__main">
+
+        <!-- 批次查询条 -->
+        <section class="assignment__lookup-card">
+          <div class="assignment__lookup-head">
+            <div class="assignment__form-eyebrow">
+              <FileSearch :size="13" />
+              <span>STEP 2 · 数量对账</span>
+            </div>
+            <span v-if="hasBatch" class="assignment__batch-pill mono">
+              {{ batchPillLabel }}
+            </span>
           </div>
-          <div v-else class="space-y-5">
-            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <div v-for="card in reconciliationCards" :key="card.key" class="rounded-[28px] border border-white/80 bg-gradient-to-br p-5 shadow-sm" :class="cardToneClass(card.tone)">
-                <div class="mb-5 flex items-center justify-between"><span class="text-xs font-black uppercase tracking-widest opacity-70">{{ card.label }}</span><component :is="card.icon" class="h-5 w-5" /></div>
-                <p class="text-4xl font-black tracking-tight text-slate-950">{{ card.value }}</p>
-                <p class="mt-2 text-xs font-bold text-slate-400">{{ card.hint }}</p>
-              </div>
-            </div>
-            <div class="rounded-[28px] border p-5" :class="batchDetail?.consistent ? 'border-emerald-200 bg-emerald-50/70' : 'border-amber-200 bg-amber-50/70'" data-test="assignment-reconciliation-status">
-              <div class="flex items-start gap-4">
-                <CheckCircle2 v-if="batchDetail?.consistent" class="mt-0.5 h-6 w-6 flex-shrink-0 text-emerald-600" />
-                <AlertTriangle v-else class="mt-0.5 h-6 w-6 flex-shrink-0 text-amber-600" />
-                <div>
-                  <p class="font-black text-slate-900">对账状态：{{ batchDetail?.reconciliationStatus || '-' }}</p>
-                  <p v-if="batchDetail?.consistent" class="mt-1 text-sm font-medium text-emerald-700">当前批次数量闭环一致。</p>
-                  <ul v-else class="mt-2 list-disc space-y-1 pl-5 text-sm font-medium text-amber-800">
-                    <li v-for="reason in batchDetail?.discrepancyReasons || []" :key="reason">{{ reason }}</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
+          <div class="assignment__lookup-row">
+            <input
+              id="assignment-lookup"
+              v-model="lookupBatchId"
+              type="number"
+              min="1"
+              placeholder="输入批次 ID 查询历史批次"
+              class="assignment__control assignment__control--mono assignment__lookup-input"
+              data-test="assignment-lookup-input"
+              @keydown.enter="handleLookupBatch"
+            />
+            <BaseButton
+              variant="secondary"
+              :loading="loadingBatch"
+              :disabled="loadingBatch"
+              data-test="assignment-lookup-submit"
+              @click="handleLookupBatch"
+            >
+              <template #icon><FileSearch :size="13" /></template>
+              查询
+            </BaseButton>
+            <BaseButton
+              v-if="hasBatch"
+              variant="text"
+              :loading="loadingBatch"
+              :disabled="loadingBatch"
+              data-test="assignment-refresh"
+              @click="refreshCurrentBatch()"
+            >
+              <template #icon><RefreshCw :size="13" /></template>
+              刷新
+            </BaseButton>
           </div>
         </section>
 
-        <section class="premium-card rounded-[36px] p-6 lg:p-8">
-          <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Step 3</p>
-              <h2 class="mt-2 text-2xl font-black text-slate-900">打印 / 激活 / 作废</h2>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <button type="button" :disabled="!hasBatch || actionLoadingKey === 'batch:print'" class="flex min-h-[44px] items-center gap-2 rounded-2xl bg-cyan-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-cyan-100 transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50" data-test="assignment-batch-print" @click="handleBatchPrint"><RefreshCw v-if="actionLoadingKey === 'batch:print'" class="h-4 w-4 animate-spin" /><Printer v-else class="h-4 w-4" />批量打印未打印码</button>
-              <button type="button" :disabled="!hasBatch" class="flex min-h-[44px] items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" data-test="assignment-scan-activate" @click="scannerOpen = true"><ScanLine class="h-4 w-4" />扫码激活</button>
-              <button type="button" :disabled="!hasBatch || sortedBatchCodes.length === 0" class="flex min-h-[44px] items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-600 transition hover:border-indigo-300 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-50" @click="copyCodes"><ClipboardList class="h-4 w-4" />复制码列表</button>
-            </div>
+        <!-- 对账卡 -->
+        <section class="assignment__recon">
+          <div v-if="!hasBatch" class="assignment__recon-empty" data-test="assignment-recon-empty">
+            <EmptyState
+              :icon="PackageCheck"
+              title="尚未选定批次"
+              subtitle="创建一个新批次或查询历史批次后，这里会展示计划 / 生成 / 打印 / 激活 / 入库 / 作废 6 项数量对账。"
+            />
           </div>
-
-          <label class="mb-5 block max-w-sm">
-            <span class="mb-2 block text-sm font-bold text-slate-700">激活设备号（可选）</span>
-            <input v-model="activationDeviceId" type="text" maxlength="64" placeholder="PDA-01 / CAMERA-01" class="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100" />
-          </label>
-
-          <div v-if="!hasBatch" class="rounded-[28px] border border-dashed border-slate-200 bg-white/50 p-8 text-center">
-            <QrCode class="mx-auto h-10 w-10 text-slate-300" />
-            <p class="mt-3 text-sm font-bold text-slate-500">暂无批次码列表。</p>
-          </div>
-          <div v-else class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-            <div class="max-h-[620px] space-y-3 overflow-y-auto pr-1" data-test="assignment-code-list">
-              <article v-for="code in sortedBatchCodes" :key="code.traceCode" class="cursor-pointer rounded-[24px] border p-4 transition hover:-translate-y-0.5 hover:shadow-lg" :class="rowClass(code)" :data-test="`assignment-code-row-${code.traceCode}`" @click="selectCode(code.traceCode)">
-                <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <div class="min-w-0">
-                    <div class="mb-2 flex flex-wrap items-center gap-2">
-                      <span class="rounded-full bg-white/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-400">#{{ code.serialNo || '-' }}</span>
-                      <span class="rounded-full px-2.5 py-1 text-[10px] font-black ring-1" :class="statusBadgeClass(code.codeStatus)">{{ formatStatus(code.codeStatus) }}</span>
-                      <span class="rounded-full bg-white/80 px-2.5 py-1 text-[10px] font-black text-slate-500">打印 {{ code.printCount || 0 }} 次</span>
-                    </div>
-                    <p class="truncate font-mono text-sm font-black text-slate-900 sm:text-base">{{ code.traceCode }}</p>
-                  </div>
-                  <div class="flex flex-wrap gap-2">
-                    <button type="button" :disabled="!canPrint(code) || actionLoadingKey === `print:${code.traceCode}`" class="min-h-[40px] rounded-xl bg-cyan-600 px-3 py-2 text-xs font-black text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-40" @click.stop="runCodeAction(code, 'print')">打印</button>
-                    <button type="button" :disabled="!canReprint(code) || actionLoadingKey === `reprint:${code.traceCode}`" class="min-h-[40px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition hover:border-indigo-300 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40" @click.stop="runCodeAction(code, 'reprint')">重打</button>
-                    <button type="button" :disabled="!canActivate(code) || actionLoadingKey === `activate:${code.traceCode}`" class="min-h-[40px] rounded-xl bg-emerald-600 px-3 py-2 text-xs font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40" @click.stop="runCodeAction(code, 'activate')">激活</button>
-                    <button type="button" :disabled="!canVoid(code) || actionLoadingKey === `void:${code.traceCode}`" class="min-h-[40px] rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-black text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40" @click.stop="runCodeAction(code, 'void')">作废</button>
-                  </div>
-                </div>
+          <template v-else>
+            <div class="assignment__recon-grid">
+              <article
+                v-for="card in reconciliationCards"
+                :key="card.key"
+                class="assignment__recon-card"
+                :data-testid="`assignment-recon-card-${card.key}`"
+              >
+                <span class="assignment__recon-label">{{ card.label }}</span>
+                <span
+                  class="assignment__recon-value mono"
+                  :class="{ 'assignment__recon-value--danger': card.tone === 'danger' && card.value > 0 }"
+                >
+                  {{ card.value }}
+                </span>
+                <span class="assignment__recon-hint">{{ card.hint }}</span>
               </article>
             </div>
+            <div
+              class="assignment__recon-status"
+              :class="`assignment__recon-status--${reconciliationTone}`"
+              data-test="assignment-reconciliation-status"
+            >
+              <StatusPill :tone="reconciliationTone">
+                对账状态：{{ reconciliationStatusLabel }}
+              </StatusPill>
+              <p v-if="reconciliationConsistent" class="assignment__recon-note">
+                当前批次数量闭环一致，可以放心继续打印 / 激活。
+              </p>
+              <ul v-else-if="discrepancyReasons.length" class="assignment__recon-list">
+                <li v-for="reason in discrepancyReasons" :key="reason">{{ reason }}</li>
+              </ul>
+              <p v-else class="assignment__recon-note">
+                数量尚未闭环，按提示修正后再次刷新对账。
+              </p>
+            </div>
+          </template>
+        </section>
 
-            <aside class="rounded-[28px] border border-slate-200 bg-white/80 p-5" data-test="assignment-active-code-panel">
-              <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">当前单品</p>
+        <!-- 码列表 -->
+        <section class="assignment__codes">
+          <header class="assignment__codes-head">
+            <div>
+              <div class="assignment__form-eyebrow">
+                <QrCode :size="13" />
+                <span>STEP 3 · 单品码操作</span>
+              </div>
+              <h2 class="assignment__form-title">单品码列表</h2>
+            </div>
+            <div class="assignment__codes-tools">
+              <BaseInput
+                v-model="activationDeviceId"
+                size="sm"
+                placeholder="激活设备号（可选）"
+                input-id="assignment-device"
+              />
+            </div>
+          </header>
+
+          <div v-if="loadingBatch && !sortedBatchCodes.length" class="assignment__codes-loading">
+            <LoadingSkeleton type="table" :rows="4" />
+          </div>
+
+          <div v-else-if="!hasBatch" class="assignment__codes-empty">
+            <EmptyState
+              :icon="QrCode"
+              title="暂无批次码列表"
+              subtitle="先创建批次或查询历史批次以加载单品码。"
+            />
+          </div>
+
+          <div v-else-if="!sortedBatchCodes.length" class="assignment__codes-empty">
+            <EmptyState
+              :icon="QrCode"
+              title="该批次尚未生成单品码"
+              subtitle="后端可能仍在分片提交，稍后点击「刷新」按钮再试。"
+            />
+          </div>
+
+          <div v-else class="assignment__codes-body">
+            <div class="assignment__table-wrap" data-test="assignment-code-list">
+              <table class="assignment__table">
+                <thead>
+                  <tr>
+                    <th class="assignment__col-no">#</th>
+                    <th class="assignment__col-code">追溯码</th>
+                    <th class="assignment__col-status">状态</th>
+                    <th class="assignment__col-print">打印</th>
+                    <th class="assignment__col-time">激活时间</th>
+                    <th class="assignment__col-actions">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="code in sortedBatchCodes"
+                    :key="code.traceCode"
+                    :class="['assignment__row', code.traceCode === selectedTraceCode && 'assignment__row--active']"
+                    :data-test="`assignment-code-row-${code.traceCode}`"
+                    @click="selectCode(code.traceCode)"
+                  >
+                    <td class="mono assignment__cell-no">{{ code.serialNo || '-' }}</td>
+                    <td>
+                      <TraceCodeChip :code="code.traceCode" size="md" :copyable="false" />
+                    </td>
+                    <td>
+                      <StatusPill :tone="statusTone(code.codeStatus)">
+                        {{ formatStatus(code.codeStatus) }}
+                      </StatusPill>
+                    </td>
+                    <td class="mono assignment__cell-print">{{ code.printCount || 0 }} 次</td>
+                    <td class="mono assignment__cell-time">{{ formatTime(code.activatedTime) }}</td>
+                    <td class="assignment__cell-actions">
+                      <button
+                        type="button"
+                        class="assignment__action assignment__action--primary"
+                        :disabled="!canPrint(code) || actionLoadingKey === `print:${code.traceCode}`"
+                        :data-testid="`assignment-action-print-${code.traceCode}`"
+                        @click.stop="runCodeAction(code, 'print')"
+                      >打印</button>
+                      <button
+                        type="button"
+                        class="assignment__action"
+                        :disabled="!canReprint(code) || actionLoadingKey === `reprint:${code.traceCode}`"
+                        :data-testid="`assignment-action-reprint-${code.traceCode}`"
+                        @click.stop="runCodeAction(code, 'reprint')"
+                      >重打</button>
+                      <button
+                        type="button"
+                        class="assignment__action assignment__action--success"
+                        :disabled="!canActivate(code) || actionLoadingKey === `activate:${code.traceCode}`"
+                        :data-testid="`assignment-action-activate-${code.traceCode}`"
+                        @click.stop="runCodeAction(code, 'activate')"
+                      >激活</button>
+                      <button
+                        type="button"
+                        class="assignment__action assignment__action--danger"
+                        :disabled="!canVoid(code) || actionLoadingKey === `void:${code.traceCode}`"
+                        :data-testid="`assignment-action-void-${code.traceCode}`"
+                        @click.stop="runCodeAction(code, 'void')"
+                      >作废</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <aside class="assignment__active" data-test="assignment-active-code-panel">
+              <p class="assignment__active-eyebrow">当前选中</p>
               <template v-if="activeCode">
-                <h3 class="mt-3 break-all font-mono text-lg font-black text-slate-950">{{ activeCode.traceCode }}</h3>
-                <div class="mt-5 space-y-3 text-sm font-medium text-slate-600">
-                  <div class="flex justify-between gap-4"><span>批内序号</span><b class="text-slate-900">{{ activeCode.serialNo || '-' }}</b></div>
-                  <div class="flex justify-between gap-4"><span>码状态</span><b class="text-slate-900">{{ formatStatus(activeCode.codeStatus) }}</b></div>
-                  <div class="flex justify-between gap-4"><span>打印次数</span><b class="text-slate-900">{{ activeCode.printCount || 0 }}</b></div>
-                  <div class="flex justify-between gap-4"><span>激活人</span><b class="text-slate-900">{{ activeCode.activatedByUsername || '-' }}</b></div>
-                  <div class="flex justify-between gap-4"><span>激活时间</span><b class="text-right text-slate-900">{{ activeCode.activatedTime || '-' }}</b></div>
-                </div>
-                <div class="mt-6 grid gap-2">
-                  <button type="button" class="flex min-h-[44px] items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition hover:bg-indigo-700" @click="goTraceDetail(activeCode.traceCode)"><ExternalLink class="h-4 w-4" /> 查看溯源详情</button>
-                </div>
+                <TraceCodeChip :code="activeCode.traceCode" size="lg" />
+                <dl class="assignment__active-list">
+                  <div class="assignment__active-row">
+                    <dt>批内序号</dt>
+                    <dd class="mono">{{ activeCode.serialNo || '-' }}</dd>
+                  </div>
+                  <div class="assignment__active-row">
+                    <dt>码状态</dt>
+                    <dd>
+                      <StatusPill :tone="statusTone(activeCode.codeStatus)">{{ formatStatus(activeCode.codeStatus) }}</StatusPill>
+                    </dd>
+                  </div>
+                  <div class="assignment__active-row">
+                    <dt>打印次数</dt>
+                    <dd class="mono">{{ activeCode.printCount || 0 }}</dd>
+                  </div>
+                  <div class="assignment__active-row">
+                    <dt>激活人</dt>
+                    <dd>{{ activeCode.activatedByUsername || '-' }}</dd>
+                  </div>
+                  <div class="assignment__active-row">
+                    <dt>激活时间</dt>
+                    <dd class="mono">{{ activeCode.activatedTime || '-' }}</dd>
+                  </div>
+                </dl>
+                <BaseButton
+                  variant="secondary"
+                  size="sm"
+                  block
+                  data-test="assignment-active-go-detail"
+                  @click="goTraceDetail(activeCode.traceCode)"
+                >
+                  <template #icon><ExternalLink :size="13" /></template>
+                  查看溯源详情
+                </BaseButton>
               </template>
-              <template v-else>
-                <XCircle class="mt-8 h-10 w-10 text-slate-300" />
-                <p class="mt-3 text-sm font-bold text-slate-500">请选择一个单品码。</p>
-              </template>
+              <p v-else class="assignment__active-hint">请在表格中选择一个单品码，查看详情和最近一次激活状态。</p>
             </aside>
           </div>
         </section>
@@ -611,3 +930,469 @@ function goTraceDetail(traceCode) {
     <QRScanner v-if="scannerOpen" @scan="handleScanActivate" @close="scannerOpen = false" />
   </div>
 </template>
+
+<style scoped>
+.assignment {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.assignment__layout {
+  display: grid;
+  grid-template-columns: 380px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.assignment__form,
+.assignment__lookup-card,
+.assignment__recon,
+.assignment__codes {
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.assignment__form {
+  position: sticky;
+  top: 68px;
+}
+
+.assignment__main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.assignment__form-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+.assignment__form-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  color: var(--ink-tertiary);
+  text-transform: uppercase;
+}
+.assignment__form-eyebrow svg {
+  color: var(--primary);
+}
+.assignment__form-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  color: var(--ink);
+}
+.assignment__form-subtitle {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-subtle);
+  line-height: 1.5;
+}
+
+.assignment__error {
+  background: var(--error-soft);
+  color: var(--error);
+  border: 1px solid #f8c8ca;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.assignment__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.assignment__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.assignment__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.assignment__required {
+  color: var(--error);
+  margin-left: 2px;
+}
+.assignment__control {
+  height: 32px;
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+  padding: 0 10px;
+  font-size: 13px;
+  color: var(--ink);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.assignment__control--mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+.assignment__control:focus {
+  border-color: var(--primary-focus, #5e69d1);
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.15);
+}
+.assignment__control:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+select.assignment__control {
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+
+.assignment__lookup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.assignment__lookup-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.assignment__lookup-row :deep(.base-input) {
+  flex: 1 1 200px;
+  min-width: 180px;
+}
+.assignment__batch-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.assignment__recon-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+.assignment__recon-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface-1);
+}
+.assignment__recon-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  color: var(--ink-tertiary);
+  text-transform: uppercase;
+}
+.assignment__recon-value {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  color: var(--ink);
+  line-height: 1.1;
+}
+.assignment__recon-value--danger {
+  color: var(--error);
+}
+.assignment__recon-hint {
+  font-size: 11.5px;
+  color: var(--ink-subtle);
+  line-height: 1.35;
+}
+.assignment__recon-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+}
+.assignment__recon-status--success {
+  background: var(--success-soft);
+  border-color: #bef0c7;
+}
+.assignment__recon-status--warn {
+  background: var(--warn-soft);
+  border-color: #fcd9b6;
+}
+.assignment__recon-status--mute {
+  background: var(--surface-2);
+}
+.assignment__recon-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+.assignment__recon-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  line-height: 1.55;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.assignment__recon-empty {
+  padding: 4px 0;
+}
+
+.assignment__codes-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+.assignment__codes-tools {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 220px;
+}
+.assignment__codes-tools :deep(.base-input) {
+  width: 220px;
+}
+.assignment__codes-loading,
+.assignment__codes-empty {
+  padding: 4px 0;
+}
+
+.assignment__codes-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  align-items: start;
+}
+
+.assignment__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface-1);
+}
+.assignment__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.assignment__table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-subtle);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-2);
+}
+.assignment__table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--ink);
+  vertical-align: middle;
+}
+.assignment__row {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.assignment__row:hover td {
+  background: var(--surface-2);
+}
+.assignment__row--active td {
+  background: var(--primary-soft);
+}
+.assignment__row:last-child td {
+  border-bottom: 0;
+}
+.assignment__cell-no {
+  color: var(--ink-tertiary);
+  width: 36px;
+}
+.assignment__cell-print,
+.assignment__cell-time {
+  color: var(--ink-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.assignment__cell-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.assignment__action {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.assignment__action:hover:not(:disabled) {
+  border-color: var(--ink-subtle);
+  color: var(--ink);
+}
+.assignment__action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.assignment__action--primary:not(:disabled) {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.assignment__action--primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: #fff;
+}
+.assignment__action--success:not(:disabled) {
+  background: var(--success);
+  color: #fff;
+  border-color: var(--success);
+}
+.assignment__action--success:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+.assignment__action--danger {
+  color: var(--error);
+  border-color: #f8c8ca;
+}
+.assignment__action--danger:hover:not(:disabled) {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.assignment__active {
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--surface-1);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.assignment__active-eyebrow {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  color: var(--ink-tertiary);
+  text-transform: uppercase;
+}
+.assignment__active-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+.assignment__active-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+.assignment__active-row dt {
+  color: var(--ink-subtle);
+}
+.assignment__active-row dd {
+  margin: 0;
+  color: var(--ink);
+  word-break: break-all;
+}
+.assignment__active-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-subtle);
+  line-height: 1.5;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+@media (max-width: 1023.98px) {
+  .assignment__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .assignment__form {
+    position: static;
+  }
+  .assignment__codes-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .assignment__recon-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 639.98px) {
+  .assignment {
+    padding: 16px 8px;
+  }
+  .assignment__form,
+  .assignment__lookup-card,
+  .assignment__recon,
+  .assignment__codes {
+    padding: 16px;
+    border-radius: 10px;
+  }
+  .assignment__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .assignment__recon-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .assignment__cell-actions {
+    justify-content: flex-start;
+  }
+}
+</style>
