@@ -1,66 +1,139 @@
 <script setup>
 import { computed } from 'vue'
 
+/**
+ * DashboardKPI —— Linear-light 4-up flat KPI cards.
+ *
+ * 视觉契约（与 frontend/preview/linear-dashboard.html "4-up stat row" 1:1）：
+ *   - grid 4 列 / gap 16px
+ *   - 单卡：surface-1 / 1px hairline / 12px 圆角 / padding 20px
+ *   - caption 12px ink-subtle eyebrow + d-num 32px / 600 / -1px tracking + footnote 12px
+ *   - 异常待处理卡：数字色用 var(--error)
+ *   - 响应式：≥1024px 4 列；768-1023px 2 列；<768px 1 列
+ *
+ * 字段映射（后端 API GET /api/dashboard/kpi 返回 snake_case，request 拦截器自动转 camelCase）：
+ *   - 今日扫码 ← todayNew
+ *   - 累计追溯 ← totalTraces
+ *   - 流转记录 ← totalLogs
+ *   - 异常待处理 ← exceptionCount
+ */
 const props = defineProps({
   kpiData: {
     type: Object,
     required: true
   }
 })
+
+const formatNum = (n) => {
+  const v = Number(n ?? 0)
+  if (!Number.isFinite(v)) return '0'
+  return v.toLocaleString('zh-CN')
+}
+
+const today = computed(() => formatNum(props.kpiData?.todayNew))
+const total = computed(() => formatNum(props.kpiData?.totalTraces))
+const logs = computed(() => formatNum(props.kpiData?.totalLogs))
+const exceptions = computed(() => formatNum(props.kpiData?.exceptionCount))
+const exceptionCount = computed(() => Number(props.kpiData?.exceptionCount ?? 0))
 </script>
 
 <template>
-  <div class="grid grid-cols-12 gap-8">
-      <!-- 大尺寸核心指标 (Hero Stat) -->
-      <div class="col-span-12 lg:col-span-8 premium-card hover-lift rounded-[48px] p-12 relative overflow-hidden group">
-          <div class="relative z-10">
-              <div class="flex justify-between items-center">
-                  <span class="px-4 py-1.5 bg-indigo-600 text-white text-[10px] font-black rounded-full uppercase tracking-[0.15em]">Neural Flow Live</span>
-                  <div class="flex -space-x-2">
-                      <div class="size-8 rounded-full border-2 border-white bg-slate-200 shadow-sm"></div>
-                      <div class="size-8 rounded-full border-2 border-white bg-slate-300 shadow-sm"></div>
-                      <div class="size-8 rounded-full border-2 border-white bg-indigo-400 shadow-sm"></div>
-                  </div>
-              </div>
-              <h3 class="text-3xl font-black text-slate-900 mt-10 tracking-tight">全网流通溯源码</h3>
-              <div class="mt-8 flex items-baseline flex-wrap">
-                  <span class="text-7xl md:text-[100px] font-black leading-none stat-value">
-                    {{ kpiData.totalTraces >= 1000 ? (kpiData.totalTraces / 1000).toFixed(1) : kpiData.totalTraces }}<span class="text-4xl ml-2 font-bold opacity-50" v-if="kpiData.totalTraces >= 1000">K</span>
-                  </span>
-                  <div class="ml-0 mt-4 md:mt-0 md:ml-10">
-                      <div class="text-emerald-500 font-black text-2xl">↑ 今日新增 {{ kpiData.todayNew }}</div>
-                      <div class="text-slate-400 font-bold text-xs uppercase tracking-widest">Efficiency</div>
-                  </div>
-              </div>
-          </div>
-          <!-- 抽象几何修饰 -->
-          <div class="absolute -right-20 -bottom-20 size-[300px] md:size-[400px] bg-gradient-to-br from-indigo-100 to-emerald-50 rounded-full opacity-30 blur-3xl group-hover:scale-110 transition-transform"></div>
+  <section class="kpi-grid" data-testid="dashboard-kpi">
+    <div class="kpi-card lift" data-testid="dashboard-kpi-today">
+      <div class="kpi-card__caption">今日扫码</div>
+      <div class="kpi-card__num">{{ today }}</div>
+      <div class="kpi-card__foot">
+        <span class="kpi-card__hint">今日新增追溯码</span>
       </div>
+    </div>
 
-      <!-- 右侧垂直卡片组 -->
-      <div class="col-span-12 lg:col-span-4 space-y-8">
-          <div class="premium-card hover-lift rounded-[40px] p-10 flex flex-col justify-between h-[260px] md:h-[280px]">
-              <div>
-                  <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Total Logs</p>
-                  <h4 class="text-5xl font-black mt-4 text-slate-900">{{ kpiData.totalLogs.toLocaleString() }}</h4>
-              </div>
-              <div class="flex items-center justify-between">
-                <div class="flex items-center text-xs font-bold text-indigo-600">
-                    <span>活跃溯源日志</span>
-                </div>
-                <div class="text-right">
-                  <p class="text-[10px] font-black text-rose-400 uppercase tracking-[0.2em]">Exceptions</p>
-                  <h4 class="text-3xl font-black mt-1 text-rose-500">{{ kpiData.exceptionCount }}</h4>
-                </div>
-              </div>
-          </div>
-          <div class="premium-card rounded-[40px] p-10 bg-slate-900 text-white border-none shadow-indigo-200">
-              <div class="size-12 rounded-2xl bg-indigo-600 flex items-center justify-center mb-6">
-                  <svg class="size-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-              </div>
-              <h4 class="text-xl font-black">区块链校验已就绪</h4>
-              <p class="text-slate-400 text-xs mt-3 leading-relaxed font-medium">所有的溯源码均已通过去中心化哈希校验，确保物理实物与数字信息的唯一对应。</p>
-          </div>
+    <div class="kpi-card lift" data-testid="dashboard-kpi-total">
+      <div class="kpi-card__caption">累计追溯</div>
+      <div class="kpi-card__num">{{ total }}</div>
+      <div class="kpi-card__foot">
+        <span class="kpi-card__hint">系统累计追溯码总数</span>
       </div>
-  </div>
+    </div>
+
+    <div class="kpi-card lift" data-testid="dashboard-kpi-logs">
+      <div class="kpi-card__caption">流转记录</div>
+      <div class="kpi-card__num">{{ logs }}</div>
+      <div class="kpi-card__foot">
+        <span class="kpi-card__hint">所选周期内流转日志数</span>
+      </div>
+    </div>
+
+    <div class="kpi-card lift" data-testid="dashboard-kpi-exception">
+      <div class="kpi-card__caption">异常待处理</div>
+      <div class="kpi-card__num kpi-card__num--error">{{ exceptions }}</div>
+      <div class="kpi-card__foot">
+        <span v-if="exceptionCount > 0" class="kpi-card__hint kpi-card__hint--error">需立即处理</span>
+        <span v-else class="kpi-card__hint">当前无未处理异常</span>
+      </div>
+    </div>
+  </section>
 </template>
+
+<style scoped>
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.kpi-card {
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lift {
+  transition: border-color 0.15s;
+}
+.lift:hover {
+  border-color: var(--ink-subtle);
+}
+
+.kpi-card__caption {
+  font-size: 12px;
+  color: var(--ink-subtle);
+}
+.kpi-card__num {
+  font-size: 32px;
+  line-height: 1.1;
+  letter-spacing: -1px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.kpi-card__num--error {
+  color: var(--error);
+}
+.kpi-card__foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+.kpi-card__hint {
+  color: var(--ink-tertiary);
+}
+.kpi-card__hint--error {
+  color: var(--error);
+  font-weight: 500;
+}
+
+@media (max-width: 1023px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+</style>
