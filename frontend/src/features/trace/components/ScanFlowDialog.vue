@@ -1,177 +1,107 @@
-<template>
-  <teleport to="body">
-    <Transition name="dialog-fade">
-      <div 
-        v-if="modelValue" 
-        class="fixed inset-0 z-50 flex items-center justify-center p-4"
-      >
-        <div 
-          class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-          @click.self="handleClose"
-        ></div>
-        <div class="relative premium-card rounded-[40px] w-full max-w-lg mx-4 transform transition-all p-8 max-h-[90vh] overflow-y-auto">
-          <!-- Header -->
-          <div class="flex items-center justify-between mb-8">
-            <h3 class="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-              <QrCode class="w-6 h-6 text-indigo-600" />
-              {{ dialogTitle }}
-            </h3>
-            <button 
-              @click="handleClose"
-              class="size-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors"
-            >
-              <X class="w-5 h-5" />
-            </button>
-          </div>
-
-          <!-- Body -->
-          <div class="space-y-6">
-            <div class="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-start gap-4 shadow-inner">
-              <Info class="w-6 h-6 text-indigo-600 flex-shrink-0 mt-0.5" />
-              <div class="text-sm">
-                <p class="font-black text-slate-900 mb-1 tracking-tight">{{ operationTitle }} Operation</p>
-                <p class="text-slate-600 font-medium leading-relaxed">为溯源码 "<span class="font-mono text-indigo-600 font-bold">{{ traceCode }}</span>" 记录{{ operationDescription }}事件，系统将自动记录时间戳和区块链哈希值。</p>
-              </div>
-            </div>
-
-            <!-- 动态表单：根据操作类型渲染统一组件 -->
-            <BaseFlowForm
-              :action-type="actionType"
-              :model-value="formData"
-              @update:modelValue="Object.assign(formData, $event)"
-              class="space-y-4"
-            />
-          </div>
-
-          <!-- Footer -->
-          <div class="mt-10 flex justify-end gap-4">
-            <BaseButton variant="secondary" @click="handleClose" class="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">
-              取消
-            </BaseButton>
-            <BaseButton variant="primary" @click="handleSubmit" :disabled="submitting" class="px-8 py-3 rounded-xl font-bold bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl hover:shadow-indigo-300 transition-all flex items-center disabled:opacity-70 disabled:cursor-not-allowed">
-              <Loader v-if="submitting" class="w-4 h-4 animate-spin mr-2" />
-              <span v-else>提交{{ operationTitle }}</span>
-            </BaseButton>
-          </div>
-        </div>
-      </div>
-    </Transition>
-  </teleport>
-</template>
-
 <script setup>
-import { ref, reactive, watch, computed } from 'vue'
-import { QrCode, X, Info, Loader } from 'lucide-vue-next'
+import { computed, reactive, ref, watch } from 'vue'
+import { QrCode } from 'lucide-vue-next'
+import dayjs from 'dayjs'
+import BaseDialog from '@/shared/components/ui/BaseDialog.vue'
 import BaseButton from '@/shared/components/ui/BaseButton.vue'
 import BaseFlowForm from './BaseFlowForm.vue'
 import { useToast } from '@/shared/composables/useToast'
 import { createEvent } from '@/features/trace/api'
-import dayjs from 'dayjs'
 
+/**
+ * ScanFlowDialog —— 入库 / 出库 / 流转三态共用的扫码登记对话框（Linear-light）。
+ *
+ * 视觉契约：
+ *   - 外壳走 BaseDialog（rgba(15,23,42,0.45) 蒙层 + 12px 圆角 + 1px hairline + 移动端全屏 + 粘性吸底 footer）
+ *   - 业务字段由 BaseFlowForm 负责（fromNode / toNode / province / city / eventTime / remark）
+ *   - 顶部 hero 卡用 var(--primary-soft) + 1px var(--primary)/15% 描边 + 12 caption 引导文案，承载 traceCode mono chip
+ *
+ * 接口契约（api-doc.md 2.5）：
+ *   - POST /api/traces/{traceCode}/events，actionType ∈ {INBOUND, OUTBOUND, TRANSFER}
+ *   - 由 ScanHub 透传 idempotencyKey（crypto.randomUUID()）；本组件透传到 createEvent payload
+ *
+ * 测试契约：保留 `formData` reactive + `handleSubmit` async，供 ScanFlowDialog.contract.test.js 通过 setupState 断言。
+ */
 const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    required: true
-  },
-  traceCode: {
-    type: String,
-    required: true
-  },
+  modelValue: { type: Boolean, required: true },
+  traceCode: { type: String, required: true },
   actionType: {
     type: String,
     required: true,
-    validator: (value) => ['inbound', 'outbound', 'transfer'].includes(value)
+    validator: (v) => ['', 'inbound', 'outbound', 'transfer'].includes(v)
   },
-  idempotencyKey: {
-    type: String,
-    default: ''
-  }
+  idempotencyKey: { type: String, default: '' }
 })
 
 const emit = defineEmits(['update:modelValue', 'success'])
-
 const toast = useToast()
 const submitting = ref(false)
 
-// 对话框标题映射
-const dialogTitleMap = {
-  'inbound': '入库登记',
-  'outbound': '出库登记',
-  'transfer': '物流流转'
+const titleMap = {
+  inbound: '入库登记',
+  outbound: '出库登记',
+  transfer: '物流流转'
+}
+const operationMap = {
+  inbound: '入库',
+  outbound: '出库',
+  transfer: '流转'
+}
+const apiActionMap = {
+  inbound: 'INBOUND',
+  outbound: 'OUTBOUND',
+  transfer: 'TRANSFER'
 }
 
-// 操作标题映射
-const operationTitleMap = {
-  'inbound': '入库',
-  'outbound': '出库',
-  'transfer': '流转'
-}
+const dialogTitle = computed(() => titleMap[props.actionType] || '扫码登记')
+const operationName = computed(() => operationMap[props.actionType] || '登记')
 
-// 操作描述映射
-const operationDescriptionMap = {
-  'inbound': '入库',
-  'outbound': '出库',
-  'transfer': '物流流转'
-}
-
-// Map frontend actionType values to backend API enum values.
-const actionTypeApiMap = {
-  'inbound': 'INBOUND',
-  'outbound': 'OUTBOUND',
-  'transfer': 'TRANSFER'
-}
-
-const dialogTitle = computed(() => dialogTitleMap[props.actionType] || '扫码流转')
-const operationTitle = computed(() => operationTitleMap[props.actionType] || '流转')
-const operationDescription = computed(() => operationDescriptionMap[props.actionType] || '流转')
-
-// 获取当前时间，格式化为 datetime-local 输入框格式
-const getCurrentDateTime = () => {
-  return dayjs().format('YYYY-MM-DDTHH:mm')
-}
-
-// 将 datetime-local 格式转换为后端接受的 ISO-8601 本地时间格式（YYYY-MM-DDTHH:mm:ss）
-const formatToBackend = (datetimeLocal) => {
-  if (!datetimeLocal) return dayjs().format('YYYY-MM-DDTHH:mm:ss')
-  return dayjs(datetimeLocal).format('YYYY-MM-DDTHH:mm:ss')
-}
+const currentDateTime = () => dayjs().format('YYYY-MM-DDTHH:mm')
+const formatToBackend = (datetimeLocal) =>
+  datetimeLocal ? dayjs(datetimeLocal).format('YYYY-MM-DDTHH:mm:ss') : dayjs().format('YYYY-MM-DDTHH:mm:ss')
 
 const formData = reactive({
   fromNode: '',
   toNode: '',
   province: '',
   city: '',
-  eventTime: getCurrentDateTime(),
+  eventTime: currentDateTime(),
   correctionOf: null,
-  actionType: actionTypeApiMap[props.actionType],
+  actionType: apiActionMap[props.actionType],
   remark: ''
 })
 
-// 重置表单
-const resetForm = () => {
+function resetForm() {
   formData.fromNode = ''
   formData.toNode = ''
   formData.province = ''
   formData.city = ''
-  formData.eventTime = getCurrentDateTime()
+  formData.eventTime = currentDateTime()
   formData.correctionOf = null
-  formData.actionType = actionTypeApiMap[props.actionType]
+  formData.actionType = apiActionMap[props.actionType]
   formData.remark = ''
 }
 
-// 当弹窗打开时重置表单
-watch(() => props.modelValue, (newVal) => {
-  if (newVal) {
-    resetForm()
+watch(
+  () => props.modelValue,
+  (open) => {
+    if (open) resetForm()
   }
-})
+)
 
-const handleClose = () => {
+watch(
+  () => props.actionType,
+  (next) => {
+    formData.actionType = apiActionMap[next] || formData.actionType
+  }
+)
+
+function handleClose() {
+  if (submitting.value) return
   emit('update:modelValue', false)
 }
 
-const handleSubmit = async () => {
-  // 表单验证
+async function handleSubmit() {
   if (!formData.fromNode) {
     toast.error('请输入起始节点')
     return
@@ -195,7 +125,6 @@ const handleSubmit = async () => {
 
   submitting.value = true
   try {
-    // 构建API请求数据
     const apiData = {
       actionType: formData.actionType,
       fromNode: formData.fromNode,
@@ -210,14 +139,94 @@ const handleSubmit = async () => {
       apiData.idempotencyKey = props.idempotencyKey
     }
     await createEvent(props.traceCode, apiData)
-    toast.success(`${operationTitle.value}记录提交成功`)
+    toast.success(`${operationName.value}记录提交成功`)
     emit('update:modelValue', false)
     emit('success')
   } catch (error) {
-    console.error('Submit flow error:', error)
-    toast.error(error.message || `${operationTitle.value}记录提交失败`)
+    toast.error(error?.message || `${operationName.value}记录提交失败`)
   } finally {
     submitting.value = false
   }
 }
 </script>
+
+<template>
+  <BaseDialog
+    :model-value="modelValue"
+    :title="dialogTitle"
+    :icon="QrCode"
+    size="md"
+    :persistent="submitting"
+    @update:model-value="handleClose"
+  >
+    <div class="scan-flow">
+      <div class="scan-flow__hero" data-test="scan-flow-hero">
+        <span class="scan-flow__eyebrow">追溯码</span>
+        <span class="scan-flow__code mono">{{ traceCode }}</span>
+        <p class="scan-flow__hint">
+          系统会以 RSA 数字签名 + SHA-256 哈希链生成不可篡改记录；幂等键已注入，重复提交不会产生第二条日志。
+        </p>
+      </div>
+
+      <BaseFlowForm
+        :action-type="actionType"
+        :model-value="formData"
+        @update:modelValue="Object.assign(formData, $event)"
+      />
+    </div>
+
+    <template #footer>
+      <BaseButton variant="secondary" size="md" :disabled="submitting" @click="handleClose">
+        取消
+      </BaseButton>
+      <BaseButton
+        variant="primary"
+        size="md"
+        :loading="submitting"
+        :disabled="submitting"
+        @click="handleSubmit"
+      >
+        {{ submitting ? '提交中…' : `提交${operationName}` }}
+      </BaseButton>
+    </template>
+  </BaseDialog>
+</template>
+
+<style scoped>
+.scan-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.scan-flow__hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 15%, transparent);
+}
+.scan-flow__eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+.scan-flow__code {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.2px;
+}
+.scan-flow__hint {
+  margin: 4px 0 0;
+  flex: 1 1 100%;
+  font-size: 12.5px;
+  color: var(--ink-subtle);
+  line-height: 1.55;
+}
+</style>

@@ -144,4 +144,51 @@ describe('ScanExceptionDialog contract', () => {
     expect(messageErrorMock).toHaveBeenCalledWith('boom')
     expect(wrapper.emitted('success')).toBeFalsy()
   })
+
+  it('forwards idempotencyKey prop into createEvent payload', async () => {
+    const wrapper = renderWithPrime(ScanExceptionDialog, {
+      props: {
+        modelValue: true,
+        traceCode: 'TRACE-001',
+        idempotencyKey: 'idem-exc-987'
+      },
+      global: { stubs }
+    })
+    await flushPromises()
+    await nextTick()
+
+    const { formData, handleSubmit } = wrapper.vm.$.setupState
+    formData.province = '北京市'
+    formData.city = '朝阳区'
+    formData.remark = '外包装破损'
+    formData.eventTime = '2026-04-12T00:00'
+    await nextTick()
+
+    await handleSubmit()
+    await flushPromises()
+
+    expect(createEventMock).toHaveBeenCalledTimes(1)
+    const payload = createEventMock.mock.calls[0][1]
+    expect(payload.idempotencyKey).toBe('idem-exc-987')
+    expect(payload.actionType).toBe('EXCEPTION_OPEN')
+  })
+
+  it('omits idempotencyKey when prop is empty', async () => {
+    const wrapper = mountDialog()
+    await flushPromises()
+    await nextTick()
+
+    const { formData, handleSubmit } = wrapper.vm.$.setupState
+    formData.province = '北京市'
+    formData.city = '朝阳区'
+    formData.remark = '外包装破损'
+    formData.eventTime = '2026-04-12T00:00'
+    await nextTick()
+
+    await handleSubmit()
+    await flushPromises()
+
+    const payload = createEventMock.mock.calls[0][1]
+    expect(payload).not.toHaveProperty('idempotencyKey')
+  })
 })

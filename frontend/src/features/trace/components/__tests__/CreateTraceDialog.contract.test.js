@@ -30,8 +30,9 @@ describe('CreateTraceDialog contract', () => {
       props: { modelValue: true },
       global: {
         stubs: {
-        LogOut: true,
-        X: true,
+          LogOut: true,
+          X: true,
+          Factory: true,
           teleport: true
         }
       }
@@ -51,7 +52,7 @@ describe('CreateTraceDialog contract', () => {
     await textInputs[1].setValue('北京')
     await textInputs[2].setValue('北京市')
 
-    await wrapper.findAll('button')[1].trigger('click')
+    await wrapper.find('[data-test="create-trace-submit"]').trigger('click')
     await flushPromises()
 
     expect(createTraceMock).toHaveBeenCalledWith({

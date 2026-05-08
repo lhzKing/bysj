@@ -1,152 +1,31 @@
-<template>
-  <teleport to="body">
-    <div 
-      v-if="modelValue" 
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
-      @click.self="handleClose"
-    >
-      <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
-        <!-- Header -->
-        <div class="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-4 flex items-center justify-between rounded-t-lg">
-          <h3 class="text-lg font-semibold flex items-center gap-2">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            生产赋码
-          </h3>
-          <div 
-            @click="handleClose"
-            class="text-white/80 hover:text-white transition-colors cursor-pointer"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
-        </div>
-
-        <!-- Body -->
-        <div class="px-6 py-4 space-y-4">
-          <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-3 flex items-start gap-3">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="flex-shrink-0 mt-0.5 text-indigo-500">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-              <path d="M12 16V12M12 8H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-            <div class="text-sm text-indigo-700">
-              <p class="font-medium mb-1">赋码说明</p>
-              <p class="text-indigo-600">为新生产的零配件批次生成唯一溯源码，系统将自动记录生产信息和初始哈希值。</p>
-            </div>
-          </div>
-
-          <!-- 错误提示 -->
-          <div v-if="error" class="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
-            {{ error }}
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">
-              产品（选择配件） <span class="text-red-500">*</span>
-            </label>
-            <div v-if="partsLoading" class="text-sm text-gray-500">正在加载配件列表...</div>
-            <select v-else v-model="formData.partCode" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
-              <option value="">请选择配件（按编码/名称）</option>
-              <option v-for="p in parts" :key="p.id" :value="p.partCode">{{ p.partCode }} - {{ p.partName }}</option>
-            </select>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">
-              生产数量 <span class="text-red-500">*</span>
-            </label>
-            <input 
-              v-model="formData.quantity" 
-              type="number"
-              min="1"
-              placeholder="请输入生产数量"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">
-              生产节点 <span class="text-red-500">*</span>
-            </label>
-            <input 
-              v-model="formData.manufacturerNode" 
-              type="text"
-              placeholder="例如：北京工厂、上海生产线A"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">
-                省份 <span class="text-red-500">*</span>
-              </label>
-              <input 
-                v-model="formData.province" 
-                type="text"
-                placeholder="例如：北京"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">
-                城市 <span class="text-red-500">*</span>
-              </label>
-              <input 
-                v-model="formData.city" 
-                type="text"
-                placeholder="例如：北京市"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
-          <button 
-            @click="handleClose"
-            class="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            取消
-          </button>
-          <button 
-            @click="handleSubmit" 
-            :disabled="submitting"
-            class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            <svg v-if="submitting" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="animate-spin">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" stroke-opacity="0.25"/>
-              <path d="M12 2C6.47715 2 2 6.47715 2 12" stroke="currentColor" stroke-width="4"/>
-            </svg>
-            <span>{{ submitting ? '生成中...' : '生成溯源码' }}</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </teleport>
-</template>
-
 <script setup>
 import { ref, watch } from 'vue'
+import { Factory } from 'lucide-vue-next'
+import BaseDialog from '@/shared/components/ui/BaseDialog.vue'
+import BaseButton from '@/shared/components/ui/BaseButton.vue'
 import { createTrace } from '../api'
 import { getParts } from '@/features/part/api'
 
+/**
+ * CreateTraceDialog —— 生产赋码（批量创建溯源码）对话框（Linear-light）。
+ *
+ * 视觉契约：BaseDialog 外壳；hero 用 var(--primary-soft) + primary 描边引导"为新生产批次生成唯一溯源码"。
+ * 接口契约（api-doc.md 2.1）：POST /api/traces，必填 partCode|spuId / quantity / manufacturerNode / province / city。
+ *
+ * 测试契约：
+ *   - 保留 footer 中按钮顺序：第 0 个=取消，第 1 个=提交（CreateTraceDialog.contract.test.js 用 wrapper.findAll('button')[1] 命中）
+ *   - 保留 3 个 text 输入按 manufacturerNode / province / city 顺序（同测试用 wrapper.findAll('input[type="text"]') 索引断言）
+ *   - 保留 1 个 select（partCode）+ 1 个 number（quantity）
+ *   - emit('success', traceCodes) 仍是 string[]
+ */
 const props = defineProps({
   modelValue: Boolean
 })
 
 /**
- * 组件向外暴露的事件契约：
- * - `update:modelValue`：v-model 同步弹窗显隐（参数：boolean）
- * - `success`：赋码请求成功后回传**新生成的溯源码字符串数组**——
- *   后端 createTrace 接口 (ProduceAssignRequest) 支持 quantity>=1 批量生成，故签名为 `string[]`，
- *   消费方按需取首条或全部展示。已被 `CreateTraceDialog.contract.test.js` 锁定。
- *   示例：emit('success', ['TRACE-001', 'TRACE-002'])
+ * 事件契约：
+ * - update:modelValue：v-model 同步弹窗显隐
+ * - success：赋码请求成功后回传**新生成的溯源码字符串数组**（quantity≥1，由后端批量生成；签名为 string[]，被 CreateTraceDialog.contract.test.js 锁定）
  */
 const emit = defineEmits(['update:modelValue', 'success'])
 
@@ -154,7 +33,7 @@ const submitting = ref(false)
 const error = ref('')
 
 const formData = ref({
-  spuId: '', // 兼容老字段，优先使用 partCode
+  spuId: '',
   partCode: '',
   quantity: 1,
   manufacturerNode: '',
@@ -165,23 +44,22 @@ const formData = ref({
 const parts = ref([])
 const partsLoading = ref(false)
 
-const loadParts = async () => {
+async function loadParts() {
   partsLoading.value = true
   try {
     const res = await getParts({ page: 1, size: 100 })
-    // res 格式为 { list: [...], total, page, size }
     parts.value = res.list || []
   } catch (e) {
-    // ignore - 前端不阻塞赋码窗口
     console.error('加载配件失败', e)
   } finally {
     partsLoading.value = false
   }
 }
 
-const validateForm = () => {
-  // 校验配件标识（支持 partCode 或 spuId）
-  const hasPart = (formData.value.partCode && formData.value.partCode.trim()) || (formData.value.spuId && !isNaN(Number(formData.value.spuId)));
+function validateForm() {
+  const hasPart =
+    (formData.value.partCode && formData.value.partCode.trim()) ||
+    (formData.value.spuId && !isNaN(Number(formData.value.spuId)))
   if (!hasPart) {
     error.value = '请选择一个配件或输入有效的产品 ID'
     return false
@@ -205,7 +83,7 @@ const validateForm = () => {
   return true
 }
 
-const resetForm = () => {
+function resetForm() {
   formData.value = {
     spuId: '',
     partCode: '',
@@ -217,20 +95,16 @@ const resetForm = () => {
   error.value = ''
 }
 
-const handleClose = () => {
-  if (!submitting.value) {
-    emit('update:modelValue', false)
-    setTimeout(resetForm, 300)
-  }
+function handleClose() {
+  if (submitting.value) return
+  emit('update:modelValue', false)
+  setTimeout(resetForm, 300)
 }
 
-const handleSubmit = async () => {
+async function handleSubmit() {
   error.value = ''
-  
-  if (!validateForm()) {
-    return
-  }
-  
+  if (!validateForm()) return
+
   submitting.value = true
   try {
     const payload = {
@@ -239,8 +113,6 @@ const handleSubmit = async () => {
       province: formData.value.province.trim(),
       city: formData.value.city.trim()
     }
-
-    // Prefer partCode; fall back to legacy spuId when partCode is not selected.
     if (formData.value.partCode && formData.value.partCode.trim()) {
       payload.partCode = formData.value.partCode.trim()
     } else if (formData.value.spuId) {
@@ -248,11 +120,9 @@ const handleSubmit = async () => {
     }
 
     const res = await createTrace(payload)
-    
     const traceCodes = res.traceCodes || []
     emit('success', traceCodes)
     emit('update:modelValue', false)
-    
     setTimeout(resetForm, 300)
   } catch (err) {
     error.value = err.message || '生成失败，请重试'
@@ -261,12 +131,183 @@ const handleSubmit = async () => {
   }
 }
 
-// 监听弹窗打开，重置表单
-watch(() => props.modelValue, (newVal) => {
-  if (newVal) {
-    resetForm()
-    // 弹窗打开时加载配件列表
-    loadParts()
-  }
-}, { immediate: true })
+watch(
+  () => props.modelValue,
+  (open) => {
+    if (open) {
+      resetForm()
+      loadParts()
+    }
+  },
+  { immediate: true }
+)
 </script>
+
+<template>
+  <BaseDialog
+    :model-value="modelValue"
+    title="生产赋码"
+    subtitle="为新生产的零配件批次生成唯一溯源码，系统将自动记录生产信息和初始哈希值。"
+    :icon="Factory"
+    size="md"
+    :persistent="submitting"
+    @update:model-value="handleClose"
+  >
+    <div class="create-trace">
+      <div v-if="error" class="create-trace__error" data-test="create-trace-error">{{ error }}</div>
+
+      <div class="create-trace__field">
+        <label class="create-trace__label">产品（选择配件） <span class="create-trace__star">*</span></label>
+        <div v-if="partsLoading" class="create-trace__loading">正在加载配件列表...</div>
+        <select v-else v-model="formData.partCode" class="create-trace__select">
+          <option value="">请选择配件（按编码/名称）</option>
+          <option v-for="p in parts" :key="p.id" :value="p.partCode">
+            {{ p.partCode }} - {{ p.partName }}
+          </option>
+        </select>
+      </div>
+
+      <div class="create-trace__field">
+        <label class="create-trace__label">生产数量 <span class="create-trace__star">*</span></label>
+        <input
+          v-model="formData.quantity"
+          type="number"
+          min="1"
+          placeholder="请输入生产数量"
+          class="create-trace__input create-trace__input--mono"
+        />
+      </div>
+
+      <div class="create-trace__field">
+        <label class="create-trace__label">生产节点 <span class="create-trace__star">*</span></label>
+        <input
+          v-model="formData.manufacturerNode"
+          type="text"
+          placeholder="例如：北京工厂、上海生产线A"
+          class="create-trace__input"
+        />
+      </div>
+
+      <div class="create-trace__row">
+        <div class="create-trace__field">
+          <label class="create-trace__label">省份 <span class="create-trace__star">*</span></label>
+          <input
+            v-model="formData.province"
+            type="text"
+            placeholder="例如：北京"
+            class="create-trace__input"
+          />
+        </div>
+        <div class="create-trace__field">
+          <label class="create-trace__label">城市 <span class="create-trace__star">*</span></label>
+          <input
+            v-model="formData.city"
+            type="text"
+            placeholder="例如：北京市"
+            class="create-trace__input"
+          />
+        </div>
+      </div>
+    </div>
+
+    <template #footer>
+      <BaseButton
+        variant="secondary"
+        size="md"
+        :disabled="submitting"
+        data-test="create-trace-cancel"
+        @click="handleClose"
+      >
+        取消
+      </BaseButton>
+      <BaseButton
+        variant="primary"
+        size="md"
+        :loading="submitting"
+        :disabled="submitting"
+        data-test="create-trace-submit"
+        @click="handleSubmit"
+      >
+        {{ submitting ? '生成中…' : '生成溯源码' }}
+      </BaseButton>
+    </template>
+  </BaseDialog>
+</template>
+
+<style scoped>
+.create-trace {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.create-trace__error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--error-soft);
+  border: 1px solid color-mix(in srgb, var(--error) 18%, transparent);
+  color: var(--error);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.create-trace__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.create-trace__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.create-trace__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.create-trace__star {
+  color: var(--error);
+  margin-left: 2px;
+}
+.create-trace__loading {
+  font-size: 13px;
+  color: var(--ink-subtle);
+}
+.create-trace__select,
+.create-trace__input {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: var(--ink);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.create-trace__select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px 14px;
+  padding-right: 32px;
+}
+.create-trace__input--mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 13px;
+}
+.create-trace__select:focus,
+.create-trace__input:focus {
+  border-color: var(--primary-focus);
+  box-shadow: 0 0 0 3px var(--primary-ring);
+}
+@media (max-width: 639.98px) {
+  .create-trace__row {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

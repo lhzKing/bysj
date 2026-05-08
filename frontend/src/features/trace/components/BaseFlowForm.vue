@@ -1,140 +1,41 @@
-<template>
-  <div class="space-y-4">
-    <!-- From Node -->
-    <div>
-      <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-        {{ labels.fromNode }} <span class="text-rose-500">*</span>
-      </label>
-      <BaseInput
-        v-model="formData.fromNode"
-        @blur="handleFromNodeBlur"
-        :placeholder="placeholders.fromNode"
-        class="bg-slate-50/50 rounded-2xl border-slate-200 font-bold text-slate-700"
-      />
-    </div>
-
-    <!-- To Node -->
-    <div>
-      <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-        {{ labels.toNode }} <span class="text-rose-500">*</span>
-      </label>
-      <BaseInput
-        v-model="formData.toNode"
-        @blur="handleToNodeBlur"
-        :placeholder="placeholders.toNode"
-        class="bg-slate-50/50 rounded-2xl border-slate-200 font-bold text-slate-700"
-      />
-    </div>
-
-    <!-- Province -->
-    <div>
-      <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-        {{ labels.province }} <span class="text-rose-500">*</span>
-      </label>
-      <select
-        v-model="formData.province"
-        @change="handleProvinceChange"
-        class="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow appearance-none"
-      >
-        <option value="" disabled selected class="bg-white text-slate-900">请选择省份</option>
-        <option v-for="region in regions" :key="region.value" :value="region.value" class="bg-white text-slate-900">
-          {{ region.label }}
-        </option>
-      </select>
-    </div>
-
-    <!-- City -->
-    <div>
-      <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-        {{ labels.city }} <span class="text-rose-500">*</span>
-      </label>
-      <select
-        v-model="formData.city"
-        :disabled="!formData.province"
-        class="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <option value="" disabled selected class="bg-white text-slate-900">请选择城市</option>
-        <option v-for="city in availableCities" :key="city" :value="city" class="bg-white text-slate-900">
-          {{ city }}
-        </option>
-      </select>
-      <p v-if="actionType === 'transfer'" class="text-[10px] text-indigo-400 font-bold mt-1 ml-1">填写货物当前所在位置（通常是起点或中转站位置）</p>
-    </div>
-
-    <!-- Event Time -->
-    <div>
-      <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-        {{ labels.eventTime }} <span class="text-rose-500">*</span>
-      </label>
-      <input
-        v-model="formData.eventTime"
-        type="datetime-local"
-        class="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow font-mono"
-      />
-    </div>
-
-    <!-- Remark -->
-    <div>
-      <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-        备注说明
-      </label>
-      <textarea
-        v-model="formData.remark"
-        :placeholder="placeholders.remark"
-        rows="3"
-        class="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow resize-none"
-      ></textarea>
-    </div>
-  </div>
-</template>
-
 <script setup>
 import { computed, watch } from 'vue'
 import BaseInput from '@/shared/components/ui/BaseInput.vue'
 import { REGIONS, getRegionByNode } from '@/shared/data/regions'
 
+/**
+ * BaseFlowForm —— ScanFlowDialog 共享的入库 / 出库 / 流转表单。
+ *
+ * 视觉契约（Linear-light）：
+ *   - 字段栈纵向 14px gap；label 13/500/ink + 6px gap + control（h36）
+ *   - input / select / textarea / datetime 全部 8px 圆角 + 1px hairline + var(--surface-1) 背景
+ *   - focus 转 var(--primary-focus) 边 + 3px lavender 15% 光晕
+ *   - 错误必填 *：var(--error)；不再用 rose-500 / indigo-500 旧色阶
+ *
+ * 接口：modelValue（form data 对象，由父持有 reactive）+ actionType=inbound|outbound|transfer 决定 label / placeholder / 流转特殊 hint。
+ */
 const props = defineProps({
-  modelValue: {
-    type: Object,
-    required: true
-  },
+  modelValue: { type: Object, required: true },
   actionType: {
     type: String,
     required: true,
-    validator: (value) => ['inbound', 'outbound', 'transfer'].includes(value)
+    validator: (v) => ['inbound', 'outbound', 'transfer'].includes(v)
   }
 })
 
 const emit = defineEmits(['update:modelValue'])
 
 const regions = REGIONS
+
 const formData = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value)
 })
 
 const labelsMap = {
-  inbound: {
-    fromNode: '来源节点',
-    toNode: '目标仓库',
-    province: '省份',
-    city: '城市',
-    eventTime: '入库时间'
-  },
-  outbound: {
-    fromNode: '来源仓库',
-    toNode: '目标节点',
-    province: '省份',
-    city: '城市',
-    eventTime: '出库时间'
-  },
-  transfer: {
-    fromNode: '起点',
-    toNode: '终点',
-    province: '当前位置-省份',
-    city: '当前位置-城市',
-    eventTime: '流转时间'
-  }
+  inbound: { fromNode: '来源节点', toNode: '目标仓库', province: '省份', city: '城市', eventTime: '入库时间' },
+  outbound: { fromNode: '来源仓库', toNode: '目标节点', province: '省份', city: '城市', eventTime: '出库时间' },
+  transfer: { fromNode: '起点', toNode: '终点', province: '当前位置-省份', city: '当前位置-城市', eventTime: '流转时间' }
 }
 
 const placeholdersMap = {
@@ -158,19 +59,16 @@ const placeholdersMap = {
 const labels = computed(() => labelsMap[props.actionType])
 const placeholders = computed(() => placeholdersMap[props.actionType])
 
-// 可选城市列表
 const availableCities = computed(() => {
-  const selectedRegion = regions.find(r => r.value === formData.value.province)
-  return selectedRegion ? selectedRegion.cities : []
+  const region = regions.find((r) => r.value === formData.value.province)
+  return region ? region.cities : []
 })
 
-// 省份改变时清空城市
-const handleProvinceChange = () => {
+function handleProvinceChange() {
   formData.value.city = ''
 }
 
-// 失焦时尝试自动填充地区
-const handleFromNodeBlur = () => {
+function handleFromNodeBlur() {
   const region = getRegionByNode(formData.value.fromNode)
   if (region && !formData.value.province) {
     formData.value.province = region.province
@@ -178,7 +76,7 @@ const handleFromNodeBlur = () => {
   }
 }
 
-const handleToNodeBlur = () => {
+function handleToNodeBlur() {
   const region = getRegionByNode(formData.value.toNode)
   if (region && !formData.value.province) {
     formData.value.province = region.province
@@ -186,13 +84,194 @@ const handleToNodeBlur = () => {
   }
 }
 
-// 监听province变化
-watch(() => formData.value.province, (newProvince) => {
-  if (newProvince && formData.value.city) {
-    const cities = regions.find(r => r.value === newProvince)?.cities || []
-    if (!cities.includes(formData.value.city)) {
-      formData.value.city = ''
+watch(
+  () => formData.value.province,
+  (newProvince) => {
+    if (newProvince && formData.value.city) {
+      const cities = regions.find((r) => r.value === newProvince)?.cities || []
+      if (!cities.includes(formData.value.city)) {
+        formData.value.city = ''
+      }
     }
   }
-})
+)
 </script>
+
+<template>
+  <div class="flow-form">
+    <BaseInput
+      v-model="formData.fromNode"
+      :label="labels.fromNode"
+      :placeholder="placeholders.fromNode"
+      :required="true"
+      @blur="handleFromNodeBlur"
+    />
+
+    <BaseInput
+      v-model="formData.toNode"
+      :label="labels.toNode"
+      :placeholder="placeholders.toNode"
+      :required="true"
+      @blur="handleToNodeBlur"
+    />
+
+    <div class="flow-form__row">
+      <div class="flow-form__field">
+        <label class="flow-form__label">{{ labels.province }} <span class="flow-form__star">*</span></label>
+        <select
+          v-model="formData.province"
+          class="flow-form__select"
+          @change="handleProvinceChange"
+        >
+          <option value="" disabled>请选择省份</option>
+          <option v-for="region in regions" :key="region.value" :value="region.value">
+            {{ region.label }}
+          </option>
+        </select>
+      </div>
+
+      <div class="flow-form__field">
+        <label class="flow-form__label">{{ labels.city }} <span class="flow-form__star">*</span></label>
+        <select
+          v-model="formData.city"
+          :disabled="!formData.province"
+          class="flow-form__select"
+        >
+          <option value="" disabled>请选择城市</option>
+          <option v-for="city in availableCities" :key="city" :value="city">
+            {{ city }}
+          </option>
+        </select>
+      </div>
+    </div>
+
+    <p v-if="actionType === 'transfer'" class="flow-form__hint">
+      填写货物当前所在位置（通常是起点或中转站位置）
+    </p>
+
+    <div class="flow-form__field">
+      <label class="flow-form__label">{{ labels.eventTime }} <span class="flow-form__star">*</span></label>
+      <input
+        v-model="formData.eventTime"
+        type="datetime-local"
+        class="flow-form__input flow-form__input--mono"
+      />
+    </div>
+
+    <div class="flow-form__field">
+      <label class="flow-form__label">备注说明</label>
+      <textarea
+        v-model="formData.remark"
+        rows="3"
+        maxlength="255"
+        class="flow-form__textarea"
+        :placeholder="placeholders.remark"
+      />
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.flow-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.flow-form__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.flow-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.flow-form__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.flow-form__star {
+  color: var(--error);
+  margin-left: 2px;
+}
+
+.flow-form__hint {
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: var(--ink-subtle);
+  line-height: 1.5;
+}
+
+.flow-form__select,
+.flow-form__input {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: var(--ink);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+}
+.flow-form__select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px 14px;
+  padding-right: 32px;
+}
+.flow-form__input--mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 13px;
+}
+
+.flow-form__select:focus,
+.flow-form__input:focus {
+  border-color: var(--primary-focus);
+  box-shadow: 0 0 0 3px var(--primary-ring);
+}
+.flow-form__select:disabled {
+  background-color: var(--surface-2);
+  color: var(--ink-tertiary);
+  cursor: not-allowed;
+}
+
+.flow-form__textarea {
+  min-height: 84px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: var(--ink);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+  line-height: 1.55;
+}
+.flow-form__textarea:focus {
+  border-color: var(--primary-focus);
+  box-shadow: 0 0 0 3px var(--primary-ring);
+}
+
+@media (max-width: 639.98px) {
+  .flow-form__row {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

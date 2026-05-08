@@ -84,4 +84,84 @@ describe('ScanFlowDialog contract', () => {
       })
     )
   })
+
+  it('forwards idempotencyKey prop into createEvent payload', async () => {
+    const wrapper = renderWithPrime(ScanFlowDialog, {
+      props: {
+        modelValue: true,
+        traceCode: 'TRACE-001',
+        actionType: 'outbound',
+        idempotencyKey: 'idem-uuid-123'
+      },
+      global: {
+        stubs: {
+          LogOut: true,
+          X: true,
+          teleport: true,
+          BaseButton: baseButtonStub,
+          QrCode: true,
+          Info: true,
+          Loader: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await nextTick()
+
+    const { formData, handleSubmit } = wrapper.vm.$.setupState
+    formData.fromNode = '北京仓库'
+    formData.toNode = '上海仓库'
+    formData.province = REGIONS[0].value
+    formData.city = REGIONS[0].cities[0]
+    formData.eventTime = '2026-04-12T00:00'
+    formData.remark = ''
+    await nextTick()
+
+    await handleSubmit()
+    await flushPromises()
+
+    expect(createEventMock).toHaveBeenCalledTimes(1)
+    const payload = createEventMock.mock.calls[0][1]
+    expect(payload.idempotencyKey).toBe('idem-uuid-123')
+    expect(payload.actionType).toBe('OUTBOUND')
+  })
+
+  it('omits idempotencyKey when prop is empty (backward compat)', async () => {
+    const wrapper = renderWithPrime(ScanFlowDialog, {
+      props: {
+        modelValue: true,
+        traceCode: 'TRACE-001',
+        actionType: 'transfer'
+      },
+      global: {
+        stubs: {
+          LogOut: true,
+          X: true,
+          teleport: true,
+          BaseButton: baseButtonStub,
+          QrCode: true,
+          Info: true,
+          Loader: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await nextTick()
+
+    const { formData, handleSubmit } = wrapper.vm.$.setupState
+    formData.fromNode = 'A'
+    formData.toNode = 'B'
+    formData.province = REGIONS[0].value
+    formData.city = REGIONS[0].cities[0]
+    formData.eventTime = '2026-04-12T00:00'
+    await nextTick()
+
+    await handleSubmit()
+    await flushPromises()
+
+    const payload = createEventMock.mock.calls[0][1]
+    expect(payload).not.toHaveProperty('idempotencyKey')
+  })
 })
