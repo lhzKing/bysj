@@ -1,84 +1,233 @@
 <script setup>
 import { computed } from 'vue'
-import BaseButton from '@/shared/components/ui/BaseButton.vue'
-import { Search } from 'lucide-vue-next'
+import { Search, X } from 'lucide-vue-next'
+import KbdShortcut from '@/shared/components/ui/KbdShortcut.vue'
 
+/**
+ * UserSearchFilter —— Linear-light 用户管理筛选条。
+ *
+ * 视觉契约：与 PartSearchFilter / TraceList 的 .search-box + .filter-chip 同源；32px 高、8px 圆角、1px hairline。
+ *  - 关键词输入：模糊搜索 username，支持回车提交
+ *  - 角色 chip select：基于 GET /api/roles 注入；空值 = 所有角色
+ *  - 状态 chip select：全部 / 启用 (1) / 禁用 (0) 三态
+ *  - 清空按钮：username/roleId/status 任一非默认时显示
+ *
+ * 接口：v-model:username / v-model:role-id / v-model:status + @search 触发回车 / @reset 清空。
+ */
 const props = defineProps({
-  query: {
-    type: Object,
-    required: true
-  },
-  roles: {
-    type: Array,
-    required: true
-  }
+  username: { type: String, default: '' },
+  roleId: { type: [String, Number], default: '' },
+  status: { type: [String, Number], default: '' },
+  roles: { type: Array, default: () => [] },
+  total: { type: Number, default: 0 }
 })
 
-const emit = defineEmits(['update:query', 'search'])
+const emit = defineEmits([
+  'update:username',
+  'update:roleId',
+  'update:status',
+  'search',
+  'reset'
+])
 
-const localQuery = computed({
-  get: () => props.query,
-  set: (val) => emit('update:query', val)
-})
+const hasFilter = computed(
+  () => props.username !== '' || props.roleId !== '' || props.status !== ''
+)
 
-const handleSearch = () => {
+function onUsername(e) {
+  emit('update:username', e.target.value)
+}
+function onRole(e) {
+  const value = e.target.value
+  emit('update:roleId', value === '' ? '' : Number(value))
   emit('search')
 }
-
-const statusOptions = [
-  { label: '所有状态', value: '' },
-  { label: '启用', value: 1 },
-  { label: '禁用', value: 0 }
-]
-
-const roleOptions = computed(() => {
-  return [
-    { roleName: '所有角色', id: '' },
-    ...props.roles
-  ]
-})
+function onStatus(e) {
+  const value = e.target.value
+  emit('update:status', value === '' ? '' : Number(value))
+  emit('search')
+}
+function onEnter() {
+  emit('search')
+}
+function onReset() {
+  emit('reset')
+}
 </script>
 
 <template>
-  <div class="relative max-w-4xl mb-8 premium-card rounded-[32px] p-4 flex flex-col md:flex-row gap-4 items-center shadow-lg shadow-indigo-100/50 border border-slate-100 z-20">
-    <div class="relative flex-1 w-full group/input">
-      <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-        <Search class="h-5 w-5 text-slate-400 group-focus-within/input:text-indigo-600 transition-colors" />
-      </div>
+  <section class="user-filter" data-testid="user-filter">
+    <div class="user-filter__search" data-testid="user-filter-search-box">
+      <Search class="user-filter__search-icon" />
       <input
-        v-model="localQuery.username"
+        :value="username"
+        class="user-filter__search-input"
         type="text"
-        placeholder="搜索用户名..."
-        class="block w-full pl-12 pr-4 py-4 border-0 bg-slate-50/50 text-slate-900 rounded-2xl ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm font-bold transition-shadow shadow-inner placeholder:text-slate-400/70"
-        @keyup.enter="handleSearch"
+        placeholder="搜索用户名"
+        spellcheck="false"
+        autocomplete="off"
+        data-testid="user-filter-username"
+        @input="onUsername"
+        @keydown.enter.prevent="onEnter"
       />
+      <KbdShortcut keys="Enter" />
     </div>
 
-    <div class="w-full md:w-48 shrink-0">
-      <select 
-        v-model="localQuery.roleId"
-        class="w-full px-4 py-4 bg-slate-50/50 rounded-2xl ring-1 ring-inset ring-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-600 transition-shadow appearance-none cursor-pointer"
-      >
-        <option v-for="opt in roleOptions" :key="opt.id" :value="opt.id" class="bg-white text-slate-900">
-          {{ opt.roleName }}
-        </option>
-      </select>
-    </div>
+    <select
+      :value="roleId"
+      class="user-filter__chip"
+      :class="{ 'user-filter__chip--has-val': roleId !== '' }"
+      data-testid="user-filter-role"
+      @change="onRole"
+    >
+      <option value="">角色 · 全部</option>
+      <option v-for="r in roles" :key="r.id" :value="r.id">
+        角色 · {{ r.roleName || r.role_name }}
+      </option>
+    </select>
 
-    <div class="w-full md:w-40 shrink-0">
-      <select 
-        v-model="localQuery.status"
-        class="w-full px-4 py-4 bg-slate-50/50 rounded-2xl ring-1 ring-inset ring-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-600 transition-shadow appearance-none cursor-pointer"
-      >
-        <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value" class="bg-white text-slate-900">
-          {{ opt.label }}
-        </option>
-      </select>
-    </div>
+    <select
+      :value="status"
+      class="user-filter__chip"
+      :class="{ 'user-filter__chip--has-val': status !== '' }"
+      data-testid="user-filter-status"
+      @change="onStatus"
+    >
+      <option value="">状态 · 全部</option>
+      <option :value="1">状态 · 启用</option>
+      <option :value="0">状态 · 禁用</option>
+    </select>
 
-    <button @click="handleSearch" class="w-full md:w-auto h-[52px] px-8 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl transition-all shadow-md shadow-indigo-200 hover:shadow-indigo-300 flex items-center justify-center shrink-0 active:scale-95">
-      <Search class="w-5 h-5 mr-2" />
-      查询
+    <button
+      v-if="hasFilter"
+      type="button"
+      class="user-filter__reset"
+      data-testid="user-filter-reset"
+      @click="onReset"
+    >
+      <X class="user-filter__reset-icon" />
+      清空
     </button>
-  </div>
+
+    <span class="user-filter__count" data-testid="user-filter-count">
+      <strong>{{ total.toLocaleString() }}</strong> 位匹配
+    </span>
+  </section>
 </template>
+
+<style scoped>
+.user-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.user-filter__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  min-width: 280px;
+  flex: 1 1 280px;
+  max-width: 380px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.user-filter__search:focus-within {
+  border-color: var(--primary-focus, #5e69d1);
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.15);
+}
+.user-filter__search-icon {
+  width: 13px;
+  height: 13px;
+  color: var(--ink-tertiary);
+  flex-shrink: 0;
+}
+.user-filter__search-input {
+  flex: 1 1 auto;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  min-width: 0;
+}
+.user-filter__search-input::placeholder {
+  color: var(--ink-tertiary);
+}
+
+.user-filter__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  font-size: 13px;
+  color: var(--ink-muted);
+  font-weight: 500;
+  cursor: pointer;
+  appearance: none;
+  font-family: inherit;
+}
+.user-filter__chip:hover {
+  border-color: var(--ink-subtle);
+}
+.user-filter__chip--has-val {
+  color: var(--ink);
+  background: var(--surface-2);
+  border-color: var(--hairline-strong);
+}
+
+.user-filter__reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  font-size: 12.5px;
+  color: var(--ink-subtle);
+  cursor: pointer;
+  font-family: inherit;
+}
+.user-filter__reset:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.user-filter__reset-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.user-filter__count {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--ink-subtle);
+}
+.user-filter__count strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .user-filter__search {
+    min-width: 100%;
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .user-filter__count {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+</style>

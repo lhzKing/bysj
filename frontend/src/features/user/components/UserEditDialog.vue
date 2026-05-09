@@ -1,213 +1,261 @@
 <script setup>
-import { ref, reactive, watch, computed } from 'vue'
-import BaseInput from '@/shared/components/ui/BaseInput.vue'
+import { computed } from 'vue'
 import BaseButton from '@/shared/components/ui/BaseButton.vue'
-import Select from 'primevue/select'
-import { useToast } from '@/shared/composables/useToast'
-import { X, User } from 'lucide-vue-next'
+import BaseDialog from '@/shared/components/ui/BaseDialog.vue'
+import StatusPill from '@/shared/components/ui/StatusPill.vue'
+import { UserCog } from 'lucide-vue-next'
 
+/**
+ * UserEditDialog —— Linear-light 用户创建/编辑对话框。
+ *
+ * 视觉契约：
+ *  - 走 BaseDialog md size；header icon = UserCog；title 根据 editingUser 切换
+ *  - 4 字段表单：username（编辑时禁用，3-50 字符）/ password（创建必填，编辑留空表示不改，6-100 字符且含字母数字）/ roleId（必填）/ status（启用/禁用）
+ *  - 编辑模式下额外渲染只读 StatusPill 显示当前启停状态（提示走列表行按钮）
+ *  - 必填字段红色 *：username / password (创建模式) / roleId
+ *  - 表单 control 复用 .user-form__control 32px / 8px 圆角 / 1px hairline / focus 切 lavender
+ *  - footer：取消（text）+ 提交（primary，loading 态显示 spinner）
+ *  - <640px：BaseDialog 已自动占满全屏
+ *
+ * 接口：
+ *  - v-model:visible 双向显隐 / editingUser Object 或 null / formData reactive / roles / saving
+ *  - @save 提交时触发，父组件负责调用 createUser/updateUser
+ */
 const props = defineProps({
-  visible: {
-    type: Boolean,
-    required: true
-  },
-  editingUser: {
-    type: Object,
-    default: null
-  },
-  roles: {
-    type: Array,
-    required: true
-  }
+  visible: { type: Boolean, default: false },
+  editingUser: { type: Object, default: null },
+  formData: { type: Object, required: true },
+  roles: { type: Array, default: () => [] },
+  saving: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update:visible', 'save'])
-
-const toast = useToast()
 
 const localVisible = computed({
   get: () => props.visible,
   set: (val) => emit('update:visible', val)
 })
 
-const formData = reactive({
-  username: '',
-  password: '',
-  roleId: '',
-  status: 1
-})
-
-const statusOptions = [
-  { label: '启用', value: 1 },
-  { label: '禁用', value: 0 }
-]
-
-watch(
-  () => props.visible,
-  (newVal) => {
-    if (newVal) {
-      if (props.editingUser) {
-        Object.assign(formData, {
-          username: props.editingUser.username,
-          password: '', // 编辑时不填密码
-          roleId: props.editingUser.roleId,
-          status: props.editingUser.status
-        })
-      } else {
-        Object.assign(formData, {
-          username: '',
-          password: '',
-          roleId: '',
-          status: 1
-        })
-      }
-    }
-  }
+const titleText = computed(() => (props.editingUser ? '编辑用户' : '新建用户'))
+const subtitleText = computed(() =>
+  props.editingUser
+    ? `用户名 ${props.editingUser.username} 不可修改；密码留空表示不重置。启停请使用列表行按钮切换。`
+    : '创建后用户即可使用用户名 + 密码登录。只能创建优先级低于自己的角色用户。'
+)
+const editingEnabled = computed(
+  () =>
+    props.editingUser &&
+    (props.editingUser.status === 1 || props.editingUser.status === '1')
 )
 
-const handleSave = () => {
-  // 表单验证
-  if (!formData.username) {
-    toast.error('请输入用户名')
-    return
-  }
-  if (!props.editingUser && !formData.password) {
-    toast.error('创建用户时必须输入密码')
-    return
-  }
-  if (!formData.roleId) {
-    toast.error('请选择角色')
-    return
-  }
-
-  // 密码验证（如果填写了密码）
-  if (formData.password) {
-    if (formData.password.length < 6 || formData.password.length > 100) {
-      toast.error('密码长度必须在6-100个字符之间')
-      return
-    }
-    if (!/[a-zA-Z]/.test(formData.password) || !/\d/.test(formData.password)) {
-      toast.error('密码必须包含字母和数字')
-      return
-    }
-  }
-
-  emit('save', { ...formData })
-}
-
-const handleCancel = () => {
+function onCancel() {
   localVisible.value = false
+}
+function onSave() {
+  emit('save')
 }
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition name="dialog-fade">
-      <div v-if="localVisible" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <!-- Backdrop -->
-        <div 
-          class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-          @click="handleCancel"
-        ></div>
-        
-        <!-- Dialog -->
-        <div class="relative premium-card rounded-[40px] w-full max-w-md transform transition-all p-8 max-h-[90vh] overflow-y-auto">
-          <!-- Header -->
-          <div class="flex items-center justify-between mb-8">
-            <h3 class="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-              <User class="w-6 h-6 text-indigo-600" />
-              {{ editingUser ? '编辑操作员' : '配置新操作员' }}
-            </h3>
-            <button @click="handleCancel" class="size-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors">
-              <X class="w-5 h-5" />
-            </button>
-          </div>
-          
-          <!-- Body -->
-          <div class="space-y-6">
-            <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                操作员名称 / Identity <span class="text-rose-500">*</span>
-              </label>
-              <BaseInput 
-                v-model="formData.username" 
-                placeholder="请输入用户名"
-                :disabled="!!editingUser"
-                class="bg-slate-50/50 rounded-2xl border-slate-200 font-bold text-slate-700"
-              />
-            </div>
+  <BaseDialog
+    v-model="localVisible"
+    :title="titleText"
+    :subtitle="subtitleText"
+    :icon="UserCog"
+    size="md"
+    persistent
+    data-testid="user-edit-dialog"
+  >
+    <form class="user-form" data-testid="user-form" @submit.prevent="onSave">
+      <div v-if="editingUser" class="user-form__status-row" data-testid="user-form-status">
+        <span class="user-form__status-label">当前状态</span>
+        <StatusPill :tone="editingEnabled ? 'success' : 'mute'">
+          {{ editingEnabled ? '启用' : '禁用' }}
+        </StatusPill>
+        <span class="user-form__status-hint">
+          状态变更请使用列表行的“启用 / 禁用”按钮，本对话框只编辑账户元数据。
+        </span>
+      </div>
 
-            <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                安全密钥 / Password <span v-if="!editingUser" class="text-rose-500">*</span>
-                <span v-if="editingUser" class="text-indigo-400 text-[10px]">（留空表示不修改）</span>
-              </label>
-              <BaseInput 
-                v-model="formData.password" 
-                type="text"
-                placeholder="字母和数字，6-100个字符"
-                class="bg-slate-50/50 rounded-2xl border-slate-200 font-mono"
-              />
-            </div>
+      <div class="user-form__row">
+        <label class="user-form__label">
+          用户名
+          <span class="user-form__required">*</span>
+        </label>
+        <input
+          v-model="formData.username"
+          type="text"
+          class="user-form__control"
+          placeholder="3-50 字符"
+          spellcheck="false"
+          autocomplete="off"
+          :disabled="!!editingUser"
+          data-testid="user-form-username"
+        />
+      </div>
 
-            <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                权限域 / Access Level <span class="text-rose-500">*</span>
-              </label>
-              <select 
-                v-model="formData.roleId"
-                class="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow appearance-none cursor-pointer"
-              >
-                <option value="" disabled selected class="bg-white text-slate-900">请选择角色</option>
-                <option v-for="role in roles" :key="role.id" :value="role.id" class="bg-white text-slate-900">
-                  {{ role.roleName }}
-                </option>
-              </select>
-            </div>
+      <div class="user-form__row">
+        <label class="user-form__label">
+          密码
+          <span v-if="!editingUser" class="user-form__required">*</span>
+          <span v-else class="user-form__label-hint">（留空表示不修改）</span>
+        </label>
+        <input
+          v-model="formData.password"
+          type="password"
+          class="user-form__control mono"
+          placeholder="6-100 字符，必须包含字母和数字"
+          spellcheck="false"
+          autocomplete="new-password"
+          data-testid="user-form-password"
+        />
+      </div>
 
-            <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                节点状态 / Status
-              </label>
-              <select 
-                v-model="formData.status"
-                class="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow appearance-none cursor-pointer"
-              >
-                <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value" class="bg-white text-slate-900">
-                  {{ opt.label }}
-                </option>
-              </select>
-            </div>
-          </div>
-          
-          <!-- Footer -->
-          <div class="mt-10 flex justify-end gap-4">
-            <button @click="handleCancel" class="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">取消</button>
-            <button @click="handleSave" class="px-8 py-3 rounded-xl font-bold bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl hover:shadow-indigo-300 transition-all flex items-center active:scale-95">
-              确认配置
-            </button>
-          </div>
+      <div class="user-form__grid">
+        <div class="user-form__row">
+          <label class="user-form__label">
+            角色
+            <span class="user-form__required">*</span>
+          </label>
+          <select
+            v-model="formData.roleId"
+            class="user-form__control user-form__control--select"
+            data-testid="user-form-role"
+          >
+            <option value="" disabled>请选择角色</option>
+            <option v-for="role in roles" :key="role.id" :value="role.id">
+              {{ role.roleName || role.role_name }}{{ role.roleCode || role.role_code ? ` (${role.roleCode || role.role_code})` : '' }}
+            </option>
+          </select>
+        </div>
+
+        <div class="user-form__row">
+          <label class="user-form__label">状态</label>
+          <select
+            v-model.number="formData.status"
+            class="user-form__control user-form__control--select"
+            data-testid="user-form-status-select"
+          >
+            <option :value="1">启用</option>
+            <option :value="0">禁用</option>
+          </select>
         </div>
       </div>
-    </Transition>
-  </Teleport>
+    </form>
+
+    <template #footer>
+      <BaseButton variant="text" size="sm" data-testid="user-form-cancel" @click="onCancel">
+        取消
+      </BaseButton>
+      <BaseButton
+        variant="primary"
+        size="sm"
+        :loading="saving"
+        data-testid="user-form-submit"
+        @click="onSave"
+      >
+        {{ editingUser ? '保存' : '创建' }}
+      </BaseButton>
+    </template>
+  </BaseDialog>
 </template>
 
 <style scoped>
-.dialog-fade-enter-active,
-.dialog-fade-leave-active {
-  transition: opacity 0.3s ease;
+.user-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
-.dialog-fade-enter-from,
-.dialog-fade-leave-to {
-  opacity: 0;
+.user-form__status-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
 }
-.dialog-fade-enter-active .premium-card,
-.dialog-fade-leave-active .premium-card {
-  transition: transform 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+.user-form__status-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-subtle);
 }
-.dialog-fade-enter-from .premium-card,
-.dialog-fade-leave-to .premium-card {
-  transform: scale(0.95) translateY(20px);
+.user-form__status-hint {
+  flex: 1 1 100%;
+  font-size: 12px;
+  color: var(--ink-tertiary);
+  line-height: 1.5;
+}
+.user-form__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.user-form__row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.user-form__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+.user-form__label-hint {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-tertiary);
+}
+.user-form__required {
+  color: var(--error);
+  margin-left: 2px;
+}
+.user-form__control {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.user-form__control::placeholder {
+  color: var(--ink-tertiary);
+}
+.user-form__control:focus {
+  border-color: var(--primary-focus, #5e69d1);
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.15);
+}
+.user-form__control:disabled {
+  background: var(--surface-2);
+  color: var(--ink-subtle);
+  cursor: not-allowed;
+}
+.user-form__control--select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 14px 14px;
+  padding-right: 28px;
+  cursor: pointer;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+@media (max-width: 640px) {
+  .user-form__grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

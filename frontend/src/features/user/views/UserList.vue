@@ -1,142 +1,296 @@
 <script setup>
-import { ref, onMounted, reactive } from 'vue'
-import { getUsers, deleteUser, batchDeleteUsers, updateUserStatus, resetUserPassword, createUser, updateUser } from '@/features/user/api'
-import { getRoles } from '@/features/user/api'
+import { onMounted, reactive, ref } from 'vue'
+import { Plus, RefreshCw } from 'lucide-vue-next'
 import BaseButton from '@/shared/components/ui/BaseButton.vue'
+import PageHeader from '@/shared/components/ui/PageHeader.vue'
 import { useConfirm } from '@/shared/composables/useConfirm'
 import { usePrompt } from '@/shared/composables/usePrompt'
 import { useToast } from '@/shared/composables/useToast'
-import { Plus } from 'lucide-vue-next'
-
+import {
+  batchDeleteUsers,
+  createUser,
+  deleteUser,
+  getRoles,
+  getUsers,
+  resetUserPassword,
+  updateUser,
+  updateUserStatus
+} from '@/features/user/api'
+import UserEditDialog from '../components/UserEditDialog.vue'
 import UserSearchFilter from '../components/UserSearchFilter.vue'
 import UserTable from '../components/UserTable.vue'
-import UserEditDialog from '../components/UserEditDialog.vue'
+
+const PAGE_SIZE = 10
 
 const users = ref([])
 const roles = ref([])
 const loading = ref(false)
+const saving = ref(false)
+const total = ref(0)
+const hasMore = ref(false)
+const selectedIds = ref([])
+
 const query = reactive({
   username: '',
   roleId: '',
   status: '',
   page: 1,
-  size: 10
+  size: PAGE_SIZE
 })
-const total = ref(0)
 
 const showDialog = ref(false)
 const editingUser = ref(null)
+const formData = reactive({
+  username: '',
+  password: '',
+  roleId: '',
+  status: 1
+})
 
 const { confirm } = useConfirm()
 const { prompt } = usePrompt()
 const toast = useToast()
 
-const loadData = async () => {
+function resetFormData() {
+  Object.assign(formData, {
+    username: '',
+    password: '',
+    roleId: '',
+    status: 1
+  })
+}
+
+async function loadData() {
   loading.value = true
   try {
-    const res = await getUsers(query)
+    const params = { page: query.page, size: query.size }
+    if (query.username.trim()) params.username = query.username.trim()
+    if (query.roleId !== '' && query.roleId !== null) params.roleId = query.roleId
+    if (query.status !== '' && query.status !== null) params.status = query.status
+    const res = await getUsers(params)
     users.value = Array.isArray(res?.list) ? res.list : Array.isArray(res) ? res : []
     total.value = typeof res?.total === 'number' ? res.total : users.value.length
+    hasMore.value = users.value.length >= query.size && query.page * query.size < total.value
   } catch (error) {
-    console.error('Failed to load users:', error)
     users.value = []
     total.value = 0
+    hasMore.value = false
   } finally {
     loading.value = false
   }
 }
 
-const loadRoles = async () => {
-  const res = await getRoles()
-  roles.value = Array.isArray(res) ? res : []
+async function loadRoles() {
+  try {
+    const res = await getRoles()
+    roles.value = Array.isArray(res) ? res : []
+  } catch (error) {
+    /* request.js already toasted */
+  }
 }
 
-const handleSearch = () => {
+function handleSearch() {
   query.page = 1
   loadData()
 }
 
-const handleDelete = async (id) => {
-  const confirmed = await confirm({
-    title: '删除用户',
-    message: '确定要删除该用户吗？此操作不可恢复。'
-  })
-  if (!confirmed) return
-  try {
-    await deleteUser(id)
-    toast.success('删除成功')
-    loadData()
-  } catch (error) {
-    toast.error('删除失败')
-  }
+function handleReset() {
+  query.username = ''
+  query.roleId = ''
+  query.status = ''
+  query.page = 1
+  loadData()
 }
 
-const handleStatusChange = async (user) => {
-  const newStatus = user.status === 1 ? 0 : 1
-  await updateUserStatus(user.id, newStatus)
-  user.status = newStatus
+function handlePageChange(delta) {
+  const next = query.page + delta
+  if (next < 1) return
+  query.page = next
+  loadData()
 }
 
-const handleCreate = () => {
+function handleCreate() {
   editingUser.value = null
+  resetFormData()
   showDialog.value = true
 }
 
-const handleEdit = (user) => {
+function handleEdit(user) {
   editingUser.value = user
+  Object.assign(formData, {
+    username: user.username || '',
+    password: '',
+    roleId: user.roleId ?? user.role_id ?? '',
+    status: typeof user.status === 'number' ? user.status : 1
+  })
   showDialog.value = true
 }
 
-const handleSave = async (formData) => {
+async function handleSave() {
+  if (!formData.username?.trim()) {
+    toast.error('请输入用户名')
+    return
+  }
+  if (formData.username.trim().length < 3 || formData.username.trim().length > 50) {
+    toast.error('用户名长度必须在 3-50 个字符之间')
+    return
+  }
+  if (!editingUser.value && !formData.password) {
+    toast.error('创建用户时必须输入密码')
+    return
+  }
+  if (formData.password) {
+    if (formData.password.length < 6 || formData.password.length > 100) {
+      toast.error('密码长度必须在 6-100 个字符之间')
+      return
+    }
+    if (!/[a-zA-Z]/.test(formData.password) || !/\d/.test(formData.password)) {
+      toast.error('密码必须包含字母和数字')
+      return
+    }
+  }
+  if (formData.roleId === '' || formData.roleId === null || formData.roleId === undefined) {
+    toast.error('请选择角色')
+    return
+  }
+
+  saving.value = true
   try {
     if (editingUser.value) {
-      const updateData = {
-        username: formData.username,
+      const payload = {
+        username: formData.username.trim(),
         roleId: formData.roleId,
         status: formData.status
       }
-      if (formData.password) {
-        updateData.password = formData.password
-      }
-      await updateUser(editingUser.value.id, updateData)
-      toast.success('用户更新成功')
+      if (formData.password) payload.password = formData.password
+      await updateUser(editingUser.value.id, payload)
+      toast.success('用户已更新')
     } else {
-      await createUser(formData)
-      toast.success('用户创建成功')
+      await createUser({
+        username: formData.username.trim(),
+        password: formData.password,
+        roleId: formData.roleId,
+        status: formData.status
+      })
+      toast.success('用户已创建')
     }
     showDialog.value = false
+    resetFormData()
+    editingUser.value = null
     loadData()
   } catch (error) {
-    console.error('Save error:', error)
+    /* request.js already toasted (e.g. 403 越权 / 409 用户名重复) */
+  } finally {
+    saving.value = false
   }
 }
 
-const handleResetPassword = async (id) => {
+async function handleDelete(user) {
+  const ok = await confirm({
+    title: '删除用户',
+    message: `确定要删除用户「${user.username}」吗？此操作不可恢复。superadmin 账号与高优先级账号会被后端拒绝（403）。`,
+    confirmText: '删除',
+    cancelText: '取消',
+    type: 'danger'
+  })
+  if (!ok) return
+
+  try {
+    await deleteUser(user.id)
+    toast.success('用户已删除')
+    selectedIds.value = selectedIds.value.filter((id) => id !== user.id)
+    if (users.value.length === 1 && query.page > 1) {
+      query.page -= 1
+    }
+    loadData()
+  } catch (error) {
+    /* request.js 拦截器已 toast */
+  }
+}
+
+async function handleBatchDelete() {
+  if (!selectedIds.value.length) return
+  const ok = await confirm({
+    title: `批量删除 ${selectedIds.value.length} 位用户`,
+    message: 'superadmin 与权限不足的账号会被后端自动跳过；返回值为实际删除数量。',
+    confirmText: '批量删除',
+    cancelText: '取消',
+    type: 'danger'
+  })
+  if (!ok) return
+
+  try {
+    const removed = await batchDeleteUsers([...selectedIds.value])
+    const count = typeof removed === 'number' ? removed : selectedIds.value.length
+    toast.success(`已删除 ${count} 位用户`)
+    selectedIds.value = []
+    if (query.page > 1 && users.value.length === 0) {
+      query.page -= 1
+    }
+    loadData()
+  } catch (error) {
+    /* request.js already toasted */
+  }
+}
+
+async function handleEnable(user) {
+  try {
+    await updateUserStatus(user.id, 1)
+    toast.success(`用户「${user.username}」已启用`)
+    loadData()
+  } catch (error) {
+    /* request.js already toasted */
+  }
+}
+
+async function handleDisable(user) {
+  const ok = await confirm({
+    title: '禁用用户',
+    message: `禁用后「${user.username}」无法登录系统，已颁发的 Token 将在下次请求时失效。superadmin 账号不能被禁用。`,
+    confirmText: '禁用',
+    cancelText: '取消',
+    type: 'warning'
+  })
+  if (!ok) return
+
+  try {
+    await updateUserStatus(user.id, 0)
+    toast.success(`用户「${user.username}」已禁用`)
+    loadData()
+  } catch (error) {
+    /* request.js already toasted */
+  }
+}
+
+async function handleResetPassword(user) {
   const newPass = await prompt({
     title: '重置密码',
-    message: '密码要求：',
+    message: `为「${user.username}」生成新密码（提交后立即生效，老密码失效）`,
     type: 'password',
-    placeholder: '密码必须包含字母和数字，长度6-100个字符',
+    placeholder: '6-100 字符，必须包含字母和数字',
     validator: (value) => {
       if (!value) return '密码不能为空'
-      if (value.length < 6 || value.length > 100) return '密码长度必须在6-100个字符之间'
+      if (value.length < 6 || value.length > 100) return '密码长度必须在 6-100 个字符之间'
       if (!/[a-zA-Z]/.test(value) || !/\d/.test(value)) return '密码必须包含字母和数字'
       return true
     }
   })
-  if (newPass) {
-    try {
-      await resetUserPassword(id, newPass)
-      toast.success('密码重置成功')
-    } catch (error) {
-      toast.error('密码重置失败')
-    }
+  if (!newPass) return
+
+  try {
+    await resetUserPassword(user.id, newPass)
+    toast.success(`「${user.username}」密码已重置`)
+  } catch (error) {
+    /* request.js already toasted */
   }
 }
 
-const handlePageChange = (newPage) => {
-  query.page = newPage
-  loadData()
+function handleSelectionChange(ids) {
+  selectedIds.value = ids
+}
+
+function handleClearSelection() {
+  selectedIds.value = []
 }
 
 onMounted(() => {
@@ -146,48 +300,95 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-8 relative z-10">
-    <div class="relative mb-12">
-      <div class="absolute -left-12 -top-12 size-40 bg-indigo-200 rounded-full blur-[80px] opacity-30"></div>
-      <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10">
-        <div>
-          <h1 class="text-5xl font-extrabold tracking-tight text-slate-900 leading-[1.1]">
-              数字生态 <span class="text-indigo-600">操作员</span>
-          </h1>
-          <p class="text-lg text-slate-500 mt-4 max-w-2xl font-medium leading-relaxed">
-              Neural Operators. 维护供应链操作者的数字身份与权限网络。
-          </p>
-        </div>
-        <button @click="handleCreate" class="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl shadow-xl shadow-indigo-200 font-bold transition-all flex items-center justify-center hover:scale-105 active:scale-95">
-          <Plus class="w-5 h-5 mr-2" />
-          <span>配置新操作员</span>
-        </button>
-      </div>
-    </div>
+  <div class="user-list">
+    <PageHeader
+      title="用户管理"
+      :subtitle="loading
+        ? '加载中…'
+        : `${total.toLocaleString()} 位操作员 · 第 ${query.page} 页 · 列表按角色优先级自动过滤；superadmin 账号不可删除/禁用`"
+    >
+      <template #actions>
+        <BaseButton
+          variant="secondary"
+          size="sm"
+          data-testid="user-list-refresh"
+          :loading="loading"
+          @click="loadData"
+        >
+          <template #icon><RefreshCw class="user-list__btn-icon" /></template>
+          刷新
+        </BaseButton>
+        <BaseButton
+          variant="primary"
+          size="sm"
+          data-testid="user-list-create"
+          @click="handleCreate"
+        >
+          <template #icon><Plus class="user-list__btn-icon" /></template>
+          新建用户
+        </BaseButton>
+      </template>
+    </PageHeader>
 
-    <UserSearchFilter 
-      v-model:query="query" 
+    <UserSearchFilter
+      v-model:username="query.username"
+      v-model:role-id="query.roleId"
+      v-model:status="query.status"
       :roles="roles"
+      :total="total"
       @search="handleSearch"
+      @reset="handleReset"
     />
 
-    <UserTable 
+    <UserTable
       :users="users"
       :loading="loading"
       :total="total"
-      :query="query"
+      :page="query.page"
+      :size="query.size"
+      :has-more="hasMore"
+      :selected="selectedIds"
       @edit="handleEdit"
-      @resetPassword="handleResetPassword"
-      @statusChange="handleStatusChange"
       @delete="handleDelete"
-      @pageChange="handlePageChange"
+      @enable="handleEnable"
+      @disable="handleDisable"
+      @reset-password="handleResetPassword"
+      @page-change="handlePageChange"
+      @create="handleCreate"
+      @update:selected="handleSelectionChange"
+      @batch-delete="handleBatchDelete"
+      @clear-selection="handleClearSelection"
     />
 
-    <UserEditDialog 
+    <UserEditDialog
       v-model:visible="showDialog"
-      :editingUser="editingUser"
+      :editing-user="editingUser"
+      :form-data="formData"
       :roles="roles"
+      :saving="saving"
       @save="handleSave"
     />
   </div>
 </template>
+
+<style scoped>
+.user-list {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 24px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.user-list__btn-icon {
+  width: 13px;
+  height: 13px;
+}
+
+@media (max-width: 640px) {
+  .user-list {
+    padding: 16px 12px 32px;
+  }
+}
+</style>
