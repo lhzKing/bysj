@@ -1,15 +1,31 @@
 <script setup>
 import { computed } from 'vue'
 import BaseButton from '@/shared/components/ui/BaseButton.vue'
-import BaseInput from '@/shared/components/ui/BaseInput.vue'
-import { X, Cpu } from 'lucide-vue-next'
+import BaseDialog from '@/shared/components/ui/BaseDialog.vue'
+import { Cpu } from 'lucide-vue-next'
 
+/**
+ * PartEditDialog —— Linear-light 配件创建/编辑对话框。
+ *
+ * 视觉契约：
+ *  - 走 BaseDialog md size；header icon = Cpu；title 根据 editingPart 切换
+ *  - 6 个原生 input/select/textarea 字段：partCode（编辑时禁用）/ partName / partType / manufacturer / model / unit / remark
+ *  - 必填字段红色 *：partCode / partName / partType
+ *  - 表单 control 复用 .part-form__control 32px / 8px 圆角 / 1px hairline / focus 切 lavender
+ *  - footer：取消（text）+ 提交（primary，loading 态显示 spinner）
+ *  - <640px：BaseDialog 已自动占满全屏
+ *
+ * 接口：
+ *  - v-model:visible 双向显隐 / editingPart Object 或 null / formData reactive / types / manufacturers / saving
+ *  - @save 提交时触发，父组件负责调用 createPart/updatePart
+ */
 const props = defineProps({
-  visible: Boolean,
-  editingPart: Object,
-  formData: Object,
-  types: Array,
-  manufacturers: Array
+  visible: { type: Boolean, default: false },
+  editingPart: { type: Object, default: null },
+  formData: { type: Object, required: true },
+  types: { type: Array, default: () => [] },
+  manufacturers: { type: Array, default: () => [] },
+  saving: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update:visible', 'save'])
@@ -19,128 +35,221 @@ const localVisible = computed({
   set: (val) => emit('update:visible', val)
 })
 
-const handleCancel = () => {
+const titleText = computed(() => (props.editingPart ? '编辑配件' : '新建配件'))
+const subtitleText = computed(() =>
+  props.editingPart
+    ? `配件编码 ${props.editingPart.partCode} 不可修改；其余字段可更新。`
+    : '填写配件基础信息，partCode 创建后不可修改。'
+)
+
+function onCancel() {
   localVisible.value = false
 }
+function onSave() {
+  emit('save')
+}
 </script>
+
 <template>
-  <Teleport to="body">
-    <Transition name="dialog-fade">
-      <div v-if="localVisible" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <!-- Backdrop -->
-        <div 
-          class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-          @click="handleCancel"
-        ></div>
-        
-        <!-- Dialog -->
-        <div class="relative premium-card rounded-[40px] w-full max-w-lg transform transition-all p-8 max-h-[90vh] overflow-y-auto">
-          <!-- Header -->
-          <div class="flex items-center justify-between mb-8">
-            <h3 class="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-              <Cpu class="w-6 h-6 text-indigo-600" />
-              {{ editingPart ? '编辑节点属性' : '注入新节点' }}
-            </h3>
-            <button @click="handleCancel" class="size-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors">
-              <X class="w-5 h-5" />
-            </button>
-          </div>
-          
-          <!-- Body -->
-          <div class="space-y-6">
-            <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                配件代码 / Identifier <span class="text-rose-500">*</span>
-              </label>
-              <BaseInput 
-                v-model="formData.partCode" 
-                placeholder="请输入配件代码"
-                :disabled="!!editingPart"
-                class="bg-slate-50/50 rounded-2xl border-slate-200 font-mono text-indigo-600 font-bold"
-              />
-            </div>
+  <BaseDialog
+    v-model="localVisible"
+    :title="titleText"
+    :subtitle="subtitleText"
+    :icon="Cpu"
+    size="md"
+    persistent
+    data-testid="part-edit-dialog"
+  >
+    <form class="part-form" data-testid="part-form" @submit.prevent="onSave">
+      <div class="part-form__row">
+        <label class="part-form__label">
+          配件编码
+          <span class="part-form__required">*</span>
+        </label>
+        <input
+          v-model="formData.partCode"
+          type="text"
+          class="part-form__control mono"
+          placeholder="例如 SPU-VALVE-001"
+          spellcheck="false"
+          autocomplete="off"
+          :disabled="!!editingPart"
+          data-testid="part-form-code"
+        />
+      </div>
 
-            <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                配件名称 / Nomenclature <span class="text-rose-500">*</span>
-              </label>
-              <BaseInput 
-                v-model="formData.partName" 
-                placeholder="请输入配件名称"
-                class="bg-slate-50/50 rounded-2xl border-slate-200 font-bold text-slate-700"
-              />
-            </div>
+      <div class="part-form__row">
+        <label class="part-form__label">
+          配件名称
+          <span class="part-form__required">*</span>
+        </label>
+        <input
+          v-model="formData.partName"
+          type="text"
+          class="part-form__control"
+          placeholder="例如 工业高压阀门"
+          spellcheck="false"
+          autocomplete="off"
+          data-testid="part-form-name"
+        />
+      </div>
 
-            <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                配件类型 / Type <span class="text-rose-500">*</span>
-              </label>
-              <select 
-                v-model="formData.partType"
-                class="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow appearance-none cursor-pointer"
-              >
-                <option value="" disabled selected class="bg-white text-slate-900">请选择类型</option>
-                <option v-for="type in types" :key="type" :value="type" class="bg-white text-slate-900">
-                  {{ type }}
-                </option>
-              </select>
-            </div>
+      <div class="part-form__grid">
+        <div class="part-form__row">
+          <label class="part-form__label">
+            配件类型
+            <span class="part-form__required">*</span>
+          </label>
+          <input
+            v-model="formData.partType"
+            type="text"
+            class="part-form__control"
+            list="part-form-type-options"
+            placeholder="选择或输入类型"
+            data-testid="part-form-type"
+          />
+          <datalist id="part-form-type-options">
+            <option v-for="t in types" :key="t" :value="t" />
+          </datalist>
+        </div>
 
-            <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                生产商 / Manufacturer
-              </label>
-              <select 
-                v-model="formData.manufacturer"
-                class="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow appearance-none cursor-pointer"
-              >
-                <option value="" disabled selected class="bg-white text-slate-900">请选择生产商</option>
-                <option v-for="manu in manufacturers" :key="manu" :value="manu" class="bg-white text-slate-900">
-                  {{ manu }}
-                </option>
-              </select>
-            </div>
-
-            <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                规格型号 / Model
-              </label>
-              <BaseInput 
-                v-model="formData.model" 
-                placeholder="请输入规格型号"
-                class="bg-slate-50/50 rounded-2xl border-slate-200 font-bold text-slate-700"
-              />
-            </div>
-          </div>
-          
-          <!-- Footer -->
-          <div class="mt-10 flex justify-end gap-4">
-            <button @click="handleCancel" class="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">取消</button>
-            <button @click="emit('save')" class="px-8 py-3 rounded-xl font-bold bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl hover:shadow-indigo-300 transition-all flex items-center active:scale-95">
-              确认配置
-            </button>
-          </div>
+        <div class="part-form__row">
+          <label class="part-form__label">生产厂商</label>
+          <input
+            v-model="formData.manufacturer"
+            type="text"
+            class="part-form__control"
+            list="part-form-manufacturer-options"
+            placeholder="选择或输入厂商"
+            data-testid="part-form-manufacturer"
+          />
+          <datalist id="part-form-manufacturer-options">
+            <option v-for="m in manufacturers" :key="m" :value="m" />
+          </datalist>
         </div>
       </div>
-    </Transition>
-  </Teleport>
+
+      <div class="part-form__grid">
+        <div class="part-form__row">
+          <label class="part-form__label">规格型号</label>
+          <input
+            v-model="formData.model"
+            type="text"
+            class="part-form__control mono"
+            placeholder="例如 V-2024001"
+            spellcheck="false"
+            autocomplete="off"
+            data-testid="part-form-model"
+          />
+        </div>
+
+        <div class="part-form__row">
+          <label class="part-form__label">计量单位</label>
+          <input
+            v-model="formData.unit"
+            type="text"
+            class="part-form__control"
+            placeholder="例如 件 / 台 / 米"
+            spellcheck="false"
+            autocomplete="off"
+            data-testid="part-form-unit"
+          />
+        </div>
+      </div>
+
+      <div class="part-form__row">
+        <label class="part-form__label">备注</label>
+        <textarea
+          v-model="formData.remark"
+          class="part-form__control part-form__control--textarea"
+          rows="2"
+          placeholder="可选，记录工艺、规格变更等信息"
+          data-testid="part-form-remark"
+        />
+      </div>
+    </form>
+
+    <template #footer>
+      <BaseButton variant="text" size="sm" data-testid="part-form-cancel" @click="onCancel">
+        取消
+      </BaseButton>
+      <BaseButton
+        variant="primary"
+        size="sm"
+        :loading="saving"
+        data-testid="part-form-submit"
+        @click="onSave"
+      >
+        {{ editingPart ? '保存' : '创建' }}
+      </BaseButton>
+    </template>
+  </BaseDialog>
 </template>
 
 <style scoped>
-.dialog-fade-enter-active,
-.dialog-fade-leave-active {
-  transition: opacity 0.3s ease;
+.part-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
-.dialog-fade-enter-from,
-.dialog-fade-leave-to {
-  opacity: 0;
+.part-form__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
-.dialog-fade-enter-active .premium-card,
-.dialog-fade-leave-active .premium-card {
-  transition: transform 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+.part-form__row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
-.dialog-fade-enter-from .premium-card,
-.dialog-fade-leave-to .premium-card {
-  transform: scale(0.95) translateY(20px);
+.part-form__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+.part-form__required {
+  color: var(--error);
+  margin-left: 2px;
+}
+.part-form__control {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.part-form__control::placeholder {
+  color: var(--ink-tertiary);
+}
+.part-form__control:focus {
+  border-color: var(--primary-focus, #5e69d1);
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.15);
+}
+.part-form__control:disabled {
+  background: var(--surface-2);
+  color: var(--ink-subtle);
+  cursor: not-allowed;
+}
+.part-form__control--textarea {
+  height: auto;
+  padding: 8px 10px;
+  resize: vertical;
+  min-height: 60px;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+@media (max-width: 640px) {
+  .part-form__grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

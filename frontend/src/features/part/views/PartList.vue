@@ -1,24 +1,39 @@
 <script setup>
-import { ref, onMounted, reactive } from 'vue'
-import { getParts, deletePart, createPart, updatePart, getPartTypes, getManufacturers } from '@/features/part/api'
-import { Plus } from 'lucide-vue-next'
+import { onMounted, reactive, ref } from 'vue'
+import { Plus, RefreshCw } from 'lucide-vue-next'
+import BaseButton from '@/shared/components/ui/BaseButton.vue'
+import PageHeader from '@/shared/components/ui/PageHeader.vue'
 import { useConfirm } from '@/shared/composables/useConfirm'
 import { useToast } from '@/shared/composables/useToast'
+import {
+  createPart,
+  deletePart,
+  getManufacturers,
+  getPartTypes,
+  getParts,
+  updatePart
+} from '@/features/part/api'
+import PartEditDialog from '../components/PartEditDialog.vue'
 import PartSearchFilter from '../components/PartSearchFilter.vue'
 import PartTable from '../components/PartTable.vue'
-import PartEditDialog from '../components/PartEditDialog.vue'
+
+const PAGE_SIZE = 10
 
 const parts = ref([])
 const types = ref([])
 const manufacturers = ref([])
 const loading = ref(false)
+const saving = ref(false)
+const total = ref(0)
+const hasMore = ref(false)
+
 const query = reactive({
   keyword: '',
+  partType: '',
+  manufacturer: '',
   page: 1,
-  size: 10
+  size: PAGE_SIZE
 })
-const total = ref(0)
-const hasMore = ref(true)
 
 const showDialog = ref(false)
 const editingPart = ref(null)
@@ -27,106 +42,151 @@ const formData = reactive({
   partName: '',
   partType: '',
   manufacturer: '',
-  model: ''
+  model: '',
+  unit: '',
+  remark: ''
 })
 
 const { confirm } = useConfirm()
 const toast = useToast()
 
-const loadData = async () => {
+function resetFormData() {
+  Object.assign(formData, {
+    partCode: '',
+    partName: '',
+    partType: '',
+    manufacturer: '',
+    model: '',
+    unit: '',
+    remark: ''
+  })
+}
+
+async function loadData() {
   loading.value = true
   try {
-    const res = await getParts(query)
-    parts.value = res.list || []
-    total.value = res.total || 0
-    hasMore.value = (res.list && res.list.length >= query.size)
+    const params = { page: query.page, size: query.size }
+    if (query.keyword.trim()) params.keyword = query.keyword.trim()
+    if (query.partType) params.partType = query.partType
+    if (query.manufacturer) params.manufacturer = query.manufacturer
+    const res = await getParts(params)
+    parts.value = res?.list || []
+    total.value = res?.total || 0
+    hasMore.value = parts.value.length >= query.size && query.page * query.size < total.value
   } catch (error) {
-    console.error('Failed to load parts:', error)
+    parts.value = []
+    total.value = 0
     hasMore.value = false
   } finally {
     loading.value = false
   }
 }
 
-const loadOptions = async () => {
+async function loadOptions() {
   try {
-    types.value = await getPartTypes() || []
-    manufacturers.value = await getManufacturers() || []
+    const [t, m] = await Promise.all([getPartTypes(), getManufacturers()])
+    types.value = Array.isArray(t) ? t : []
+    manufacturers.value = Array.isArray(m) ? m : []
   } catch (error) {
-    console.error('Failed to load options:', error)
+    /* request.js already toasted; keep options empty */
   }
 }
 
-const handleSearch = () => {
+function handleSearch() {
   query.page = 1
   loadData()
 }
 
-const handlePageChange = (delta) => {
-  query.page += delta
+function handleReset() {
+  query.keyword = ''
+  query.partType = ''
+  query.manufacturer = ''
+  query.page = 1
   loadData()
 }
 
-const handleCreate = () => {
+function handlePageChange(delta) {
+  const next = query.page + delta
+  if (next < 1) return
+  query.page = next
+  loadData()
+}
+
+function handleCreate() {
   editingPart.value = null
-  Object.assign(formData, {
-    partCode: '',
-    partName: '',
-    partType: '',
-    manufacturer: '',
-    model: ''
-  })
+  resetFormData()
   showDialog.value = true
 }
 
-const handleEdit = (part) => {
+function handleEdit(part) {
   editingPart.value = part
   Object.assign(formData, {
-    partCode: part.partCode,
-    partName: part.partName,
-    partType: part.partType,
-    manufacturer: part.manufacturer,
-    model: part.model
+    partCode: part.partCode || '',
+    partName: part.partName || '',
+    partType: part.partType || '',
+    manufacturer: part.manufacturer || '',
+    model: part.model || '',
+    unit: part.unit || '',
+    remark: part.remark || ''
   })
   showDialog.value = true
 }
 
-const handleSave = async () => {
-  if (!formData.partCode || !formData.partName || !formData.partType) {
-    toast.error('请填写必填项：配件代码、配件名称、配件类型')
+async function handleSave() {
+  if (!formData.partCode?.trim() || !formData.partName?.trim() || !formData.partType?.trim()) {
+    toast.error('请填写必填项：配件编码、名称、类型')
     return
   }
 
+  saving.value = true
   try {
+    const payload = {
+      partCode: formData.partCode.trim(),
+      partName: formData.partName.trim(),
+      partType: formData.partType.trim(),
+      manufacturer: formData.manufacturer?.trim() || undefined,
+      model: formData.model?.trim() || undefined,
+      unit: formData.unit?.trim() || undefined,
+      remark: formData.remark?.trim() || undefined
+    }
     if (editingPart.value) {
-      await updatePart(editingPart.value.id, formData)
-      toast.success('配件更新成功')
+      await updatePart(editingPart.value.id, payload)
+      toast.success('配件已更新')
     } else {
-      await createPart(formData)
-      toast.success('配件创建成功')
+      await createPart(payload)
+      toast.success('配件已创建')
     }
     showDialog.value = false
+    resetFormData()
+    editingPart.value = null
     loadData()
+    loadOptions()
   } catch (error) {
-    console.error('Save error:', error)
+    /* request.js already toasted; keep dialog open for user to fix input */
+  } finally {
+    saving.value = false
   }
 }
 
-const handleDelete = async (part) => {
-  const confirmed = await confirm({
+async function handleDelete(part) {
+  const ok = await confirm({
     title: '删除配件',
-    message: `确定要删除配件"${part.partName}"吗？此操作不可恢复。`,
-    type: 'danger'
+    message: `确定要删除「${part.partName}」(${part.partCode}) 吗？此操作不可恢复。若该配件已参与溯源记录，删除会被后端拒绝（HTTP 409）。`,
+    confirmText: '删除',
+    cancelText: '取消',
+    tone: 'danger'
   })
-  
-  if (!confirmed) return
-  
+  if (!ok) return
+
   try {
     await deletePart(part.id)
-    toast.success('配件删除成功')
+    toast.success('配件已删除')
+    if (parts.value.length === 1 && query.page > 1) {
+      query.page -= 1
+    }
     loadData()
   } catch (error) {
-    console.error('Delete error:', error)
+    /* request.js 拦截器已 toast 后端 message：例如 "配件已参与溯源记录，不能删除: ids=[2]" */
   }
 }
 
@@ -137,48 +197,90 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-8 relative z-10">
-    <div class="relative mb-12">
-      <div class="absolute -left-12 -top-12 size-40 bg-indigo-200 rounded-full blur-[80px] opacity-30"></div>
-      <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10">
-        <div>
-          <h1 class="text-5xl font-extrabold tracking-tight text-slate-900 leading-[1.1]">
-              智能配件 <span class="text-indigo-600">中枢</span>
-          </h1>
-          <p class="text-lg text-slate-500 mt-4 max-w-2xl font-medium leading-relaxed">
-              Neural Part Inventory. 维护供应链的物理节点元数据与数字档案。
-          </p>
-        </div>
-        <button @click="handleCreate" class="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl shadow-xl shadow-indigo-200 font-bold transition-all flex items-center justify-center hover:scale-105 active:scale-95">
-          <Plus class="w-5 h-5 mr-2" />
-          <span>注入新节点</span>
-        </button>
-      </div>
-    </div>
+  <div class="part-list">
+    <PageHeader
+      title="配件管理"
+      :subtitle="loading
+        ? '加载中…'
+        : `${total.toLocaleString()} 个 SPU · 第 ${query.page} 页 · 已参与溯源的配件不可删除`"
+    >
+      <template #actions>
+        <BaseButton
+          variant="secondary"
+          size="sm"
+          data-testid="part-list-refresh"
+          :loading="loading"
+          @click="loadData"
+        >
+          <template #icon><RefreshCw class="part-list__btn-icon" /></template>
+          刷新
+        </BaseButton>
+        <BaseButton
+          variant="primary"
+          size="sm"
+          data-testid="part-list-create"
+          @click="handleCreate"
+        >
+          <template #icon><Plus class="part-list__btn-icon" /></template>
+          新建配件
+        </BaseButton>
+      </template>
+    </PageHeader>
 
-    <PartSearchFilter 
-      v-model="query.keyword" 
-      @search="handleSearch" 
+    <PartSearchFilter
+      v-model:keyword="query.keyword"
+      v-model:part-type="query.partType"
+      v-model:manufacturer="query.manufacturer"
+      :types="types"
+      :manufacturers="manufacturers"
+      :total="total"
+      @search="handleSearch"
+      @reset="handleReset"
     />
 
-    <PartTable 
-      :parts="parts" 
-      :loading="loading" 
-      :total="total" 
-      :query="query" 
-      :hasMore="hasMore"
+    <PartTable
+      :parts="parts"
+      :loading="loading"
+      :total="total"
+      :page="query.page"
+      :size="query.size"
+      :has-more="hasMore"
       @edit="handleEdit"
       @delete="handleDelete"
       @page-change="handlePageChange"
+      @create="handleCreate"
     />
 
-    <PartEditDialog 
+    <PartEditDialog
       v-model:visible="showDialog"
-      :editingPart="editingPart"
-      :formData="formData"
+      :editing-part="editingPart"
+      :form-data="formData"
       :types="types"
       :manufacturers="manufacturers"
+      :saving="saving"
       @save="handleSave"
     />
   </div>
 </template>
+
+<style scoped>
+.part-list {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 24px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.part-list__btn-icon {
+  width: 13px;
+  height: 13px;
+}
+
+@media (max-width: 640px) {
+  .part-list {
+    padding: 16px 12px 32px;
+  }
+}
+</style>
