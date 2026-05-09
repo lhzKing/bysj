@@ -1,33 +1,84 @@
 <script setup>
+import { computed } from 'vue'
 import BaseButton from '@/shared/components/ui/BaseButton.vue'
 import EmptyState from '@/shared/components/ui/EmptyState.vue'
 import LoadingSkeleton from '@/shared/components/ui/LoadingSkeleton.vue'
-import { Edit, Package, Trash2 } from 'lucide-vue-next'
+import StatusPill from '@/shared/components/ui/StatusPill.vue'
+import { Edit, Package, Power, PowerOff, Trash2 } from 'lucide-vue-next'
 
 /**
- * PartTable —— Linear-light dense 配件表 + 移动端卡片列表。
+ * PartTable —— Linear-light dense 配件表 + 移动端卡片列表 + 多选批量删除工具条 + 启停状态。
  *
  * 视觉契约：与 trace-list / flow-task 表同源。
  *  - 32px 高 thead，11.5px uppercase 字号、ink-subtle、letter-spacing 0.04em
- *  - tbody 行 hover surface-2；最右列操作 BaseButton variant="text" 的 size sm
- *  - 编码列 mono、ink；名称列含名称 + 灰副 model；类型列 StatusPill mute
- *  - <640px：表格隐藏，cards UL 显示；每条卡含 编码 mono + 名称 + 类型/厂商 grid + 操作行
+ *  - tbody 行 hover surface-2；最右列操作分散排列（编辑 / 启用 or 禁用 / 删除）
+ *  - 选中复选框列：48px 宽，居中，全选放在 thead
+ *  - 启停状态走 StatusPill（success "启用" / mute "禁用"）
+ *  - <640px：表格隐藏，cards UL 显示；卡片头部含 选择 checkbox + 编码 + 启停 pill
  *  - 空态、加载态分别走 EmptyState / LoadingSkeleton 原子
+ *  - 选中 N 条时显示 sticky toolbar（顶部，带"批量删除 / 取消选择"两枚按钮）
  *
  * 接口：
- *  - parts / loading / total / page / size / hasMore / hasPrev
- *  - @edit(part) / @delete(part) / @page-change(delta) / @create
+ *  - parts / loading / total / page / size / hasMore / selected (Array<id>)
+ *  - @edit(part) / @delete(part) / @enable(part) / @disable(part) / @page-change(delta) / @create
+ *  - @update:selected(Array<id>) / @batch-delete / @clear-selection
  */
-defineProps({
+const props = defineProps({
   parts: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
   total: { type: Number, default: 0 },
   page: { type: Number, default: 1 },
   size: { type: Number, default: 10 },
-  hasMore: { type: Boolean, default: false }
+  hasMore: { type: Boolean, default: false },
+  selected: { type: Array, default: () => [] }
 })
 
-const emit = defineEmits(['edit', 'delete', 'page-change', 'create'])
+const emit = defineEmits([
+  'edit',
+  'delete',
+  'enable',
+  'disable',
+  'page-change',
+  'create',
+  'update:selected',
+  'batch-delete',
+  'clear-selection'
+])
+
+const selectedSet = computed(() => new Set(props.selected))
+
+const allSelected = computed(
+  () => props.parts.length > 0 && props.parts.every((p) => selectedSet.value.has(p.id))
+)
+
+const someSelected = computed(
+  () => props.parts.some((p) => selectedSet.value.has(p.id)) && !allSelected.value
+)
+
+function isEnabled(part) {
+  return part?.enabled !== false
+}
+
+function toggleRow(part, checked) {
+  const next = new Set(props.selected)
+  if (checked) next.add(part.id)
+  else next.delete(part.id)
+  emit('update:selected', [...next])
+}
+
+function toggleAll(checked) {
+  if (checked) {
+    const next = new Set(props.selected)
+    props.parts.forEach((p) => next.add(p.id))
+    emit('update:selected', [...next])
+  } else {
+    const pageIds = new Set(props.parts.map((p) => p.id))
+    emit(
+      'update:selected',
+      props.selected.filter((id) => !pageIds.has(id))
+    )
+  }
+}
 
 function onEdit(part) {
   emit('edit', part)
@@ -35,16 +86,58 @@ function onEdit(part) {
 function onDelete(part) {
   emit('delete', part)
 }
+function onEnable(part) {
+  emit('enable', part)
+}
+function onDisable(part) {
+  emit('disable', part)
+}
 function onPrev() {
   emit('page-change', -1)
 }
 function onNext() {
   emit('page-change', 1)
 }
+function onBatchDelete() {
+  emit('batch-delete')
+}
+function onClearSelection() {
+  emit('clear-selection')
+}
 </script>
 
 <template>
   <section class="part-table" data-testid="part-table">
+    <!-- Batch toolbar -->
+    <div
+      v-if="selected.length > 0"
+      class="part-table__toolbar"
+      data-testid="part-table-toolbar"
+    >
+      <span class="part-table__toolbar-count">
+        已选 <strong>{{ selected.length }}</strong> 条
+      </span>
+      <div class="part-table__toolbar-actions">
+        <BaseButton
+          variant="text"
+          size="sm"
+          data-testid="part-table-toolbar-clear"
+          @click="onClearSelection"
+        >
+          取消选择
+        </BaseButton>
+        <BaseButton
+          variant="danger"
+          size="sm"
+          data-testid="part-table-toolbar-delete"
+          @click="onBatchDelete"
+        >
+          <template #icon><Trash2 class="part-table__action-icon" /></template>
+          批量删除
+        </BaseButton>
+      </div>
+    </div>
+
     <!-- Loading -->
     <div v-if="loading" class="part-table__loading">
       <LoadingSkeleton v-for="i in 6" :key="i" height="44px" />
@@ -72,11 +165,22 @@ function onNext() {
         <table class="part-table__table">
           <thead>
             <tr>
+              <th class="part-table__th part-table__th--check">
+                <input
+                  type="checkbox"
+                  class="part-table__checkbox"
+                  data-testid="part-table-check-all"
+                  :checked="allSelected"
+                  :indeterminate.prop="someSelected"
+                  @change="toggleAll($event.target.checked)"
+                />
+              </th>
               <th class="part-table__th">配件编码</th>
               <th class="part-table__th">名称 / 型号</th>
               <th class="part-table__th">类型</th>
               <th class="part-table__th">厂商</th>
               <th class="part-table__th">单位</th>
+              <th class="part-table__th">状态</th>
               <th class="part-table__th part-table__th--actions">操作</th>
             </tr>
           </thead>
@@ -85,9 +189,19 @@ function onNext() {
               v-for="part in parts"
               :key="part.id"
               class="part-table__tr"
+              :class="{ 'part-table__tr--selected': selectedSet.has(part.id) }"
               data-testid="part-table-row"
               :data-id="part.id"
             >
+              <td class="part-table__td part-table__td--check" @click.stop>
+                <input
+                  type="checkbox"
+                  class="part-table__checkbox"
+                  :data-testid="`part-table-check-${part.id}`"
+                  :checked="selectedSet.has(part.id)"
+                  @change="toggleRow(part, $event.target.checked)"
+                />
+              </td>
               <td class="part-table__td part-table__td--code mono">{{ part.partCode }}</td>
               <td class="part-table__td">
                 <div class="part-table__name">
@@ -101,6 +215,11 @@ function onNext() {
               </td>
               <td class="part-table__td">{{ part.manufacturer || '-' }}</td>
               <td class="part-table__td part-table__td--muted">{{ part.unit || '-' }}</td>
+              <td class="part-table__td">
+                <StatusPill :tone="isEnabled(part) ? 'success' : 'mute'">
+                  {{ isEnabled(part) ? '启用' : '禁用' }}
+                </StatusPill>
+              </td>
               <td class="part-table__td part-table__td--actions" @click.stop>
                 <button
                   type="button"
@@ -110,6 +229,26 @@ function onNext() {
                 >
                   <Edit class="part-table__action-icon" />
                   编辑
+                </button>
+                <button
+                  v-if="isEnabled(part)"
+                  type="button"
+                  class="part-table__row-link part-table__row-link--warn"
+                  data-testid="part-table-row-disable"
+                  @click="onDisable(part)"
+                >
+                  <PowerOff class="part-table__action-icon" />
+                  禁用
+                </button>
+                <button
+                  v-else
+                  type="button"
+                  class="part-table__row-link part-table__row-link--success"
+                  data-testid="part-table-row-enable"
+                  @click="onEnable(part)"
+                >
+                  <Power class="part-table__action-icon" />
+                  启用
                 </button>
                 <button
                   type="button"
@@ -132,14 +271,30 @@ function onNext() {
           v-for="part in parts"
           :key="part.id"
           class="part-table__card"
+          :class="{ 'part-table__card--selected': selectedSet.has(part.id) }"
           data-testid="part-table-card"
         >
           <div class="part-table__card-row">
-            <span class="part-table__card-code mono">{{ part.partCode }}</span>
-            <span v-if="part.partType" class="part-table__type">{{ part.partType }}</span>
+            <label class="part-table__card-check">
+              <input
+                type="checkbox"
+                class="part-table__checkbox"
+                :data-testid="`part-table-card-check-${part.id}`"
+                :checked="selectedSet.has(part.id)"
+                @change="toggleRow(part, $event.target.checked)"
+              />
+              <span class="part-table__card-code mono">{{ part.partCode }}</span>
+            </label>
+            <StatusPill :tone="isEnabled(part) ? 'success' : 'mute'">
+              {{ isEnabled(part) ? '启用' : '禁用' }}
+            </StatusPill>
           </div>
           <p class="part-table__card-name">{{ part.partName }}</p>
           <dl class="part-table__card-grid">
+            <div>
+              <dt>类型</dt>
+              <dd>{{ part.partType || '-' }}</dd>
+            </div>
             <div>
               <dt>型号</dt>
               <dd class="mono">{{ part.model || '-' }}</dd>
@@ -157,6 +312,26 @@ function onNext() {
             <BaseButton variant="text" size="sm" data-testid="part-table-card-edit" @click="onEdit(part)">
               <template #icon><Edit class="part-table__action-icon" /></template>
               编辑
+            </BaseButton>
+            <BaseButton
+              v-if="isEnabled(part)"
+              variant="text"
+              size="sm"
+              data-testid="part-table-card-disable"
+              @click="onDisable(part)"
+            >
+              <template #icon><PowerOff class="part-table__action-icon" /></template>
+              禁用
+            </BaseButton>
+            <BaseButton
+              v-else
+              variant="text"
+              size="sm"
+              data-testid="part-table-card-enable"
+              @click="onEnable(part)"
+            >
+              <template #icon><Power class="part-table__action-icon" /></template>
+              启用
             </BaseButton>
             <BaseButton variant="text" size="sm" data-testid="part-table-card-delete" @click="onDelete(part)">
               <template #icon><Trash2 class="part-table__action-icon" /></template>
@@ -205,6 +380,29 @@ function onNext() {
   overflow: hidden;
 }
 
+.part-table__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--primary-soft);
+  border-bottom: 1px solid var(--hairline);
+}
+.part-table__toolbar-count {
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.part-table__toolbar-count strong {
+  color: var(--primary);
+  font-weight: 600;
+  margin: 0 2px;
+}
+.part-table__toolbar-actions {
+  display: flex;
+  gap: 6px;
+}
+
 .part-table__loading {
   padding: 16px;
   display: flex;
@@ -239,8 +437,12 @@ function onNext() {
   background: transparent;
   white-space: nowrap;
 }
+.part-table__th--check {
+  width: 40px;
+  padding-right: 0;
+}
 .part-table__th--actions {
-  width: 160px;
+  width: 220px;
   padding-right: 16px;
   text-align: right;
 }
@@ -250,6 +452,9 @@ function onNext() {
 }
 .part-table__tr:hover .part-table__td {
   background: var(--surface-2);
+}
+.part-table__tr--selected .part-table__td {
+  background: var(--primary-soft);
 }
 
 .part-table__td {
@@ -263,6 +468,10 @@ function onNext() {
 .part-table__tr:last-child .part-table__td {
   border-bottom: 0;
 }
+.part-table__td--check {
+  width: 40px;
+  padding-right: 0;
+}
 .part-table__td--code {
   color: var(--ink);
   white-space: nowrap;
@@ -274,6 +483,13 @@ function onNext() {
   padding-right: 16px;
   text-align: right;
   white-space: nowrap;
+}
+
+.part-table__checkbox {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--primary);
 }
 
 .part-table__name {
@@ -317,14 +533,31 @@ function onNext() {
   padding: 4px 8px;
   border-radius: 6px;
   transition: background 0.15s, color 0.15s;
+  margin-left: 4px;
+}
+.part-table__row-link:first-child {
+  margin-left: 0;
 }
 .part-table__row-link:hover {
   background: var(--primary-soft);
   color: var(--primary-hover);
 }
+.part-table__row-link--warn {
+  color: var(--warn);
+}
+.part-table__row-link--warn:hover {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.part-table__row-link--success {
+  color: var(--success);
+}
+.part-table__row-link--success:hover {
+  background: var(--success-soft);
+  color: var(--success);
+}
 .part-table__row-link--danger {
   color: var(--error);
-  margin-left: 4px;
 }
 .part-table__row-link--danger:hover {
   background: var(--error-soft);
@@ -414,12 +647,22 @@ function onNext() {
   .part-table__card:last-child {
     border-bottom: 0;
   }
+  .part-table__card--selected {
+    background: var(--primary-soft);
+  }
   .part-table__card-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
     margin-bottom: 6px;
+  }
+  .part-table__card-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
   }
   .part-table__card-code {
     color: var(--ink);
@@ -458,6 +701,7 @@ function onNext() {
     display: flex;
     gap: 4px;
     justify-content: flex-end;
+    flex-wrap: wrap;
   }
   .part-table__pagination {
     flex-direction: column;

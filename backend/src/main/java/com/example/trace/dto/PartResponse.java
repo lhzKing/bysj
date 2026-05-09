@@ -51,6 +51,12 @@ public class PartResponse {
     private String remark;
 
     /**
+     * 启停标志：true=启用（默认）/ false=禁用。禁用后仍保留历史溯源数据，
+     * 但生产赋码等写入流程应拒绝使用该 SPU。
+     */
+    private Boolean enabled;
+
+    /**
      * 创建时间
      */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

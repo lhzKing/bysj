@@ -6,8 +6,11 @@ import PageHeader from '@/shared/components/ui/PageHeader.vue'
 import { useConfirm } from '@/shared/composables/useConfirm'
 import { useToast } from '@/shared/composables/useToast'
 import {
+  batchDeleteParts,
   createPart,
   deletePart,
+  disablePart,
+  enablePart,
   getManufacturers,
   getPartTypes,
   getParts,
@@ -26,11 +29,13 @@ const loading = ref(false)
 const saving = ref(false)
 const total = ref(0)
 const hasMore = ref(false)
+const selectedIds = ref([])
 
 const query = reactive({
   keyword: '',
   partType: '',
   manufacturer: '',
+  enabled: '',
   page: 1,
   size: PAGE_SIZE
 })
@@ -69,6 +74,8 @@ async function loadData() {
     if (query.keyword.trim()) params.keyword = query.keyword.trim()
     if (query.partType) params.partType = query.partType
     if (query.manufacturer) params.manufacturer = query.manufacturer
+    if (query.enabled === 'true') params.enabled = true
+    else if (query.enabled === 'false') params.enabled = false
     const res = await getParts(params)
     parts.value = res?.list || []
     total.value = res?.total || 0
@@ -101,6 +108,7 @@ function handleReset() {
   query.keyword = ''
   query.partType = ''
   query.manufacturer = ''
+  query.enabled = ''
   query.page = 1
   loadData()
 }
@@ -171,16 +179,17 @@ async function handleSave() {
 async function handleDelete(part) {
   const ok = await confirm({
     title: '删除配件',
-    message: `确定要删除「${part.partName}」(${part.partCode}) 吗？此操作不可恢复。若该配件已参与溯源记录，删除会被后端拒绝（HTTP 409）。`,
+    message: `确定要删除「${part.partName}」(${part.partCode}) 吗？此操作不可恢复。若该配件已参与溯源记录，删除会被后端拒绝（HTTP 409），届时可改用“禁用”软下线。`,
     confirmText: '删除',
     cancelText: '取消',
-    tone: 'danger'
+    type: 'danger'
   })
   if (!ok) return
 
   try {
     await deletePart(part.id)
     toast.success('配件已删除')
+    selectedIds.value = selectedIds.value.filter((id) => id !== part.id)
     if (parts.value.length === 1 && query.page > 1) {
       query.page -= 1
     }
@@ -188,6 +197,67 @@ async function handleDelete(part) {
   } catch (error) {
     /* request.js 拦截器已 toast 后端 message：例如 "配件已参与溯源记录，不能删除: ids=[2]" */
   }
+}
+
+async function handleBatchDelete() {
+  if (!selectedIds.value.length) return
+  const ok = await confirm({
+    title: `批量删除 ${selectedIds.value.length} 条配件`,
+    message: `选中的配件将被永久删除。若任一配件已参与溯源，整批将被后端拒绝（HTTP 409），届时可改用“禁用”软下线。`,
+    confirmText: '批量删除',
+    cancelText: '取消',
+    type: 'danger'
+  })
+  if (!ok) return
+
+  try {
+    await batchDeleteParts([...selectedIds.value])
+    toast.success(`已删除 ${selectedIds.value.length} 条配件`)
+    selectedIds.value = []
+    if (query.page > 1 && parts.value.length === 0) {
+      query.page -= 1
+    }
+    loadData()
+  } catch (error) {
+    /* request.js 已 toast 后端 message */
+  }
+}
+
+async function handleEnable(part) {
+  try {
+    await enablePart(part.id)
+    toast.success(`配件「${part.partName}」已启用`)
+    loadData()
+  } catch (error) {
+    /* request.js already toasted */
+  }
+}
+
+async function handleDisable(part) {
+  const ok = await confirm({
+    title: '禁用配件',
+    message: `禁用后「${part.partName}」(${part.partCode}) 将不能用于新的生产赋码与扫码流程，但历史溯源数据保留不变。可随时启用恢复。`,
+    confirmText: '禁用',
+    cancelText: '取消',
+    type: 'warning'
+  })
+  if (!ok) return
+
+  try {
+    await disablePart(part.id)
+    toast.success(`配件「${part.partName}」已禁用`)
+    loadData()
+  } catch (error) {
+    /* request.js already toasted */
+  }
+}
+
+function handleSelectionChange(ids) {
+  selectedIds.value = ids
+}
+
+function handleClearSelection() {
+  selectedIds.value = []
 }
 
 onMounted(() => {
@@ -202,7 +272,7 @@ onMounted(() => {
       title="配件管理"
       :subtitle="loading
         ? '加载中…'
-        : `${total.toLocaleString()} 个 SPU · 第 ${query.page} 页 · 已参与溯源的配件不可删除`"
+        : `${total.toLocaleString()} 个 SPU · 第 ${query.page} 页 · 已参与溯源的配件不可删除，可改用禁用`"
     >
       <template #actions>
         <BaseButton
@@ -231,6 +301,7 @@ onMounted(() => {
       v-model:keyword="query.keyword"
       v-model:part-type="query.partType"
       v-model:manufacturer="query.manufacturer"
+      v-model:enabled="query.enabled"
       :types="types"
       :manufacturers="manufacturers"
       :total="total"
@@ -245,10 +316,16 @@ onMounted(() => {
       :page="query.page"
       :size="query.size"
       :has-more="hasMore"
+      :selected="selectedIds"
       @edit="handleEdit"
       @delete="handleDelete"
+      @enable="handleEnable"
+      @disable="handleDisable"
       @page-change="handlePageChange"
       @create="handleCreate"
+      @update:selected="handleSelectionChange"
+      @batch-delete="handleBatchDelete"
+      @clear-selection="handleClearSelection"
     />
 
     <PartEditDialog

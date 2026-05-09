@@ -84,3 +84,21 @@ export function getPartTypes() {
 export function getManufacturers() {
   return request.get('/parts/manufacturers')
 }
+
+/**
+ * Enable a part (软上线).
+ * @param {number} id
+ * @returns {Promise<Object>} updated part
+ */
+export function enablePart(id) {
+  return request.post(`/parts/${id}/enable`)
+}
+
+/**
+ * Disable a part (软下线).
+ * @param {number} id
+ * @returns {Promise<Object>} updated part
+ */
+export function disablePart(id) {
+  return request.post(`/parts/${id}/disable`)
+}

@@ -33,6 +33,7 @@ public class PartController {
             @RequestParam(name = "part_name", required = false) String partName,
             @RequestParam(name = "part_type", required = false) String partType,
             @RequestParam(required = false) String manufacturer,
+            @RequestParam(required = false) Boolean enabled,
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer size,
             @RequestParam(required = false) String sort,
@@ -43,6 +44,7 @@ public class PartController {
         request.setPartName(partName);
         request.setPartType(partType);
         request.setManufacturer(manufacturer);
+        request.setEnabled(enabled);
         request.setPage(page);
         request.setSize(size);
         request.setSort(sort);
@@ -106,6 +108,24 @@ public class PartController {
     public ApiResponse<Integer> batchDeleteParts(@Valid @RequestBody BatchDeleteRequest request) {
         int count = partService.batchDelete(request.getIds());
         return ApiResponse.success(count);
+    }
+
+    /**
+     * 启用配件（软上线）
+     */
+    @PostMapping("/{id}/enable")
+    @RequirePermission("part:manage")
+    public ApiResponse<PartResponse> enablePart(@PathVariable Long id) {
+        return ApiResponse.success(partService.setEnabled(id, true));
+    }
+
+    /**
+     * 禁用配件（软下线）：保留历史溯源数据，但生产/扫码侧应拒绝该 SPU。
+     */
+    @PostMapping("/{id}/disable")
+    @RequirePermission("part:manage")
+    public ApiResponse<PartResponse> disablePart(@PathVariable Long id) {
+        return ApiResponse.success(partService.setEnabled(id, false));
     }
 
     /**

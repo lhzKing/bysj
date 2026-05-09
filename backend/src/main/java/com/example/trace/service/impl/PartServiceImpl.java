@@ -66,6 +66,9 @@ public class PartServiceImpl implements PartService {
         if (StringUtils.hasText(request.getManufacturer())) {
             wrapper.like(BasePartSpec::getManufacturer, request.getManufacturer());
         }
+        if (request.getEnabled() != null) {
+            wrapper.eq(BasePartSpec::getEnabled, request.getEnabled());
+        }
 
         wrapper.orderByDesc(BasePartSpec::getCreateTime);
 
@@ -116,6 +119,7 @@ public class PartServiceImpl implements PartService {
         part.setManufacturer(request.getManufacturer());
         part.setUnit(request.getUnit());
         part.setRemark(request.getRemark());
+        part.setEnabled(Boolean.TRUE);
 
         partMapper.insert(part);
         log.info("创建配件成功: partCode={}", part.getPartCode());
@@ -190,6 +194,26 @@ public class PartServiceImpl implements PartService {
     }
 
     @Override
+    @Transactional
+    public PartResponse setEnabled(Long id, boolean enabled) {
+        BasePartSpec part = partMapper.selectById(id);
+        if (part == null) {
+            throw new BizException(BizCode.NOT_FOUND, "配件不存在");
+        }
+
+        // 状态不变直接返回，避免无谓 UPDATE 与日志噪声。
+        if (Boolean.valueOf(enabled).equals(part.getEnabled())) {
+            return convertToResponse(part);
+        }
+
+        part.setEnabled(enabled);
+        partMapper.updateById(part);
+        log.info("更新配件启停状态: id={}, partCode={}, enabled={}", id, part.getPartCode(), enabled);
+
+        return getPartById(id);
+    }
+
+    @Override
     public List<String> listPartTypes() {
         LambdaQueryWrapper<BasePartSpec> wrapper = new LambdaQueryWrapper<>();
         wrapper.select(BasePartSpec::getPartType);
@@ -230,6 +254,7 @@ public class PartServiceImpl implements PartService {
         response.setManufacturer(part.getManufacturer());
         response.setUnit(part.getUnit());
         response.setRemark(part.getRemark());
+        response.setEnabled(part.getEnabled() != null ? part.getEnabled() : Boolean.TRUE);
         response.setCreateTime(part.getCreateTime());
         response.setUpdateTime(part.getUpdateTime());
         return response;

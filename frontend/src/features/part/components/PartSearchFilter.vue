@@ -9,14 +9,16 @@ import KbdShortcut from '@/shared/components/ui/KbdShortcut.vue'
  *  - 关键词输入：搜索 partCode / partName，支持回车提交
  *  - 类型 select：基于 GET /api/parts/types 注入
  *  - 厂商 select：基于 GET /api/parts/manufacturers 注入
- *  - 清空按钮：keyword/partType/manufacturer 任一非空时显示
+ *  - 启停 select：全部 / 启用 / 禁用 三态
+ *  - 清空按钮：keyword/partType/manufacturer/enabled 任一非默认时显示
  *
- * 接口：v-model="keyword" / v-model:partType / v-model:manufacturer + @search 触发回车 / @reset 清空。
+ * 接口：v-model:keyword / v-model:partType / v-model:manufacturer / v-model:enabled + @search 触发回车 / @reset 清空。
  */
 defineProps({
   keyword: { type: String, default: '' },
   partType: { type: String, default: '' },
   manufacturer: { type: String, default: '' },
+  enabled: { type: String, default: '' },
   types: { type: Array, default: () => [] },
   manufacturers: { type: Array, default: () => [] },
   total: { type: Number, default: 0 }
@@ -26,6 +28,7 @@ const emit = defineEmits([
   'update:keyword',
   'update:partType',
   'update:manufacturer',
+  'update:enabled',
   'search',
   'reset'
 ])
@@ -39,6 +42,10 @@ function onPartType(e) {
 }
 function onManufacturer(e) {
   emit('update:manufacturer', e.target.value)
+  emit('search')
+}
+function onEnabled(e) {
+  emit('update:enabled', e.target.value)
   emit('search')
 }
 function onEnter() {
@@ -89,8 +96,20 @@ function onReset() {
       <option v-for="m in manufacturers" :key="m" :value="m">厂商 · {{ m }}</option>
     </select>
 
+    <select
+      :value="enabled"
+      class="part-filter__chip"
+      :class="{ 'part-filter__chip--has-val': enabled !== '' }"
+      data-testid="part-filter-enabled"
+      @change="onEnabled"
+    >
+      <option value="">状态 · 全部</option>
+      <option value="true">状态 · 启用</option>
+      <option value="false">状态 · 禁用</option>
+    </select>
+
     <button
-      v-if="keyword || partType || manufacturer"
+      v-if="keyword || partType || manufacturer || enabled !== ''"
       type="button"
       class="part-filter__reset"
       data-testid="part-filter-reset"

@@ -122,12 +122,70 @@ class PartServiceImplTest {
         assertThat(captor.getValue()).containsExactly(4L, 5L);
     }
 
+    @Test
+    void setEnabled_shouldDisableActivePart() {
+        BasePartSpec existing = part(10L, "SPU-010");
+        existing.setEnabled(Boolean.TRUE);
+        when(partMapper.selectById(10L)).thenReturn(existing).thenReturn(reloadedPart(10L, "SPU-010", false));
+
+        com.example.trace.dto.PartResponse response = service.setEnabled(10L, false);
+
+        assertThat(response.getEnabled()).isFalse();
+        ArgumentCaptor<BasePartSpec> captor = ArgumentCaptor.forClass(BasePartSpec.class);
+        verify(partMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getEnabled()).isFalse();
+    }
+
+    @Test
+    void setEnabled_shouldEnableDisabledPart() {
+        BasePartSpec existing = part(11L, "SPU-011");
+        existing.setEnabled(Boolean.FALSE);
+        when(partMapper.selectById(11L)).thenReturn(existing).thenReturn(reloadedPart(11L, "SPU-011", true));
+
+        com.example.trace.dto.PartResponse response = service.setEnabled(11L, true);
+
+        assertThat(response.getEnabled()).isTrue();
+        verify(partMapper).updateById(org.mockito.ArgumentMatchers.any(BasePartSpec.class));
+    }
+
+    @Test
+    void setEnabled_shouldSkipUpdateWhenStateUnchanged() {
+        BasePartSpec existing = part(12L, "SPU-012");
+        existing.setEnabled(Boolean.TRUE);
+        when(partMapper.selectById(12L)).thenReturn(existing);
+
+        com.example.trace.dto.PartResponse response = service.setEnabled(12L, true);
+
+        assertThat(response.getEnabled()).isTrue();
+        verify(partMapper, never()).updateById(org.mockito.ArgumentMatchers.any(BasePartSpec.class));
+    }
+
+    @Test
+    void setEnabled_shouldThrowWhenPartMissing() {
+        when(partMapper.selectById(99L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.setEnabled(99L, true))
+                .isInstanceOf(BizException.class)
+                .satisfies(err -> {
+                    BizException ex = (BizException) err;
+                    assertThat(ex.getCode()).isEqualTo(BizCode.NOT_FOUND);
+                });
+
+        verify(partMapper, never()).updateById(org.mockito.ArgumentMatchers.any(BasePartSpec.class));
+    }
+
     private static BasePartSpec part(Long id, String partCode) {
         BasePartSpec part = new BasePartSpec();
         part.setId(id);
         part.setPartCode(partCode);
         part.setPartName("Part " + id);
         part.setPartType("type");
+        return part;
+    }
+
+    private static BasePartSpec reloadedPart(Long id, String partCode, boolean enabled) {
+        BasePartSpec part = part(id, partCode);
+        part.setEnabled(enabled);
         return part;
     }
 }

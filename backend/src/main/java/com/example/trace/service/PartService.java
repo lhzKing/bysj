@@ -45,6 +45,12 @@ public interface PartService {
     int batchDelete(List<Long> ids);
 
     /**
+     * 启用 / 禁用配件。enabled=true 启用、false 禁用。
+     * 已禁用的 SPU 历史溯源数据保持不变，但禁止用于新的生产赋码与扫码。
+     */
+    PartResponse setEnabled(Long id, boolean enabled);
+
+    /**
      * 获取所有配件类型（用于下拉选择）
      */
     List<String> listPartTypes();

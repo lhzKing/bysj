@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import BaseButton from '@/shared/components/ui/BaseButton.vue'
 import BaseDialog from '@/shared/components/ui/BaseDialog.vue'
+import StatusPill from '@/shared/components/ui/StatusPill.vue'
 import { Cpu } from 'lucide-vue-next'
 
 /**
@@ -9,7 +10,8 @@ import { Cpu } from 'lucide-vue-next'
  *
  * 视觉契约：
  *  - 走 BaseDialog md size；header icon = Cpu；title 根据 editingPart 切换
- *  - 6 个原生 input/select/textarea 字段：partCode（编辑时禁用）/ partName / partType / manufacturer / model / unit / remark
+ *  - 7 字段表单：partCode（编辑时禁用）/ partName / partType / manufacturer / model / unit / remark
+ *  - 编辑模式下额外渲染只读 StatusPill 显示当前启停状态（启停操作通过列表行按钮，不在表单内修改）
  *  - 必填字段红色 *：partCode / partName / partType
  *  - 表单 control 复用 .part-form__control 32px / 8px 圆角 / 1px hairline / focus 切 lavender
  *  - footer：取消（text）+ 提交（primary，loading 态显示 spinner）
@@ -38,9 +40,10 @@ const localVisible = computed({
 const titleText = computed(() => (props.editingPart ? '编辑配件' : '新建配件'))
 const subtitleText = computed(() =>
   props.editingPart
-    ? `配件编码 ${props.editingPart.partCode} 不可修改；其余字段可更新。`
-    : '填写配件基础信息，partCode 创建后不可修改。'
+    ? `配件编码 ${props.editingPart.partCode} 不可修改；启停状态请在列表行按钮切换。`
+    : '填写配件基础信息，partCode 创建后不可修改。新建的配件默认为启用状态。'
 )
+const editingEnabled = computed(() => props.editingPart && props.editingPart.enabled !== false)
 
 function onCancel() {
   localVisible.value = false
@@ -61,6 +64,16 @@ function onSave() {
     data-testid="part-edit-dialog"
   >
     <form class="part-form" data-testid="part-form" @submit.prevent="onSave">
+      <div v-if="editingPart" class="part-form__status-row" data-testid="part-form-status">
+        <span class="part-form__status-label">当前状态</span>
+        <StatusPill :tone="editingEnabled ? 'success' : 'mute'">
+          {{ editingEnabled ? '启用' : '禁用' }}
+        </StatusPill>
+        <span class="part-form__status-hint">
+          状态变更请使用列表行的“启用 / 禁用”按钮，本对话框只编辑元数据。
+        </span>
+      </div>
+
       <div class="part-form__row">
         <label class="part-form__label">
           配件编码
@@ -191,6 +204,29 @@ function onSave() {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+.part-form__status-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+}
+.part-form__status-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-subtle);
+}
+.part-form__status-hint {
+  flex: 1 1 100%;
+  font-size: 12px;
+  color: var(--ink-tertiary);
+  line-height: 1.5;
 }
 .part-form__grid {
   display: grid;

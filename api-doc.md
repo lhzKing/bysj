@@ -1444,6 +1444,7 @@ traceCode={traceCode}|actionType={actionType}|fromNode={fromNode}|toNode={toNode
   | partName | string | ❌ | 配件名称（模糊） |
   | partType | string | ❌ | 配件类型 |
   | manufacturer | string | ❌ | 厂商（模糊） |
+  | enabled | boolean | ❌ | 启停过滤；`true` 只看启用、`false` 只看禁用、不传则不过滤 |
   | page | number | ❌ | 页码（默认1） |
   | size | number | ❌ | 每页数量（默认10） |
   
@@ -1466,6 +1467,7 @@ traceCode={traceCode}|actionType={actionType}|fromNode={fromNode}|toNode={toNode
           "manufacturer": "示例制造商",
           "unit": "件",
           "remark": "演示数据",
+          "enabled": true,
           "create_time": "2024-01-01 10:00:00"
         }
       ],
@@ -1496,6 +1498,7 @@ traceCode={traceCode}|actionType={actionType}|fromNode={fromNode}|toNode={toNode
       "manufacturer": "示例制造商",
       "unit": "件",
       "remark": "演示数据",
+      "enabled": true,
       "create_time": "2024-01-01T10:00:00"
     }
   }
@@ -1612,6 +1615,25 @@ traceCode={traceCode}|actionType={actionType}|fromNode={fromNode}|toNode={toNode
     "data": ["示例制造商", "电机制造厂"]
   }
   ```
+
+### 6.10 启用配件
+
+- **POST** `/api/parts/{id}/enable`
+- **Headers**: `Authorization: Bearer <token>`
+- **权限**: `part:manage`
+- **说明**: 软上线已禁用的配件。已是启用状态时直接返回当前数据，不会再写一次 UPDATE。
+- **Response** (HTTP 200): 返回更新后的配件信息（同 6.2，`enabled: true`）。
+- **错误响应**: 配件不存在返回 HTTP 404 `{ "code": 10004, ... }`。
+
+### 6.11 禁用配件
+
+- **POST** `/api/parts/{id}/disable`
+- **Headers**: `Authorization: Bearer <token>`
+- **权限**: `part:manage`
+- **说明**: 软下线配件。禁用后历史溯源数据保持不变，但**生产赋码与流转任务侧应拒绝该 SPU**（业务约束，不在数据库层硬约束）。已是禁用状态时直接返回当前数据，不会再写一次 UPDATE。
+- **Response** (HTTP 200): 返回更新后的配件信息（同 6.2，`enabled: false`）。
+- **错误响应**: 配件不存在返回 HTTP 404 `{ "code": 10004, ... }`。
+- **与删除的关系**: 删除是物理删除，已参与溯源的 SPU 会返回 409。当 409 时推荐改用本接口禁用，保留溯源链不被打断。
 
 ---
 

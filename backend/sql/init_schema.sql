@@ -70,8 +70,10 @@ CREATE TABLE base_part_spec (
   manufacturer VARCHAR(128) COMMENT 'manufacturer',
   unit VARCHAR(32) COMMENT 'unit',
   remark VARCHAR(255) COMMENT 'remark',
+  enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'enabled flag: 1=active, 0=disabled',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_base_part_spec_enabled (enabled)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='part specification SPU';
 
 -- ==================== Structured business nodes ====================
