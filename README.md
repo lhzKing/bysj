@@ -223,7 +223,7 @@ backend/src/main/java/com/example/trace/
 | 后端 | Spring Boot 3.x + MyBatis-Plus | RESTful API |
 | 数据库 | MySQL 8.0 | 业务数据存储 |
 | 缓存 | Redis | Token 黑名单存储 |
-| 前端 | Vue 3 + Vite + ECharts | 可视化界面与扫码/追踪前端 |
+| 前端 | Vue 3 + Vite + ECharts + 高德地图 + vue-qrcode-reader | 可视化界面与扫码/追踪前端，2026-05 完成 [Linear 设计系统](DESIGN.md) 全量重构（详见 [`前端重构执行任务表_20260507.md`](前端重构执行任务表_20260507.md)） |
 | 认证 | JWT + BCrypt + Redis | 无状态认证 |
 
 ## 环境要求
@@ -315,6 +315,10 @@ mvn spring-boot:run
 后端启动后访问：http://localhost:8080
 
 ## 前端启动与环境变量
+
+> 前端模块完整文档（目录结构 / 设计系统 / 断点策略 / 测试 / 鉴权细节）见 [`frontend/README.md`](frontend/README.md)。本节仅覆盖最小启动路径与敏感凭据规范。
+>
+> **设计系统**：所有 view 严格对齐 [`DESIGN.md`](DESIGN.md) Linear 设计语言（lavender `#5e6ad2` 单 accent + Inter / JetBrains Mono + 4/6/8/12/16 圆角 + 4/8/12/16/24/32/48 间距）。视觉契约存放在 [`frontend/preview/linear-*.html`](frontend/preview/) 共 5 张（登录 / 仪表盘 / 扫码 / 列表 / 详情），是新组件开发的 1:1 对照基线。
 
 ### 1. 安装依赖与生成自签证书
 

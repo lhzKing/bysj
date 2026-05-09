@@ -1793,6 +1793,14 @@ curl http://localhost:8080/api/traces/TC-20260119-0001/verify \
 
 ## 10. 前端对接示例（Vue 3 + Axios）
 
+> 以下示例是**最小化教学版**，与生产代码 `frontend/src/core/api/request.js` 在以下点上简化：
+>
+> - 真代码使用 `core/auth/authStorage.js` 抽象层封装 token 读写（`readToken / writeToken / clearAuthSession`），便于后续平滑迁移到 httpOnly Cookie；示例直接用 `localStorage.getItem/setItem` 演示概念
+> - 真代码额外有 401/403/404/500 全局 toast、`hideErrorToast` 跳过开关、`unwrapBusinessResponse` 抽离的可测拦截器函数
+> - 真代码的 `transformKeysToSnake / transformKeysToCamel` 默认覆盖**所有** query params 与 request body / response data，无需在每个 API 模块手动转换字段大小写
+>
+> 以教学示例为准学习「拦截器 + camelCase↔snake_case 双向转换 + 401 跳登录」的核心模式即可，工程落地直接复用 `request.js` 已经写好的逻辑，**不要把示例 copy 到生产代码里**。
+
 ### 10.1 Axios 实例配置
 
 ```javascript
