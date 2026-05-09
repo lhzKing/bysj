@@ -1,12 +1,30 @@
 <script setup>
-import { reactive, watch, computed } from 'vue'
-import BaseInput from '@/shared/components/ui/BaseInput.vue'
-import { X, Network } from 'lucide-vue-next'
+import { computed, reactive, watch } from 'vue'
+import BaseButton from '@/shared/components/ui/BaseButton.vue'
+import BaseDialog from '@/shared/components/ui/BaseDialog.vue'
+import { ShieldCheck } from 'lucide-vue-next'
 
+/**
+ * RoleEditDialog —— Linear-light 角色创建/编辑对话框。
+ *
+ * 视觉契约：与 UserEditDialog / PartEditDialog 同源。
+ *  - 走 BaseDialog md size；header icon = ShieldCheck；title 根据 editingRole 切换
+ *  - 3 字段表单：roleCode（编辑禁用，1-50 字符 mono）/ roleName（必填，1-50 字符）/ remark（textarea）
+ *  - 必填字段红色 *：roleCode（创建模式）/ roleName
+ *  - 表单 control 复用 .role-form__control 32px / 8px 圆角 / 1px hairline / focus 切 lavender
+ *  - footer：取消（text）+ 提交（primary，loading 态显示 spinner）
+ *  - <640px：BaseDialog 自动占满全屏
+ *
+ * 接口：
+ *  - v-model:visible 双向显隐 / editingRole Object 或 null / saving Boolean
+ *  - @save({ roleCode, roleName, remark }) 提交时触发，父组件负责调用 createRole/updateRole
+ */
 const props = defineProps({
-  visible: Boolean,
-  editingRole: Object
+  visible: { type: Boolean, default: false },
+  editingRole: { type: Object, default: null },
+  saving: { type: Boolean, default: false }
 })
+
 const emit = defineEmits(['update:visible', 'save'])
 
 const localVisible = computed({
@@ -20,122 +38,176 @@ const formData = reactive({
   remark: ''
 })
 
-watch(() => props.visible, (newVal) => {
-  if (newVal) {
+const titleText = computed(() => (props.editingRole ? '编辑角色' : '新建角色'))
+const subtitleText = computed(() =>
+  props.editingRole
+    ? `角色编码 ${props.editingRole.roleCode} 不可修改；权限分配请使用列表行『分配权限』按钮。`
+    : '创建后角色默认不带任何业务权限；创建完成可在列表中点击『分配权限』勾选具体节点。'
+)
+
+watch(
+  () => props.visible,
+  (newVal) => {
+    if (!newVal) return
     if (props.editingRole) {
       Object.assign(formData, {
-        roleCode: props.editingRole.roleCode,
-        roleName: props.editingRole.roleName,
+        roleCode: props.editingRole.roleCode || '',
+        roleName: props.editingRole.roleName || '',
         remark: props.editingRole.remark || ''
       })
     } else {
-      Object.assign(formData, {
-        roleCode: '',
-        roleName: '',
-        remark: ''
-      })
+      Object.assign(formData, { roleCode: '', roleName: '', remark: '' })
     }
   }
-})
+)
 
-const handleSave = () => {
-  emit('save', { ...formData })
+function onCancel() {
+  localVisible.value = false
 }
 
-const handleCancel = () => {
-  localVisible.value = false
+function onSave() {
+  emit('save', {
+    roleCode: formData.roleCode.trim(),
+    roleName: formData.roleName.trim(),
+    remark: formData.remark.trim()
+  })
 }
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition name="dialog-fade">
-      <div v-if="localVisible" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <!-- Backdrop -->
-        <div 
-          class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-          @click="handleCancel"
-        ></div>
-        
-        <!-- Dialog -->
-        <div class="relative premium-card rounded-[40px] w-full max-w-md transform transition-all p-8 max-h-[90vh] overflow-y-auto">
-          <!-- Header -->
-          <div class="flex items-center justify-between mb-8">
-            <h3 class="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-              <Network class="w-6 h-6 text-emerald-600" />
-              {{ editingRole ? '编辑权限拓扑' : '配置新角色拓扑' }}
-            </h3>
-            <button @click="handleCancel" class="size-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors">
-              <X class="w-5 h-5" />
-            </button>
-          </div>
-          
-          <!-- Body -->
-          <div class="space-y-6">
-            <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                访问代码 / Access Code <span class="text-rose-500">*</span>
-              </label>
-              <BaseInput 
-                v-model="formData.roleCode" 
-                placeholder="例如: ROLE_ADMIN"
-                :disabled="!!editingRole"
-                class="bg-slate-50/50 rounded-2xl border-slate-200 font-mono text-emerald-600 font-bold"
-              />
-            </div>
-
-            <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                角色标识 / Role Identity <span class="text-rose-500">*</span>
-              </label>
-              <BaseInput 
-                v-model="formData.roleName" 
-                placeholder="请输入角色名称"
-                class="bg-slate-50/50 rounded-2xl border-slate-200 font-bold text-slate-700"
-              />
-            </div>
-
-            <div>
-              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                拓扑描述 / Description
-              </label>
-              <textarea 
-                v-model="formData.remark"
-                placeholder="请输入节点访问权限说明..."
-                rows="3"
-                class="w-full px-4 py-3 bg-slate-50/50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-shadow resize-none"
-              ></textarea>
-            </div>
-          </div>
-          
-          <!-- Footer -->
-          <div class="mt-10 flex justify-end gap-4">
-            <button @click="handleCancel" class="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">取消</button>
-            <button @click="handleSave" class="px-8 py-3 rounded-xl font-bold bg-emerald-500 text-white shadow-lg shadow-emerald-200 hover:bg-emerald-600 hover:shadow-xl hover:shadow-emerald-300 transition-all flex items-center active:scale-95">
-              确认配置
-            </button>
-          </div>
-        </div>
+  <BaseDialog
+    v-model="localVisible"
+    :title="titleText"
+    :subtitle="subtitleText"
+    :icon="ShieldCheck"
+    size="md"
+    persistent
+    data-testid="role-edit-dialog"
+  >
+    <form class="role-form" data-testid="role-form" @submit.prevent="onSave">
+      <div class="role-form__row">
+        <label class="role-form__label">
+          角色编码
+          <span v-if="!editingRole" class="role-form__required">*</span>
+          <span v-else class="role-form__label-hint">（不可修改）</span>
+        </label>
+        <input
+          v-model="formData.roleCode"
+          type="text"
+          class="role-form__control mono"
+          placeholder="如 INSPECTOR / WAREHOUSE / CUSTOM_ROLE"
+          spellcheck="false"
+          autocomplete="off"
+          :disabled="!!editingRole"
+          data-testid="role-form-code"
+        />
       </div>
-    </Transition>
-  </Teleport>
+
+      <div class="role-form__row">
+        <label class="role-form__label">
+          角色名称
+          <span class="role-form__required">*</span>
+        </label>
+        <input
+          v-model="formData.roleName"
+          type="text"
+          class="role-form__control"
+          placeholder="例如：质检员 / 出入库员"
+          spellcheck="false"
+          autocomplete="off"
+          data-testid="role-form-name"
+        />
+      </div>
+
+      <div class="role-form__row">
+        <label class="role-form__label">描述</label>
+        <textarea
+          v-model="formData.remark"
+          class="role-form__control role-form__control--textarea"
+          rows="3"
+          placeholder="选填，用于说明该角色的业务范围与边界"
+          data-testid="role-form-remark"
+        />
+      </div>
+    </form>
+
+    <template #footer>
+      <BaseButton variant="text" size="sm" data-testid="role-form-cancel" @click="onCancel">
+        取消
+      </BaseButton>
+      <BaseButton
+        variant="primary"
+        size="sm"
+        :loading="saving"
+        data-testid="role-form-submit"
+        @click="onSave"
+      >
+        {{ editingRole ? '保存' : '创建' }}
+      </BaseButton>
+    </template>
+  </BaseDialog>
 </template>
 
 <style scoped>
-.dialog-fade-enter-active,
-.dialog-fade-leave-active {
-  transition: opacity 0.3s ease;
+.role-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
-.dialog-fade-enter-from,
-.dialog-fade-leave-to {
-  opacity: 0;
+.role-form__row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
-.dialog-fade-enter-active .premium-card,
-.dialog-fade-leave-active .premium-card {
-  transition: transform 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+.role-form__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-muted);
 }
-.dialog-fade-enter-from .premium-card,
-.dialog-fade-leave-to .premium-card {
-  transform: scale(0.95) translateY(20px);
+.role-form__label-hint {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-tertiary);
+}
+.role-form__required {
+  color: var(--error);
+  margin-left: 2px;
+}
+.role-form__control {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.role-form__control::placeholder {
+  color: var(--ink-tertiary);
+}
+.role-form__control:focus {
+  border-color: var(--primary-focus, #5e69d1);
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.15);
+}
+.role-form__control:disabled {
+  background: var(--surface-2);
+  color: var(--ink-subtle);
+  cursor: not-allowed;
+}
+.role-form__control--textarea {
+  height: auto;
+  min-height: 76px;
+  padding: 8px 10px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
 </style>

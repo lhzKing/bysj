@@ -1,13 +1,24 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { Plus, RefreshCw } from 'lucide-vue-next'
+import BaseButton from '@/shared/components/ui/BaseButton.vue'
+import PageHeader from '@/shared/components/ui/PageHeader.vue'
 import { useUserStore } from '@/core/stores/user'
-import { getRoles, getRole, deleteRole, createRole, updateRole, getPermissions, assignPermissions } from '@/features/user/api'
-import LoadingSkeleton from '@/shared/components/ui/LoadingSkeleton.vue'
 import { useConfirm } from '@/shared/composables/useConfirm'
 import { useToast } from '@/shared/composables/useToast'
-import RoleTable from '@/features/user/components/RoleTable.vue'
-import RoleEditDialog from '@/features/user/components/RoleEditDialog.vue'
-import PermissionAssignDialog from '@/features/user/components/PermissionAssignDialog.vue'
+import {
+  assignPermissions,
+  createRole,
+  deleteRole,
+  getPermissions,
+  getRole,
+  getRoles,
+  updateRole
+} from '@/features/user/api'
+import RoleEditDialog from '../components/RoleEditDialog.vue'
+import RoleSearchFilter from '../components/RoleSearchFilter.vue'
+import RoleTable from '../components/RoleTable.vue'
+import PermissionAssignDialog from '../components/PermissionAssignDialog.vue'
 
 const ROLE_PRIORITY = {
   SUPER_ADMIN: 3,
@@ -24,6 +35,7 @@ const PROTECTED_PERMISSION_PREFIXES = ['user:', 'role:']
 const roles = ref([])
 const allPermissions = ref([])
 const loading = ref(false)
+const saving = ref(false)
 
 const showDialog = ref(false)
 const showPermissionDialog = ref(false)
@@ -31,6 +43,8 @@ const editingRole = ref(null)
 
 const selectedRole = ref(null)
 const selectedPermissions = ref([])
+
+const filter = reactive({ keyword: '', scope: '' })
 
 const userStore = useUserStore()
 const { confirm } = useConfirm()
@@ -53,9 +67,7 @@ const isProtectedPermissionCode = (permCode) =>
   typeof permCode === 'string' && PROTECTED_PERMISSION_PREFIXES.some((prefix) => permCode.startsWith(prefix))
 
 const canManageRole = (role) => {
-  if (!canManageRoles.value || !role?.roleCode) {
-    return false
-  }
+  if (!canManageRoles.value || !role?.roleCode) return false
   return getRolePriority(currentRoleCode.value) > getRolePriority(role.roleCode)
 }
 
@@ -75,35 +87,54 @@ const roleRows = computed(() =>
   }))
 )
 
+const filteredRoles = computed(() => {
+  const kw = filter.keyword.trim().toLowerCase()
+  const scope = filter.scope
+  return roleRows.value.filter((role) => {
+    if (scope === 'system' && !isSystemRole(role.roleCode)) return false
+    if (scope === 'custom' && isSystemRole(role.roleCode)) return false
+    if (!kw) return true
+    const hay = `${role.roleName || ''} ${role.roleCode || ''} ${role.remark || ''}`.toLowerCase()
+    return hay.includes(kw)
+  })
+})
+
 const assignablePermissions = computed(() => {
-  if (isSuperAdmin.value) {
-    return allPermissions.value
-  }
+  if (isSuperAdmin.value) return allPermissions.value
   return allPermissions.value.filter((permission) => !isProtectedPermissionCode(permission.permCode))
 })
 
-const loadData = async () => {
+async function loadData() {
   loading.value = true
   try {
     const res = await getRoles()
-    roles.value = res || []
+    roles.value = Array.isArray(res) ? res : []
   } catch (error) {
-    console.error('Failed to load roles:', error)
+    /* request.js already toasted */
   } finally {
     loading.value = false
   }
 }
 
-const loadPermissions = async () => {
+async function loadPermissions() {
   try {
     const res = await getPermissions()
-    allPermissions.value = res || []
+    allPermissions.value = Array.isArray(res) ? res : []
   } catch (error) {
-    console.error('Failed to load permissions:', error)
+    /* request.js already toasted */
   }
 }
 
-const handleCreate = () => {
+function handleSearch() {
+  /* filter is computed-only, nothing to call */
+}
+
+function handleReset() {
+  filter.keyword = ''
+  filter.scope = ''
+}
+
+function handleCreate() {
   if (!canManageRoles.value) {
     toast.error('当前账号没有创建角色的权限')
     return
@@ -112,7 +143,7 @@ const handleCreate = () => {
   showDialog.value = true
 }
 
-const handleEdit = (role) => {
+function handleEdit(role) {
   if (!canEditRole(role)) {
     toast.error(`当前角色无权修改 ${role?.roleName || role?.roleCode || '该角色'}`)
     return
@@ -121,56 +152,71 @@ const handleEdit = (role) => {
   showDialog.value = true
 }
 
-const handleSave = async (formData) => {
-  if (!formData.roleCode || !formData.roleName) {
-    toast.error('请填写必填项：角色代码、角色名称')
+async function handleSave(formData) {
+  if (!formData?.roleName) {
+    toast.error('请填写角色名称')
     return
   }
-
+  if (!editingRole.value && !formData.roleCode) {
+    toast.error('请填写角色编码')
+    return
+  }
   if (editingRole.value && !canEditRole(editingRole.value)) {
     toast.error(`当前角色无权修改 ${editingRole.value.roleName || editingRole.value.roleCode || '该角色'}`)
     return
   }
 
+  saving.value = true
   try {
     if (editingRole.value) {
-      await updateRole(editingRole.value.id, formData)
-      toast.success('角色更新成功')
+      await updateRole(editingRole.value.id, {
+        roleName: formData.roleName,
+        remark: formData.remark || ''
+      })
+      toast.success('角色已更新')
     } else {
-      await createRole(formData)
-      toast.success('角色创建成功')
+      await createRole({
+        roleCode: formData.roleCode,
+        roleName: formData.roleName,
+        remark: formData.remark || ''
+      })
+      toast.success('角色已创建')
     }
     showDialog.value = false
+    editingRole.value = null
     await loadData()
   } catch (error) {
-    console.error('Save error:', error)
+    /* request.js already toasted (e.g. 403 越权 / 409 编码重复) */
+  } finally {
+    saving.value = false
   }
 }
 
-const handleDelete = async (role) => {
+async function handleDelete(role) {
   if (!canDeleteRole(role)) {
     toast.error(`当前角色无权删除 ${role?.roleName || role?.roleCode || '该角色'}`)
     return
   }
 
-  const confirmed = await confirm({
+  const ok = await confirm({
     title: '删除角色',
-    message: `确定要删除角色"${role.roleName}"吗？此操作不可恢复。`,
+    message: `确定要删除角色「${role.roleName}」吗？此操作不可恢复，已绑定该角色的用户也会被后端拒绝（409）。`,
+    confirmText: '删除',
+    cancelText: '取消',
     type: 'danger'
   })
-
-  if (!confirmed) return
+  if (!ok) return
 
   try {
     await deleteRole(role.id)
-    toast.success('角色删除成功')
+    toast.success('角色已删除')
     await loadData()
   } catch (error) {
-    console.error('Delete error:', error)
+    /* request.js already toasted */
   }
 }
 
-const handleAssignPermissions = async (role) => {
+async function handleAssignPermissions(role) {
   if (!canAssignPermissionsToRole(role)) {
     toast.error(`当前角色无权分配 ${role?.roleName || role?.roleCode || '该角色'} 的权限`)
     return
@@ -184,29 +230,30 @@ const handleAssignPermissions = async (role) => {
     }
 
     selectedRole.value = { ...role, ...detail }
-    selectedPermissions.value = (detail?.permissions || []).map(permission => permission.id)
+    selectedPermissions.value = (detail?.permissions || []).map((permission) => permission.id)
     showPermissionDialog.value = true
   } catch (error) {
-    console.error('Load role detail error:', error)
     toast.error('角色详情加载失败，请稍后重试')
   }
 }
 
-const handleSavePermissions = async () => {
+async function handleSavePermissions() {
   if (!selectedRole.value) return
-
   if (!canAssignPermissionsToRole(selectedRole.value)) {
     toast.error(`当前角色无权分配 ${selectedRole.value.roleName || selectedRole.value.roleCode || '该角色'} 的权限`)
     return
   }
 
+  saving.value = true
   try {
     await assignPermissions(selectedRole.value.id, selectedPermissions.value)
-    toast.success('权限分配成功')
+    toast.success('权限已分配')
     showPermissionDialog.value = false
     await loadData()
   } catch (error) {
-    console.error('Assign permissions error:', error)
+    /* request.js already toasted */
+  } finally {
+    saving.value = false
   }
 }
 
@@ -217,52 +264,93 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-8 relative z-10">
-    <div class="relative mb-12">
-      <div class="absolute -left-12 -top-12 size-40 bg-emerald-200 rounded-full blur-[80px] opacity-30"></div>
-      <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10">
-        <div>
-          <h1 class="text-5xl font-extrabold tracking-tight text-slate-900 leading-[1.1]">
-              神经元 <span class="text-emerald-600">访问控制</span>
-          </h1>
-          <p class="text-lg text-slate-500 mt-4 max-w-2xl font-medium leading-relaxed">
-              Neural Access Control. 制定数字化生命周期的权限拓扑。
-          </p>
-        </div>
-        <button
-          v-if="canManageRoles"
-          @click="handleCreate"
-          class="px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl shadow-xl shadow-emerald-200 font-bold transition-all flex items-center justify-center hover:scale-105 active:scale-95"
+  <div class="role-list">
+    <PageHeader
+      title="角色管理"
+      :subtitle="loading
+        ? '加载中…'
+        : `${roles.length.toLocaleString()} 个角色 · 系统预置 6 个不可删除；可根据业务自定义新角色并分配权限`"
+    >
+      <template #actions>
+        <BaseButton
+          variant="secondary"
+          size="sm"
+          data-testid="role-list-refresh"
+          :loading="loading"
+          @click="loadData"
         >
-          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
-          <span>配置新角色拓扑</span>
-        </button>
-      </div>
-    </div>
+          <template #icon><RefreshCw class="role-list__btn-icon" /></template>
+          刷新
+        </BaseButton>
+        <BaseButton
+          v-if="canManageRoles"
+          variant="primary"
+          size="sm"
+          data-testid="role-list-create"
+          @click="handleCreate"
+        >
+          <template #icon><Plus class="role-list__btn-icon" /></template>
+          新建角色
+        </BaseButton>
+      </template>
+    </PageHeader>
 
-    <LoadingSkeleton v-if="loading && roles.length === 0" type="table" :rows="4" />
+    <RoleSearchFilter
+      v-model:keyword="filter.keyword"
+      v-model:scope="filter.scope"
+      :total="roleRows.length"
+      :matched="filteredRoles.length"
+      @search="handleSearch"
+      @reset="handleReset"
+    />
 
-    <RoleTable 
-      v-else
-      :roles="roleRows"
+    <RoleTable
+      :roles="filteredRoles"
       :loading="loading"
+      :total="roleRows.length"
+      :matched="filteredRoles.length"
       @edit="handleEdit"
       @delete="handleDelete"
       @assign-permissions="handleAssignPermissions"
+      @create="handleCreate"
     />
 
     <RoleEditDialog
       v-model:visible="showDialog"
-      :editingRole="editingRole"
+      :editing-role="editingRole"
+      :saving="saving"
       @save="handleSave"
     />
 
     <PermissionAssignDialog
       v-model:visible="showPermissionDialog"
-      v-model:selectedPermissions="selectedPermissions"
+      v-model:selected-permissions="selectedPermissions"
       :role="selectedRole"
-      :allPermissions="assignablePermissions"
+      :all-permissions="assignablePermissions"
+      :saving="saving"
       @save="handleSavePermissions"
     />
   </div>
 </template>
+
+<style scoped>
+.role-list {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 24px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.role-list__btn-icon {
+  width: 13px;
+  height: 13px;
+}
+
+@media (max-width: 640px) {
+  .role-list {
+    padding: 16px 12px 32px;
+  }
+}
+</style>

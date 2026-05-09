@@ -1,164 +1,427 @@
 <script setup>
 import { computed } from 'vue'
-import { Lock, X } from 'lucide-vue-next'
+import BaseButton from '@/shared/components/ui/BaseButton.vue'
+import BaseDialog from '@/shared/components/ui/BaseDialog.vue'
+import EmptyState from '@/shared/components/ui/EmptyState.vue'
+import StatusPill from '@/shared/components/ui/StatusPill.vue'
+import { Lock, ShieldOff } from 'lucide-vue-next'
 
+/**
+ * PermissionAssignDialog —— Linear-light 角色权限分配对话框。
+ *
+ * 视觉契约：
+ *  - 走 BaseDialog lg size；header icon = Lock；title 含目标角色名
+ *  - 上方提示条：sticky，左 ink "已选 N / 共 M 项" + 右 toolbar（重置 / 全选）
+ *  - 权限按 permCode 前缀分组：trace / part / user / role / system / 其他
+ *  - 每组卡片 surface-1 + 1px hairline + 12px 圆角，header 含组名 + 当前组选中数 + 全选按钮
+ *  - 每个权限渲染为 .permission-item：原生 checkbox + permName + permCode mono；hover surface-2，已选 primary-soft
+ *  - 自动联动：勾选 :manage 自动勾上同模块 :view；勾选 trace:* 业务权限自动勾上 trace:view
+ *  - footer：取消 + 保存 primary（loading 态）
+ *  - 空 allPermissions：渲染 EmptyState 占位
+ *
+ * 接口：
+ *  - v-model:visible / v-model:selectedPermissions(Array<id>)
+ *  - role Object（含 roleName / roleCode）/ allPermissions Array / saving Boolean
+ *  - @save 提交
+ */
 const props = defineProps({
-  visible: Boolean,
-  role: Object,
-  allPermissions: Array,
-  selectedPermissions: Array
+  visible: { type: Boolean, default: false },
+  role: { type: Object, default: null },
+  allPermissions: { type: Array, default: () => [] },
+  selectedPermissions: { type: Array, default: () => [] },
+  saving: { type: Boolean, default: false }
 })
-const emit = defineEmits(['update:visible', 'update:selectedPermissions', 'save'])
 
-const innerSelectedPermissions = computed({
-  get: () => props.selectedPermissions,
-  set: (val) => emit('update:selectedPermissions', val)
-})
+const emit = defineEmits(['update:visible', 'update:selectedPermissions', 'save'])
 
 const localVisible = computed({
   get: () => props.visible,
   set: (val) => emit('update:visible', val)
 })
 
-const handleCancel = () => {
-  localVisible.value = false
+const innerSelected = computed({
+  get: () => props.selectedPermissions,
+  set: (val) => emit('update:selectedPermissions', val)
+})
+
+const selectedSet = computed(() => new Set(innerSelected.value))
+
+const GROUP_LABEL = {
+  trace: { label: '溯源 · Trace', tone: 'primary' },
+  part: { label: '配件 · Part', tone: 'mute' },
+  user: { label: '用户 · User', tone: 'mute' },
+  role: { label: '角色 · Role', tone: 'mute' },
+  system: { label: '系统 · System', tone: 'mute' },
+  dashboard: { label: '仪表盘 · Dashboard', tone: 'mute' }
 }
 
-const isTraceBusinessPermission = (permission) => {
-  return permission?.permCode?.startsWith('trace:') && permission.permCode !== 'trace:view'
+const groupedPermissions = computed(() => {
+  const groups = new Map()
+  for (const perm of props.allPermissions) {
+    const code = perm?.permCode || perm?.perm_code || ''
+    const prefix = code.includes(':') ? code.split(':')[0] : 'other'
+    if (!groups.has(prefix)) groups.set(prefix, [])
+    groups.get(prefix).push(perm)
+  }
+  const ordered = []
+  for (const key of Object.keys(GROUP_LABEL)) {
+    if (groups.has(key)) {
+      ordered.push({ key, ...GROUP_LABEL[key], items: groups.get(key) })
+      groups.delete(key)
+    }
+  }
+  for (const [key, items] of groups.entries()) {
+    ordered.push({ key, label: key, tone: 'mute', items })
+  }
+  return ordered
+})
+
+const totalCount = computed(() => props.allPermissions.length)
+
+const dialogTitle = computed(() => {
+  const name = props.role?.roleName || ''
+  return name ? `分配权限 · ${name}` : '分配权限'
+})
+
+const dialogSubtitle = computed(() => {
+  const code = props.role?.roleCode
+  if (code) {
+    return `角色编码 ${code} · 勾选 :manage 会自动勾上同模块 :view；勾选 trace:* 业务权限会自动勾上 trace:view。`
+  }
+  return '勾选权限项后点击『保存』提交。'
+})
+
+function isTraceBusinessPermission(permission) {
+  const code = permission?.permCode || permission?.perm_code || ''
+  return code.startsWith('trace:') && code !== 'trace:view'
 }
 
-const ensureViewPermission = (current, viewCode) => {
-  const viewPermission = props.allPermissions.find(p => p.permCode === viewCode)
-  if (viewPermission && !current.includes(viewPermission.id)) {
-    current.push(viewPermission.id)
+function ensureViewPermission(current, viewCode) {
+  const view = props.allPermissions.find(
+    (p) => (p.permCode || p.perm_code) === viewCode
+  )
+  if (view && !current.includes(view.id)) {
+    current.push(view.id)
   }
 }
 
-const togglePermission = (permissionId) => {
-  const current = [...innerSelectedPermissions.value]
-  const index = current.indexOf(permissionId)
-  if (index > -1) {
-    current.splice(index, 1)
-    innerSelectedPermissions.value = current
+function togglePermission(permission) {
+  const current = [...innerSelected.value]
+  const idx = current.indexOf(permission.id)
+  if (idx > -1) {
+    current.splice(idx, 1)
   } else {
-    current.push(permissionId)
-    
-    // Auto check logic
-    const permission = props.allPermissions.find(p => p.id === permissionId)
-    if (permission && permission.permCode.endsWith(':manage')) {
-      const viewCode = permission.permCode.replace(':manage', ':view')
+    current.push(permission.id)
+    const code = permission.permCode || permission.perm_code || ''
+    if (code.endsWith(':manage')) {
+      const viewCode = code.replace(':manage', ':view')
       ensureViewPermission(current, viewCode)
     } else if (isTraceBusinessPermission(permission)) {
       ensureViewPermission(current, 'trace:view')
     }
-    
-    innerSelectedPermissions.value = current
   }
+  innerSelected.value = current
 }
 
-const handleSave = () => {
+function toggleGroup(group, selectAll) {
+  const current = new Set(innerSelected.value)
+  if (selectAll) {
+    for (const perm of group.items) {
+      current.add(perm.id)
+      const code = perm.permCode || perm.perm_code || ''
+      if (code.endsWith(':manage')) {
+        const viewCode = code.replace(':manage', ':view')
+        const view = props.allPermissions.find(
+          (p) => (p.permCode || p.perm_code) === viewCode
+        )
+        if (view) current.add(view.id)
+      }
+    }
+  } else {
+    for (const perm of group.items) current.delete(perm.id)
+  }
+  innerSelected.value = [...current]
+}
+
+function groupSelectedCount(group) {
+  return group.items.filter((p) => selectedSet.value.has(p.id)).length
+}
+
+function isGroupAllSelected(group) {
+  return group.items.length > 0 && group.items.every((p) => selectedSet.value.has(p.id))
+}
+
+function selectAll() {
+  innerSelected.value = props.allPermissions.map((p) => p.id)
+}
+
+function clearAll() {
+  innerSelected.value = []
+}
+
+function onCancel() {
+  localVisible.value = false
+}
+
+function onSave() {
   emit('save')
 }
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition name="dialog-fade">
-      <div v-if="localVisible" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <!-- Backdrop -->
-        <div 
-          class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-          @click="handleCancel"
-        ></div>
-        
-        <!-- Dialog -->
-        <div class="relative premium-card rounded-[40px] w-full max-w-2xl transform transition-all p-8 max-h-[90vh] overflow-y-auto">
-          <!-- Header -->
-          <div class="flex items-center justify-between mb-8">
-            <h3 class="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-              <Lock class="w-6 h-6 text-emerald-600" />
-              配置授权节点 - {{ role?.roleName }}
-            </h3>
-            <button @click="handleCancel" class="size-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors">
-              <X class="w-5 h-5" />
-            </button>
-          </div>
-          
-          <!-- Body -->
-          <div class="space-y-6">
-            <div class="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 flex items-start gap-4 shadow-inner">
-              <Lock class="w-6 h-6 text-emerald-600 flex-shrink-0 mt-0.5" />
-              <div class="text-sm">
-                <p class="font-black text-slate-900 mb-1 tracking-tight">Access Control Matrix</p>
-                <p class="text-slate-600 font-medium leading-relaxed">为该拓扑角色分配可访问的节点权限，未授权的节点将在数字层面上被隔离。</p>
-              </div>
-            </div>
-
-            <div v-if="allPermissions.length === 0" class="text-center py-12 text-slate-400 font-bold bg-slate-50/50 rounded-[32px] border border-slate-200 border-dashed">
-              暂无可用权限节点
-            </div>
-            
-            <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <label 
-                v-for="permission in allPermissions" 
-                :key="permission.id"
-                class="flex items-center gap-4 p-4 rounded-[24px] border-2 cursor-pointer transition-all hover:-translate-y-0.5"
-                :class="innerSelectedPermissions.includes(permission.id) ? 'bg-emerald-50/80 border-emerald-300 shadow-md shadow-emerald-100' : 'bg-white/60 border-transparent hover:border-slate-200 hover:shadow-sm'"
-              >
-                <div class="relative flex items-center justify-center">
-                  <input 
-                    type="checkbox"
-                    class="peer sr-only"
-                    :checked="innerSelectedPermissions.includes(permission.id)"
-                    @change="togglePermission(permission.id)"
-                  />
-                  <div class="w-6 h-6 border-2 border-slate-300 rounded-lg bg-white peer-checked:bg-emerald-500 peer-checked:border-emerald-500 transition-all shadow-sm"></div>
-                  <svg class="absolute w-4 h-4 text-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-                  </svg>
-                </div>
-                <div class="flex flex-col">
-                  <span class="text-sm font-black text-slate-900">{{ permission.permName }}</span>
-                  <span class="text-[10px] font-mono text-slate-500 font-bold tracking-widest mt-0.5">{{ permission.permCode }}</span>
-                </div>
-              </label>
-            </div>
-          </div>
-          
-          <!-- Footer -->
-          <div class="mt-10 flex justify-between items-center gap-4">
-            <span class="text-[10px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100">
-              已授权 {{ innerSelectedPermissions.length }} 个节点
-            </span>
-            <div class="flex gap-4">
-              <button @click="handleCancel" class="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">取消</button>
-              <button @click="handleSave" class="px-8 py-3 rounded-xl font-bold bg-emerald-500 text-white shadow-lg shadow-emerald-200 hover:bg-emerald-600 hover:shadow-xl hover:shadow-emerald-300 transition-all flex items-center active:scale-95">
-                部署权限
-              </button>
-            </div>
-          </div>
-        </div>
+  <BaseDialog
+    v-model="localVisible"
+    :title="dialogTitle"
+    :subtitle="dialogSubtitle"
+    :icon="Lock"
+    size="lg"
+    persistent
+    data-testid="permission-assign-dialog"
+  >
+    <div class="permission-toolbar">
+      <span class="permission-toolbar__count">
+        已选 <strong>{{ innerSelected.length }}</strong> / {{ totalCount }} 项
+      </span>
+      <div class="permission-toolbar__actions">
+        <BaseButton
+          variant="text"
+          size="sm"
+          data-testid="permission-clear-all"
+          :disabled="!innerSelected.length"
+          @click="clearAll"
+        >
+          清空
+        </BaseButton>
+        <BaseButton
+          variant="secondary"
+          size="sm"
+          data-testid="permission-select-all"
+          :disabled="!totalCount"
+          @click="selectAll"
+        >
+          全选
+        </BaseButton>
       </div>
-    </Transition>
-  </Teleport>
+    </div>
+
+    <div v-if="!totalCount" class="permission-empty">
+      <EmptyState
+        :icon="ShieldOff"
+        title="暂无可分配权限"
+        subtitle="当前账号没有可下发的权限节点，或后端尚未注入权限数据。"
+        data-testid="permission-empty"
+      />
+    </div>
+
+    <div v-else class="permission-groups" data-testid="permission-groups">
+      <section
+        v-for="group in groupedPermissions"
+        :key="group.key"
+        class="permission-group"
+        :data-testid="`permission-group-${group.key}`"
+      >
+        <header class="permission-group__header">
+          <div class="permission-group__lead">
+            <h3 class="permission-group__title">{{ group.label }}</h3>
+            <StatusPill tone="mute" size="xs" :dot="false">
+              {{ groupSelectedCount(group) }}/{{ group.items.length }}
+            </StatusPill>
+          </div>
+          <button
+            type="button"
+            class="permission-group__toggle"
+            :data-testid="`permission-group-toggle-${group.key}`"
+            @click="toggleGroup(group, !isGroupAllSelected(group))"
+          >
+            {{ isGroupAllSelected(group) ? '取消本组' : '勾选本组' }}
+          </button>
+        </header>
+        <div class="permission-group__grid">
+          <label
+            v-for="permission in group.items"
+            :key="permission.id"
+            class="permission-item"
+            :class="{ 'permission-item--checked': selectedSet.has(permission.id) }"
+            :data-testid="`permission-item-${permission.id}`"
+          >
+            <input
+              type="checkbox"
+              class="permission-item__checkbox"
+              :data-testid="`permission-item-check-${permission.id}`"
+              :checked="selectedSet.has(permission.id)"
+              @change="togglePermission(permission)"
+            />
+            <span class="permission-item__body">
+              <span class="permission-item__name">{{ permission.permName || permission.perm_name }}</span>
+              <span class="permission-item__code mono">{{ permission.permCode || permission.perm_code }}</span>
+            </span>
+          </label>
+        </div>
+      </section>
+    </div>
+
+    <template #footer>
+      <BaseButton variant="text" size="sm" data-testid="permission-cancel" @click="onCancel">
+        取消
+      </BaseButton>
+      <BaseButton
+        variant="primary"
+        size="sm"
+        :loading="saving"
+        data-testid="permission-submit"
+        @click="onSave"
+      >
+        保存
+      </BaseButton>
+    </template>
+  </BaseDialog>
 </template>
 
 <style scoped>
-.dialog-fade-enter-active,
-.dialog-fade-leave-active {
-  transition: opacity 0.3s ease;
+.permission-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  margin-bottom: 14px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
-.dialog-fade-enter-from,
-.dialog-fade-leave-to {
-  opacity: 0;
+.permission-toolbar__count {
+  font-size: 12.5px;
+  color: var(--ink-muted);
 }
-.dialog-fade-enter-active .premium-card,
-.dialog-fade-leave-active .premium-card {
-  transition: transform 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+.permission-toolbar__count strong {
+  color: var(--primary);
+  font-weight: 600;
+  margin: 0 2px;
 }
-.dialog-fade-enter-from .premium-card,
-.dialog-fade-leave-to .premium-card {
-  transform: scale(0.95) translateY(20px);
+.permission-toolbar__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.permission-empty {
+  padding: 12px 0 24px;
+}
+
+.permission-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.permission-group {
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.permission-group__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--hairline);
+}
+.permission-group__lead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.permission-group__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.1px;
+}
+.permission-group__toggle {
+  background: transparent;
+  border: 1px solid var(--hairline);
+  color: var(--ink-muted);
+  border-radius: 6px;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.permission-group__toggle:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--hairline-strong);
+}
+
+.permission-group__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0;
+}
+
+.permission-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--hairline);
+  cursor: pointer;
+  transition: background 0.15s;
+  min-width: 0;
+}
+.permission-item:hover {
+  background: var(--surface-2);
+}
+.permission-item--checked {
+  background: var(--primary-soft);
+}
+.permission-item--checked:hover {
+  background: var(--primary-soft);
+}
+.permission-item__checkbox {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  cursor: pointer;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+.permission-item__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.permission-item__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.permission-item__code {
+  font-size: 11.5px;
+  color: var(--ink-tertiary);
+}
+
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+@media (max-width: 640px) {
+  .permission-group__grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
