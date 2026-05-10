@@ -7,6 +7,7 @@ import BaseButton from '@/shared/components/ui/BaseButton.vue'
 import BaseFlowForm from './BaseFlowForm.vue'
 import { useToast } from '@/shared/composables/useToast'
 import { logger } from '@/shared/utils/logger'
+import { REGIONS } from '@/shared/data/regions'
 import { createEvent, getTraceCandidateFlowTasks, scanTraceFlowTask } from '@/features/trace/api'
 
 /**
@@ -148,9 +149,64 @@ watch(selectedTaskId, (newId) => {
   if (!task) return
   if (task.prefillFromNode) formData.fromNode = task.prefillFromNode
   if (task.prefillToNode) formData.toNode = task.prefillToNode
-  if (task.prefillProvince) formData.province = task.prefillProvince
-  if (task.prefillCity) formData.city = task.prefillCity
+  // 后端 prefill_province/city 可能是简称（"江苏"/"南京"）或带 mojibake 字节（demo seed
+  // 数据 city 列存在替换符 + 孤立 UTF-16 低代理位）；先归一化到 REGIONS 的标准值再写
+  // 回 formData，避免 <option> 找不到对应值导致 select 显示为空。
+  const normalizedProvince = normalizeProvinceToRegionValue(task.prefillProvince)
+  if (normalizedProvince) {
+    formData.province = normalizedProvince
+    const normalizedCity = normalizeCityToRegionValue(normalizedProvince, task.prefillCity)
+    if (normalizedCity) formData.city = normalizedCity
+  }
 })
+
+/**
+ * 把后端返回的省份字符串归一化到 REGIONS 里的标准 value。
+ * 兼容：
+ *   - 已是全称（"江苏省" / "上海市" / "广西壮族自治区"）→ 直接返回
+ *   - 简称（"江苏" / "上海" / "广西"）→ 加后缀匹配
+ *   - 无法匹配 → 返回 ''（让用户自己选）
+ */
+function normalizeProvinceToRegionValue(raw) {
+  if (!raw) return ''
+  const trimmed = String(raw).trim()
+  if (!trimmed) return ''
+  if (REGIONS.some((r) => r.value === trimmed)) return trimmed
+  for (const suffix of ['省', '市', '自治区']) {
+    const candidate = trimmed + suffix
+    if (REGIONS.some((r) => r.value === candidate)) return candidate
+  }
+  // 处理民族自治区简称
+  const specialMap = {
+    内蒙古: '内蒙古自治区',
+    广西: '广西壮族自治区',
+    西藏: '西藏自治区',
+    宁夏: '宁夏回族自治区',
+    新疆: '新疆维吾尔自治区',
+    香港: '香港特别行政区',
+    澳门: '澳门特别行政区'
+  }
+  return specialMap[trimmed] || ''
+}
+
+/**
+ * 把后端返回的城市字符串归一化到 REGIONS 里对应省份下的标准 value。
+ * 先剥离替换符 U+FFFD 和孤立 UTF-16 surrogate（demo 数据 mojibake 兜底）后再匹配；
+ * 兜底加 "市" 后缀重试一次。
+ * 直辖市（北京/上海/天津/重庆）下 REGIONS 存的是区名，市本身无法 prefill，返回 ''。
+ */
+function normalizeCityToRegionValue(provinceFullName, raw) {
+  if (!provinceFullName || !raw) return ''
+  const region = REGIONS.find((r) => r.value === provinceFullName)
+  if (!region) return ''
+  const cleaned = String(raw).replace(/[�\uD800-\uDFFF]/g, '').trim()
+  if (!cleaned) return ''
+  if (region.cities.includes(cleaned)) return cleaned
+  if (region.cities.includes(cleaned + '市')) return cleaned + '市'
+  const stripped = cleaned.replace(/(市|区)$/, '')
+  if (stripped && region.cities.includes(stripped + '市')) return stripped + '市'
+  return ''
+}
 
 function handleClose() {
   if (submitting.value) return
