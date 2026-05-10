@@ -49,7 +49,7 @@ const trendChartOption = computed(() => {
       right: 8,
       top: 24,
       bottom: 28,
-      containLabel: true
+      outerBoundsMode: 'auto'
     },
     tooltip: {
       trigger: 'axis',

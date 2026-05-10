@@ -88,7 +88,14 @@
                 AND s.current_owner LIKE CONCAT('%', #{currentOwner}, '%')
             </if>
             <if test="province != null and province != ''">
-                AND s.province = #{province}
+                AND (
+                    s.province LIKE CONCAT('%', #{province}, '%')
+                    OR EXISTS (
+                        SELECT 1 FROM trace_lifecycle_log lg
+                        WHERE lg.trace_code = s.trace_code
+                          AND lg.province LIKE CONCAT('%', #{province}, '%')
+                    )
+                )
             </if>
             <if test="eventTimeFrom != null">
                 AND s.last_event_time &gt;= #{eventTimeFrom}

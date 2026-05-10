@@ -36,7 +36,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .excludePathPatterns(
                         "/api/auth/login",
                         "/api/auth/register",
-                        "/api/traces/public-key"  // 公钥接口无需认证
+                        "/api/traces/public-key",  // 公钥接口无需认证
+                        "/api/public/**"           // 匿名公开追溯查验入口（消费者扫码自助验签）
                 )
                 .order(1);  // 先执行登录验证
 
@@ -46,7 +47,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 // 放行认证接口（登录后即可访问，无需额外权限）
                 .excludePathPatterns(
                         "/api/auth/**",
-                        "/api/traces/public-key"  // 公钥接口无需权限
+                        "/api/traces/public-key",  // 公钥接口无需权限
+                        "/api/public/**"           // 公开追溯查验无需权限
                 )
                 .order(2);  // 登录验证通过后再校验权限
     }

@@ -1,5 +1,5 @@
 <script setup>
-import { Bell, Menu, Search } from 'lucide-vue-next'
+import { Menu, Search } from 'lucide-vue-next'
 import KbdShortcut from '@/shared/components/ui/KbdShortcut.vue'
 
 const props = defineProps({
@@ -45,14 +45,6 @@ const emit = defineEmits(['toggle-menu', 'open-search'])
         <Search :size="13" :stroke-width="2" />
         <span class="topbar__search-text">搜索追溯码</span>
         <KbdShortcut keys="⌘ K" class="topbar__search-kbd" />
-      </button>
-
-      <button
-        type="button"
-        class="topbar__icon-btn"
-        :aria-label="'通知'"
-      >
-        <Bell :size="13" :stroke-width="2" />
       </button>
     </div>
   </header>

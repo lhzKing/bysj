@@ -12,6 +12,7 @@ const { routerPushMock, toastWarning, toastError, listTracesMock } = vi.hoisted(
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: routerPushMock }),
+  useRoute: () => ({ query: {}, path: '/traces' }),
   RouterLink: {
     props: ['to'],
     template: '<a :data-to="to"><slot /></a>'
@@ -33,6 +34,13 @@ vi.mock('@/shared/utils/logger', () => ({
 
 vi.mock('@/features/trace/api/trace', () => ({
   listTraces: listTracesMock
+}))
+
+// TraceList now reads userStore.hasAnyPermission to gate the header
+// scan/assign action buttons (Finding #2 fix). The smoke test isn't a
+// Pinia-aware harness, so stub the store with a permissive default.
+vi.mock('@/core/stores/user', () => ({
+  useUserStore: () => ({ hasAnyPermission: () => true })
 }))
 
 const fakeRow = (overrides = {}) => ({

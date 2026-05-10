@@ -99,11 +99,14 @@ watch(
 
 <template>
   <div class="flow-form">
+    <p class="flow-form__intro">
+      下列节点 / 地点字段留空时，后端会按你的节点绑定 + 当前快照自动补齐；填了则以你填的为准。
+    </p>
+
     <BaseInput
       v-model="formData.fromNode"
       :label="labels.fromNode"
       :placeholder="placeholders.fromNode"
-      :required="true"
       @blur="handleFromNodeBlur"
     />
 
@@ -111,19 +114,18 @@ watch(
       v-model="formData.toNode"
       :label="labels.toNode"
       :placeholder="placeholders.toNode"
-      :required="true"
       @blur="handleToNodeBlur"
     />
 
     <div class="flow-form__row">
       <div class="flow-form__field">
-        <label class="flow-form__label">{{ labels.province }} <span class="flow-form__star">*</span></label>
+        <label class="flow-form__label">{{ labels.province }}</label>
         <select
           v-model="formData.province"
           class="flow-form__select"
           @change="handleProvinceChange"
         >
-          <option value="" disabled>请选择省份</option>
+          <option value="">请选择省份（可留空，由后端补齐）</option>
           <option v-for="region in regions" :key="region.value" :value="region.value">
             {{ region.label }}
           </option>
@@ -131,13 +133,13 @@ watch(
       </div>
 
       <div class="flow-form__field">
-        <label class="flow-form__label">{{ labels.city }} <span class="flow-form__star">*</span></label>
+        <label class="flow-form__label">{{ labels.city }}</label>
         <select
           v-model="formData.city"
           :disabled="!formData.province"
           class="flow-form__select"
         >
-          <option value="" disabled>请选择城市</option>
+          <option value="">请选择城市（可留空，由后端补齐）</option>
           <option v-for="city in availableCities" :key="city" :value="city">
             {{ city }}
           </option>
@@ -176,6 +178,17 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.flow-form__intro {
+  margin: 0 0 -2px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  background: var(--surface-2);
+  border-left: 3px solid var(--primary);
+  border-radius: 4px;
+  line-height: 1.55;
 }
 
 .flow-form__row {

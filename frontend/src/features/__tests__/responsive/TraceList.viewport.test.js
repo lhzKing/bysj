@@ -12,6 +12,7 @@ const { routerPushMock, toastWarning, toastError, listTracesMock } = vi.hoisted(
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: routerPushMock }),
+  useRoute: () => ({ query: {}, path: '/traces' }),
   RouterLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' }
 }))
 
@@ -25,6 +26,10 @@ vi.mock('@/shared/utils/logger', () => ({
 
 vi.mock('@/features/trace/api/trace', () => ({
   listTraces: listTracesMock
+}))
+
+vi.mock('@/core/stores/user', () => ({
+  useUserStore: () => ({ hasAnyPermission: () => true })
 }))
 
 const fakeRow = (overrides = {}) => ({

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/core/stores/user'
 import { useConfirm } from '@/shared/composables/useConfirm'
@@ -15,11 +15,36 @@ const userStore = useUserStore()
 const { confirm } = useConfirm()
 const toast = useToast()
 
+const SIDEBAR_COLLAPSE_KEY = 'app_sidebar_collapsed'
+
 const drawerVisible = ref(false)
 const mediaQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
   ? window.matchMedia('(max-width: 1023.98px)')
   : null
 const isCompact = ref(Boolean(mediaQuery?.matches))
+
+const readSavedCollapse = () => {
+  if (typeof window === 'undefined' || !window.localStorage) return false
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === '1'
+  } catch (err) {
+    return false
+  }
+}
+const isCollapsed = ref(readSavedCollapse())
+
+const toggleCollapsed = () => {
+  isCollapsed.value = !isCollapsed.value
+}
+
+watch(isCollapsed, (next) => {
+  if (typeof window === 'undefined' || !window.localStorage) return
+  try {
+    window.localStorage.setItem(SIDEBAR_COLLAPSE_KEY, next ? '1' : '0')
+  } catch (err) {
+    // localStorage 不可用时静默忽略
+  }
+})
 
 const navigation = computed(() =>
   layoutNavigation.filter((item) =>
@@ -57,6 +82,31 @@ const navigateTo = async (path) => {
   await router.push(path)
 }
 
+// Top-bar ⌘K + click — both jump to /traces and ask the page to focus
+// its search input (TraceList reads route.query.focus on mount/route-update).
+const goSearch = async () => {
+  drawerVisible.value = false
+  if (route.path === '/traces') {
+    // Already on TraceList — bump query so its watcher re-fires the focus.
+    await router.replace({ path: '/traces', query: { ...route.query, focus: `search-${Date.now()}` } })
+  } else {
+    await router.push({ path: '/traces', query: { focus: 'search' } })
+  }
+}
+
+const onGlobalKeydown = (event) => {
+  // Cmd/Ctrl + K → open the trace search. Skip when the user is already
+  // typing in an input/textarea/contenteditable so we don't hijack typing.
+  if ((event.metaKey || event.ctrlKey) && (event.key === 'k' || event.key === 'K')) {
+    const target = event.target
+    const tag = target?.tagName
+    const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable
+    if (isEditable) return
+    event.preventDefault()
+    goSearch()
+  }
+}
+
 const logout = async () => {
   const accepted = await confirm({
     title: '退出登录',
@@ -77,6 +127,7 @@ const logout = async () => {
 }
 
 onMounted(() => {
+  window.addEventListener('keydown', onGlobalKeydown)
   if (!mediaQuery) {
     return
   }
@@ -94,6 +145,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', onGlobalKeydown)
   if (!mediaQuery) {
     return
   }
@@ -117,15 +169,24 @@ onUnmounted(() => {
       :active-path="activePath"
       :username="username"
       :user-role="userRole"
+      :collapsed="isCollapsed"
       @navigate="navigateTo"
+      @toggle-collapsed="toggleCollapsed"
       @logout="logout"
     />
 
-    <div class="app-shell__main" :class="{ 'app-shell__main--compact': isCompact }">
+    <div
+      class="app-shell__main"
+      :class="{
+        'app-shell__main--compact': isCompact,
+        'app-shell__main--collapsed': !isCompact && isCollapsed
+      }"
+    >
       <AppTopbar
         :page-title="pageTitle"
         :is-compact="isCompact"
         @toggle-menu="openDrawer"
+        @open-search="goSearch"
       />
 
       <main class="app-shell__content" data-test="app-content">
@@ -161,6 +222,11 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  transition: margin-left 0.18s ease;
+}
+
+.app-shell__main--collapsed {
+  margin-left: 64px;
 }
 
 .app-shell__main--compact {

@@ -2,9 +2,7 @@
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
-import { Download } from 'lucide-vue-next'
 import PageHeader from '@/shared/components/ui/PageHeader.vue'
-import BaseButton from '@/shared/components/ui/BaseButton.vue'
 import LoadingSkeleton from '@/shared/components/ui/LoadingSkeleton.vue'
 import { getKPI, getMapData, getTrend } from '@/features/dashboard/api'
 import { logger } from '@/shared/utils/logger'
@@ -14,7 +12,7 @@ import { logger } from '@/shared/utils/logger'
  *
  * 视觉契约（与 frontend/preview/linear-dashboard.html 1:1）：
  *   - PageHeader「总览」+ 副标题（实时日期 + 周几 + HH:mm）
- *   - 时间范围 segmented 三档（今日 / 本周 / 本月 → today / 7d / 30d）+ 导出按钮（暂禁用）
+ *   - 时间范围 segmented 三档（今日 / 本周 / 本月 → today / 7d / 30d）
  *   - 4 段堆叠：4-up KPI / 2-up (趋势 col-span-2 + 区域分布 col-span-1) / 异常表
  *
  * 子组件均按现有后端契约对齐：
@@ -127,6 +125,15 @@ const handleViewAllExceptions = () => {
   router.push({ path: '/traces', query: { status: 'EXCEPTION' } })
 }
 
+const handleWorkloadDetail = () => {
+  router.push({ path: '/traces' })
+}
+
+const handleWorkloadProvince = (provinceName) => {
+  if (!provinceName) return
+  router.push({ path: '/traces', query: { location: provinceName } })
+}
+
 watch(selectedRange, () => {
   loadDashboardData()
 })
@@ -152,12 +159,6 @@ onMounted(() => {
             @click="handleRangeSelect(opt.value)"
           >{{ opt.label }}</button>
         </div>
-        <BaseButton variant="secondary" disabled data-testid="dashboard-export">
-          <template #icon>
-            <Download :size="13" :stroke-width="2" />
-          </template>
-          导出
-        </BaseButton>
       </template>
     </PageHeader>
 
@@ -177,7 +178,12 @@ onMounted(() => {
           <DashboardTrend :trend-items="trendItems" :trend-label="trendLabel" />
         </div>
         <div class="dashboard__col-1">
-          <DashboardWorkload :items="mapItems" :range-label="rangeLabel" />
+          <DashboardWorkload
+            :items="mapItems"
+            :range-label="rangeLabel"
+            @view-detail="handleWorkloadDetail"
+            @view-province="handleWorkloadProvince"
+          />
         </div>
       </section>
 

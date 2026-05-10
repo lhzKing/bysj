@@ -126,6 +126,53 @@ const noActionMessage = computed(
     '当前状态、权限或节点不允许执行扫码动作。'
 )
 
+/**
+ * 把后端 noActionReason 翻译成更直白的解释 + 推荐演示账号。
+ * 后端 reason 来自 TraceAvailableActionService.buildNoActionReason，4 种 pattern：
+ *   - "当前用户未绑定当前可操作节点…"          → 维度 5 节点绑定 / 维度 4 角色权限
+ *   - "当前角色没有该状态下的扫码动作权限…"     → 维度 4 角色权限
+ *   - "当前状态 X 无常规可执行动作…"            → 维度 3 状态机
+ *   - "当前请求缺少角色上下文…"                 → 鉴权/会话异常
+ *
+ * 前端不重复后端原句，而是给一段 "为什么 + 怎么做" 的解读 + 角色建议。
+ */
+const noActionGuidance = computed(() => {
+  if (availableActionsError.value) return null
+  const reason = actionDecision.value?.noActionReason || ''
+  const status = actionDecision.value?.currentStatusLabel || actionDecision.value?.currentStatus || ''
+  const username = userStore.user?.username || ''
+
+  if (reason.includes('未绑定') || reason.includes('节点扫码动作')) {
+    return {
+      kind: 'role-or-node',
+      hint: `当前账号 ${username || '此用户'} 在「${status || '当前状态'}」下没有可在该节点执行的扫码动作（角色权限或节点绑定限制）。`,
+      tip: '不同业务角色负责不同动作：入库 / 出库由 warehouse、物流流转由 logistics、生产赋码由 producer。请按业务职责切换演示账号后重试。'
+    }
+  }
+  if (reason.includes('角色没有') || reason.includes('扫码动作权限')) {
+    return {
+      kind: 'role',
+      hint: `当前角色在「${status || '此状态'}」下没有任何扫码动作权限。`,
+      tip: '入库 / 出库需 warehouse 账号；物流流转需 logistics 账号；生产赋码需 producer 账号。'
+    }
+  }
+  if (reason.includes('无常规可执行动作') || reason.includes('状态')) {
+    return {
+      kind: 'state',
+      hint: `「${status || '当前状态'}」是终点状态或异常冻结态，状态机不允许常规扫码动作。`,
+      tip: '如需纠正历史记录请进入溯源详情的审计纠错流程；异常冻结请用相应账号执行解冻。'
+    }
+  }
+  if (reason.includes('角色上下文')) {
+    return {
+      kind: 'auth',
+      hint: '会话异常：未识别到角色信息。',
+      tip: '请退出后重新登录，或联系管理员检查权限分配。'
+    }
+  }
+  return null
+})
+
 const showAssignmentEntry = computed(() => hasAnyPermission(PERMISSIONS.TRACE.ASSIGNMENT_ACCESS))
 
 const isRecommended = (action) => Boolean(action?.actionType) && action.actionType === recommendedActionType.value
@@ -228,6 +275,9 @@ function onFlowSuccess() {
   actionDecision.value = null
   flowAction.value = ''
   pendingIdempotencyKey.value = ''
+  // 流水线扫码模式：800ms 后自动重新启动摄像头方便连续扫下一个零件。
+  // 这里 toast 提示一下，避免用户误以为提交失败回到扫码态。
+  toast.success('已提交并上链，准备扫描下一个零件…按 Esc 可取消连扫')
   setTimeout(() => {
     startCamera()
   }, 800)
@@ -540,7 +590,19 @@ onUnmounted(() => {
             title="当前无可执行扫码动作"
             :subtitle="noActionMessage"
             data-test="no-available-actions"
-          />
+          >
+            <template v-if="noActionGuidance" #subtitle>
+              <span class="scan-hub__no-action-hint" data-test="no-action-hint">
+                {{ noActionGuidance.hint }}
+              </span>
+              <span class="scan-hub__no-action-tip" data-test="no-action-tip">
+                {{ noActionGuidance.tip }}
+              </span>
+              <span class="scan-hub__no-action-raw" data-test="no-action-raw">
+                后端原始判定：{{ noActionMessage }}
+              </span>
+            </template>
+          </EmptyState>
         </BaseCard>
 
         <!-- 流转记录占位（3/12，详细数据由 F12 详情页提供） -->
@@ -864,6 +926,29 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--ink-tertiary);
   line-height: 1.55;
+}
+
+.scan-hub__no-action-hint,
+.scan-hub__no-action-tip,
+.scan-hub__no-action-raw {
+  display: block;
+  line-height: 1.55;
+}
+.scan-hub__no-action-hint {
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+.scan-hub__no-action-tip {
+  color: var(--ink-muted);
+  margin-bottom: 8px;
+}
+.scan-hub__no-action-raw {
+  font-size: 11.5px;
+  color: var(--ink-tertiary);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  padding-top: 6px;
+  border-top: 1px dashed var(--hairline);
 }
 
 .scan-hub__action-list {

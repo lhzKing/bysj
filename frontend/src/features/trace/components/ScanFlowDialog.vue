@@ -102,22 +102,14 @@ function handleClose() {
 }
 
 async function handleSubmit() {
-  if (!formData.fromNode) {
-    toast.error('请输入起始节点')
-    return
-  }
-  if (!formData.toNode) {
-    toast.error('请输入目标节点')
-    return
-  }
-  if (!formData.province) {
-    toast.error('请选择省份')
-    return
-  }
-  if (!formData.city) {
-    toast.error('请选择城市')
-    return
-  }
+  // 仅校验 eventTime 必填——其他字段（fromNode / toNode / province / city）
+  // 故意不再前端强制必填，让空字段透传到后端，由 TraceUserNodeBindingServiceImpl
+  // .authorizeAndResolveRoute 自动补齐：
+  //   - INBOUND 没传 toNode   → 用用户唯一/默认绑定节点补齐
+  //   - OUTBOUND/TRANSFER 没传 fromNode → 用用户唯一/默认绑定节点补齐
+  //   - 没传 fromNode 还会从 trace_snapshot.current_node 兜底补齐
+  //   - 没传 province/city 拿到操作节点后从 trace_node 取
+  // 后端补齐失败会抛 BizException；用户看到 toast 即可知道得手动填了。
   if (!formData.eventTime) {
     toast.error('请选择时间')
     return
@@ -127,14 +119,19 @@ async function handleSubmit() {
   try {
     const apiData = {
       actionType: formData.actionType,
-      fromNode: formData.fromNode,
-      toNode: formData.toNode,
-      province: formData.province,
-      city: formData.city,
       eventTime: formatToBackend(formData.eventTime),
       correctionOf: formData.correctionOf,
       remark: formData.remark?.trim() || ''
     }
+    // 只把"用户主动填了的"字段加进去，空字段不发，让后端走补齐分支
+    const fromNode = formData.fromNode?.trim()
+    const toNode = formData.toNode?.trim()
+    const province = formData.province?.trim()
+    const city = formData.city?.trim()
+    if (fromNode) apiData.fromNode = fromNode
+    if (toNode) apiData.toNode = toNode
+    if (province) apiData.province = province
+    if (city) apiData.city = city
     if (props.idempotencyKey) {
       apiData.idempotencyKey = props.idempotencyKey
     }

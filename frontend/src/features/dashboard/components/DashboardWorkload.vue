@@ -29,6 +29,8 @@ const props = defineProps({
   }
 })
 
+const emit = defineEmits(['view-detail', 'view-province'])
+
 const TOP_N = 6
 
 const topItems = computed(() => {
@@ -66,7 +68,7 @@ const progressWidth = (value) => {
         class="workload-card__link"
         href="#"
         data-testid="dashboard-workload-link"
-        @click.prevent
+        @click.prevent="emit('view-detail')"
       >详情</a>
     </header>
 
@@ -77,6 +79,11 @@ const progressWidth = (value) => {
         class="workload-card__row"
         data-testid="dashboard-workload-row"
         :data-name="item.name"
+        @click="emit('view-province', item.name)"
+        @keydown.enter.prevent="emit('view-province', item.name)"
+        tabindex="0"
+        role="button"
+        :title="`查看 ${item.name} 的追溯码列表`"
       >
         <div class="workload-card__row-head">
           <span class="workload-card__name">{{ item.name || '未署名' }}</span>
@@ -150,6 +157,18 @@ const progressWidth = (value) => {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+.workload-card__row {
+  cursor: pointer;
+  transition: background 0.12s;
+  border-radius: 6px;
+  padding: 4px 6px;
+  margin: -4px -6px;
+}
+.workload-card__row:hover,
+.workload-card__row:focus-visible {
+  background: var(--surface-2);
+  outline: none;
 }
 .workload-card__row-head {
   display: flex;

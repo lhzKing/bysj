@@ -1,6 +1,6 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Camera, ChevronDown, Plus, Search, X } from 'lucide-vue-next'
 import dayjs from 'dayjs'
 import BaseButton from '@/shared/components/ui/BaseButton.vue'
@@ -15,6 +15,12 @@ import CreateTraceDialog from '@/features/trace/components/CreateTraceDialog.vue
 import { listTraces } from '@/features/trace/api/trace'
 import { useToast } from '@/shared/composables/useToast'
 import { logger } from '@/shared/utils/logger'
+import { useUserStore } from '@/core/stores/user'
+import { TRACE_SCAN_HUB_ACCESS, TRACE_ASSIGNMENT_ACCESS } from '@/shared/constants/permissions'
+
+const userStore = useUserStore()
+const canScan = computed(() => userStore.hasAnyPermission(TRACE_SCAN_HUB_ACCESS))
+const canAssign = computed(() => userStore.hasAnyPermission(TRACE_ASSIGNMENT_ACCESS))
 
 const RECENT_KEY = 'recent_traces'
 const RECENT_MAX = 20
@@ -43,7 +49,22 @@ const SORT_OPTIONS = [
 ]
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
+const searchInputRef = ref(null)
+
+const focusSearchInput = () => {
+  // Use nextTick + querySelector fallback so this also works after a
+  // route-triggered re-mount where the template ref may not yet be hot.
+  nextTick(() => {
+    const el = searchInputRef.value
+      || document.querySelector('[data-testid="trace-list-search-input"]')
+    if (el && typeof el.focus === 'function') {
+      el.focus()
+      if (typeof el.select === 'function') el.select()
+    }
+  })
+}
 
 const filters = reactive({
   keyword: '',
@@ -51,6 +72,7 @@ const filters = reactive({
   spuId: '',
   batchNo: '',
   currentOwner: '',
+  province: '',
   datePreset: ''
 })
 
@@ -102,6 +124,7 @@ const fetchPage = async () => {
     }
     if (filters.batchNo.trim()) params.batchNo = filters.batchNo.trim()
     if (filters.currentOwner.trim()) params.currentOwner = filters.currentOwner.trim()
+    if (filters.province.trim()) params.province = filters.province.trim()
     if (eventTimeFrom.value) params.eventTimeFrom = eventTimeFrom.value
 
     const data = await listTraces(params)
@@ -125,7 +148,7 @@ const refresh = () => {
 }
 
 watch(
-  () => [filters.status, filters.spuId, filters.batchNo, filters.currentOwner, filters.datePreset, sort.value, order.value],
+  () => [filters.status, filters.spuId, filters.batchNo, filters.currentOwner, filters.province, filters.datePreset, sort.value, order.value],
   () => refresh()
 )
 
@@ -145,8 +168,42 @@ onMounted(() => {
     logger.error('读取最近访问失败:', err)
     recentTraces.value = []
   }
+  applyQueryFilters()
   fetchPage()
+  if (route.query.focus) focusSearchInput()
 })
+
+const applyQueryFilters = () => {
+  if (route.query.location) {
+    const loc = String(route.query.location).trim()
+    // 后端 province 过滤用 EXISTS 子查询 + LIKE 双向兼容（snapshot 与 log 表口径对齐），
+    // 这里直接传完整省份名（如"浙江省"）即可同时命中带后缀和短名两种存储形式。
+    if (loc) filters.province = loc
+  }
+  if (route.query.status) {
+    const status = String(route.query.status).trim()
+    if (STATUS_OPTIONS.some((opt) => opt.value === status)) {
+      filters.status = status
+    }
+  }
+}
+
+watch(
+  () => [route.query.location, route.query.status],
+  () => {
+    applyQueryFilters()
+  }
+)
+
+// Re-focus when topbar ⌘K is hit while already on this route — MainLayout
+// bumps the focus query string so this watcher fires and re-focuses without
+// remount.
+watch(
+  () => route.query.focus,
+  (val) => {
+    if (val) focusSearchInput()
+  }
+)
 
 const persistRecent = () => {
   try {
@@ -326,11 +383,11 @@ const sortLabel = computed(() => {
         : `${total.toLocaleString()} 条记录 · 当前第 ${page} / ${Math.max(totalPages, 1)} 页 · 链上完整性 100%`"
     >
       <template #actions>
-        <BaseButton variant="secondary" size="sm" @click="showScanner = true">
+        <BaseButton v-if="canScan" variant="secondary" size="sm" @click="showScanner = true">
           <template #icon><Camera class="trace-list__btn-icon" /></template>
           扫码
         </BaseButton>
-        <BaseButton variant="primary" size="sm" @click="showCreateModal = true">
+        <BaseButton v-if="canAssign" variant="primary" size="sm" @click="showCreateModal = true">
           <template #icon><Plus class="trace-list__btn-icon" /></template>
           生产赋码
         </BaseButton>
@@ -342,6 +399,7 @@ const sortLabel = computed(() => {
       <div class="trace-list__search-box" data-testid="trace-list-search-box">
         <Search class="trace-list__search-icon" />
         <input
+          ref="searchInputRef"
           v-model="filters.keyword"
           class="trace-list__search-input"
           type="text"
@@ -392,6 +450,16 @@ const sortLabel = computed(() => {
         spellcheck="false"
         autocomplete="off"
         data-testid="trace-list-owner"
+      />
+
+      <input
+        v-model="filters.province"
+        type="text"
+        placeholder="省份"
+        class="trace-list__filter-input"
+        spellcheck="false"
+        autocomplete="off"
+        data-testid="trace-list-province"
       />
 
       <select

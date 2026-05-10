@@ -233,11 +233,10 @@ describe('Dashboard — overview view', () => {
     expect(trendStub.attributes('data-len')).toBe('0')
   })
 
-  it('renders the export button as disabled (B-future feature)', async () => {
+  it('does not render the export button (placeholder removed)', async () => {
     const wrapper = mountDashboard()
     await flushPromises()
     const btn = wrapper.find('[data-testid="dashboard-export"]')
-    expect(btn.exists()).toBe(true)
-    expect(btn.attributes('disabled')).toBeDefined()
+    expect(btn.exists()).toBe(false)
   })
 })

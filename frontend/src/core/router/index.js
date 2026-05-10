@@ -13,6 +13,12 @@ const router = createRouter({
       meta: { title: '登录' }
     },
     {
+      path: '/public/traces/:code',
+      name: 'public-trace-verify',
+      component: () => import('@/features/trace/views/TracePublicView.vue'),
+      meta: { title: '追溯码自助验签' }
+    },
+    {
       path: '/camera-test',
       name: 'camera-test',
       component: () => import('@/views/CameraTest.vue'),

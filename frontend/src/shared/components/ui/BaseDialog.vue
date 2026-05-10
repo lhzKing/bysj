@@ -20,6 +20,8 @@ import { X } from 'lucide-vue-next'
  *   - dismissOnEsc=true（默认）
  *   - 槽位：title（覆盖 title prop）/ subtitle / default（body）/ footer
  */
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   title: { type: String, default: '' },
@@ -87,6 +89,7 @@ watch(
         role="dialog"
         aria-modal="true"
         data-test="base-dialog"
+        v-bind="$attrs"
         @keydown="onKeydown"
       >
         <div class="base-dialog__backdrop" data-test="base-dialog-backdrop" @click="onBackdropClick" />

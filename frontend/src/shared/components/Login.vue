@@ -109,7 +109,7 @@ const openAuditVerify = async () => {
     placeholder: 'TC-260505-A8F3K2'
   })
   if (!code) return
-  await router.push({ path: `/traces/${code.trim()}`, query: { audit: 'guest' } })
+  await router.push({ path: `/public/traces/${code.trim()}` })
 }
 
 onUnmounted(() => {

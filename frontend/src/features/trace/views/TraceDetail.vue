@@ -807,6 +807,10 @@ watch(
   gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
+  /* On narrow viewports the 5 tabs overflow; the right-edge fade hints
+     that the strip is horizontally scrollable. */
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 24px), transparent 100%);
 }
 .trace-detail__tabs::-webkit-scrollbar { display: none; }
 

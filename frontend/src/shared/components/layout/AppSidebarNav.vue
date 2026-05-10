@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { ChevronRight } from 'lucide-vue-next'
+import { ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-vue-next'
 import KbdShortcut from '@/shared/components/ui/KbdShortcut.vue'
 import { NAVIGATION_SECTIONS } from './layoutNavigation'
 
@@ -8,10 +8,11 @@ const props = defineProps({
   items: { type: Array, default: () => [] },
   activePath: { type: String, default: '/' },
   username: { type: String, default: '用户' },
-  userRole: { type: String, default: '当前账号' }
+  userRole: { type: String, default: '当前账号' },
+  collapsed: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['navigate', 'logout'])
+const emit = defineEmits(['navigate', 'logout', 'toggle-collapsed'])
 
 const userInitial = computed(() => (props.username?.slice(0, 1) || 'U').toUpperCase())
 
@@ -26,14 +27,25 @@ const sections = computed(() =>
 </script>
 
 <template>
-  <aside class="sidebar" data-test="app-sidebar">
+  <aside class="sidebar" :class="{ 'sidebar--collapsed': collapsed }" data-test="app-sidebar">
     <div class="sidebar__brand">
       <span class="sidebar__logo" aria-hidden="true">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4">
           <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
         </svg>
       </span>
-      <span class="sidebar__brand-text">trace.</span>
+      <span v-if="!collapsed" class="sidebar__brand-text">trace.</span>
+      <button
+        type="button"
+        class="sidebar__collapse-btn"
+        data-test="sidebar-toggle"
+        :aria-label="collapsed ? '展开侧边栏' : '收起侧边栏'"
+        :title="collapsed ? '展开侧边栏' : '收起侧边栏'"
+        @click="emit('toggle-collapsed')"
+      >
+        <PanelLeftOpen v-if="collapsed" :size="14" :stroke-width="2" />
+        <PanelLeftClose v-else :size="14" :stroke-width="2" />
+      </button>
     </div>
 
     <nav class="sidebar__nav" aria-label="主导航">
@@ -42,7 +54,7 @@ const sections = computed(() =>
         :key="section.key"
         class="sidebar__section"
       >
-        <div v-if="section.label" class="sidebar__section-label">{{ section.label }}</div>
+        <div v-if="section.label && !collapsed" class="sidebar__section-label">{{ section.label }}</div>
         <button
           v-for="item in section.items"
           :key="item.path"
@@ -50,13 +62,14 @@ const sections = computed(() =>
           class="sidebar__item"
           :class="{ 'is-active': item.path === activePath }"
           :data-nav-path="item.path"
+          :title="collapsed ? item.label : undefined"
           @click="emit('navigate', item.path)"
         >
           <span class="sidebar__item-icon" aria-hidden="true">
             <component :is="item.icon" :size="14" :stroke-width="2" />
           </span>
-          <span class="sidebar__item-label">{{ item.label }}</span>
-          <KbdShortcut v-if="item.kbd" :keys="item.kbd" class="sidebar__item-kbd" />
+          <span v-if="!collapsed" class="sidebar__item-label">{{ item.label }}</span>
+          <KbdShortcut v-if="item.kbd && !collapsed" :keys="item.kbd" class="sidebar__item-kbd" />
         </button>
       </div>
     </nav>
@@ -66,14 +79,15 @@ const sections = computed(() =>
       class="sidebar__user"
       data-test="logout-action"
       :aria-label="'退出登录'"
+      :title="collapsed ? `${username} · 退出登录` : undefined"
       @click="emit('logout')"
     >
       <span class="sidebar__user-avatar" aria-hidden="true">{{ userInitial }}</span>
-      <span class="sidebar__user-meta">
+      <span v-if="!collapsed" class="sidebar__user-meta">
         <span class="sidebar__user-name">{{ username }}</span>
         <span class="sidebar__user-role">{{ userRole }}</span>
       </span>
-      <ChevronRight class="sidebar__user-chevron" :size="14" :stroke-width="2" />
+      <ChevronRight v-if="!collapsed" class="sidebar__user-chevron" :size="14" :stroke-width="2" />
     </button>
   </aside>
 </template>
@@ -90,6 +104,11 @@ const sections = computed(() =>
   display: flex;
   flex-direction: column;
   z-index: 40;
+  transition: width 0.18s ease;
+}
+
+.sidebar--collapsed {
+  width: 64px;
 }
 
 .sidebar__brand {
@@ -98,6 +117,43 @@ const sections = computed(() =>
   gap: 10px;
   padding: 16px;
   border-bottom: 1px solid var(--hairline);
+  position: relative;
+}
+
+.sidebar--collapsed .sidebar__brand {
+  justify-content: center;
+  padding: 16px 8px;
+}
+
+.sidebar__collapse-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--ink-tertiary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.sidebar__collapse-btn:hover,
+.sidebar__collapse-btn:focus-visible {
+  background: var(--surface-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.sidebar--collapsed .sidebar__collapse-btn {
+  position: static;
+  transform: none;
+  margin-left: 4px;
 }
 
 .sidebar__logo {
@@ -157,6 +213,11 @@ const sections = computed(() =>
   transition: background-color 0.12s, color 0.12s;
 }
 
+.sidebar--collapsed .sidebar__item {
+  justify-content: center;
+  padding: 6px;
+}
+
 .sidebar__item + .sidebar__item {
   margin-top: 2px;
 }
@@ -207,6 +268,11 @@ const sections = computed(() =>
   cursor: pointer;
   text-align: left;
   transition: background-color 0.12s;
+}
+
+.sidebar--collapsed .sidebar__user {
+  justify-content: center;
+  padding: 12px 8px;
 }
 
 .sidebar__user:hover,

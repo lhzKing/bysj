@@ -157,7 +157,7 @@ describe('Login view', () => {
     vi.useRealTimers()
   })
 
-  it('opens the audit verify prompt and routes to guest trace view', async () => {
+  it('opens the audit verify prompt and routes to public trace verify view', async () => {
     promptMock.mockResolvedValue('TC-260505-A8F3K2')
     const wrapper = renderWithPrime(Login)
 
@@ -168,8 +168,7 @@ describe('Login view', () => {
       title: '追溯码自助验签'
     }))
     expect(pushMock).toHaveBeenCalledWith({
-      path: '/traces/TC-260505-A8F3K2',
-      query: { audit: 'guest' }
+      path: '/public/traces/TC-260505-A8F3K2'
     })
   })
 })

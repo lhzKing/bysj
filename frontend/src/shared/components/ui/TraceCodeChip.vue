@@ -33,6 +33,11 @@ const props = defineProps({
   showCopyIcon: {
     type: Boolean,
     default: false
+  },
+  // 长 UUID 截断显示（前 8 + … + 后 4），完整码仍由 title / 复制保留
+  truncate: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -41,6 +46,11 @@ const emit = defineEmits(['copy', 'copy-error'])
 const copied = ref(false)
 const tooltipOpen = ref(false)
 let resetTimer = null
+
+const displayCode = computed(() => {
+  if (!props.truncate || !props.code || props.code.length <= 14) return props.code
+  return `${props.code.slice(0, 8)}…${props.code.slice(-4)}`
+})
 
 const sizeStyle = computed(() => {
   const map = {
@@ -95,7 +105,7 @@ const onClick = async () => {
     @focus="tooltipOpen = true"
     @blur="tooltipOpen = false"
   >
-    <span class="trace-chip__code">{{ code }}</span>
+    <span class="trace-chip__code">{{ displayCode }}</span>
     <svg
       v-if="copyable && showCopyIcon && !copied"
       class="trace-chip__icon"

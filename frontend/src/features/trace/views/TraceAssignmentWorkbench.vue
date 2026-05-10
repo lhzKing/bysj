@@ -815,6 +815,50 @@ function goTraceDetail(traceCode) {
           </div>
 
           <div v-else class="assignment__codes-body">
+            <aside
+              v-if="activeCode"
+              class="assignment__active assignment__active--strip"
+              data-test="assignment-active-code-panel"
+            >
+              <div class="assignment__active-strip-head">
+                <span class="assignment__active-eyebrow">当前选中</span>
+                <TraceCodeChip :code="activeCode.traceCode" size="md" />
+              </div>
+              <dl class="assignment__active-strip-list">
+                <div class="assignment__active-strip-item">
+                  <dt>批内序号</dt>
+                  <dd class="mono">{{ activeCode.serialNo || '-' }}</dd>
+                </div>
+                <div class="assignment__active-strip-item">
+                  <dt>码状态</dt>
+                  <dd>
+                    <StatusPill :tone="statusTone(activeCode.codeStatus)">{{ formatStatus(activeCode.codeStatus) }}</StatusPill>
+                  </dd>
+                </div>
+                <div class="assignment__active-strip-item">
+                  <dt>打印</dt>
+                  <dd class="mono">{{ activeCode.printCount || 0 }} 次</dd>
+                </div>
+                <div class="assignment__active-strip-item">
+                  <dt>激活人</dt>
+                  <dd>{{ activeCode.activatedByUsername || '-' }}</dd>
+                </div>
+                <div class="assignment__active-strip-item">
+                  <dt>激活时间</dt>
+                  <dd class="mono">{{ activeCode.activatedTime || '-' }}</dd>
+                </div>
+              </dl>
+              <BaseButton
+                variant="secondary"
+                size="sm"
+                data-test="assignment-active-go-detail"
+                @click="goTraceDetail(activeCode.traceCode)"
+              >
+                <template #icon><ExternalLink :size="13" /></template>
+                查看溯源详情
+              </BaseButton>
+            </aside>
+
             <div class="assignment__table-wrap" data-test="assignment-code-list">
               <table class="assignment__table">
                 <thead>
@@ -831,13 +875,13 @@ function goTraceDetail(traceCode) {
                   <tr
                     v-for="code in sortedBatchCodes"
                     :key="code.traceCode"
-                    :class="['assignment__row', code.traceCode === selectedTraceCode && 'assignment__row--active']"
+                    :class="['assignment__code-row', code.traceCode === selectedTraceCode && 'assignment__code-row--active']"
                     :data-test="`assignment-code-row-${code.traceCode}`"
                     @click="selectCode(code.traceCode)"
                   >
                     <td class="mono assignment__cell-no">{{ code.serialNo || '-' }}</td>
-                    <td>
-                      <TraceCodeChip :code="code.traceCode" size="md" :copyable="false" />
+                    <td class="assignment__cell-code">
+                      <TraceCodeChip :code="code.traceCode" size="md" :copyable="false" truncate />
                     </td>
                     <td>
                       <StatusPill :tone="statusTone(code.codeStatus)">
@@ -847,81 +891,43 @@ function goTraceDetail(traceCode) {
                     <td class="mono assignment__cell-print">{{ code.printCount || 0 }} 次</td>
                     <td class="mono assignment__cell-time">{{ formatTime(code.activatedTime) }}</td>
                     <td class="assignment__cell-actions">
-                      <button
-                        type="button"
-                        class="assignment__action assignment__action--primary"
-                        :disabled="!canPrint(code) || actionLoadingKey === `print:${code.traceCode}`"
-                        :data-testid="`assignment-action-print-${code.traceCode}`"
-                        @click.stop="runCodeAction(code, 'print')"
-                      >打印</button>
-                      <button
-                        type="button"
-                        class="assignment__action"
-                        :disabled="!canReprint(code) || actionLoadingKey === `reprint:${code.traceCode}`"
-                        :data-testid="`assignment-action-reprint-${code.traceCode}`"
-                        @click.stop="runCodeAction(code, 'reprint')"
-                      >重打</button>
-                      <button
-                        type="button"
-                        class="assignment__action assignment__action--success"
-                        :disabled="!canActivate(code) || actionLoadingKey === `activate:${code.traceCode}`"
-                        :data-testid="`assignment-action-activate-${code.traceCode}`"
-                        @click.stop="runCodeAction(code, 'activate')"
-                      >激活</button>
-                      <button
-                        type="button"
-                        class="assignment__action assignment__action--danger"
-                        :disabled="!canVoid(code) || actionLoadingKey === `void:${code.traceCode}`"
-                        :data-testid="`assignment-action-void-${code.traceCode}`"
-                        @click.stop="runCodeAction(code, 'void')"
-                      >作废</button>
+                      <div class="assignment__cell-actions-row">
+                        <button
+                          type="button"
+                          class="assignment__action assignment__action--primary"
+                          :disabled="!canPrint(code) || actionLoadingKey === `print:${code.traceCode}`"
+                          :data-testid="`assignment-action-print-${code.traceCode}`"
+                          @click.stop="runCodeAction(code, 'print')"
+                        >打印</button>
+                        <button
+                          type="button"
+                          class="assignment__action"
+                          :disabled="!canReprint(code) || actionLoadingKey === `reprint:${code.traceCode}`"
+                          :data-testid="`assignment-action-reprint-${code.traceCode}`"
+                          @click.stop="runCodeAction(code, 'reprint')"
+                        >重打</button>
+                        <button
+                          type="button"
+                          class="assignment__action assignment__action--success"
+                          :disabled="!canActivate(code) || actionLoadingKey === `activate:${code.traceCode}`"
+                          :data-testid="`assignment-action-activate-${code.traceCode}`"
+                          @click.stop="runCodeAction(code, 'activate')"
+                        >激活</button>
+                        <button
+                          type="button"
+                          class="assignment__action assignment__action--danger"
+                          :disabled="!canVoid(code) || actionLoadingKey === `void:${code.traceCode}`"
+                          :data-testid="`assignment-action-void-${code.traceCode}`"
+                          @click.stop="runCodeAction(code, 'void')"
+                        >作废</button>
+                      </div>
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            <aside class="assignment__active" data-test="assignment-active-code-panel">
-              <p class="assignment__active-eyebrow">当前选中</p>
-              <template v-if="activeCode">
-                <TraceCodeChip :code="activeCode.traceCode" size="lg" />
-                <dl class="assignment__active-list">
-                  <div class="assignment__active-row">
-                    <dt>批内序号</dt>
-                    <dd class="mono">{{ activeCode.serialNo || '-' }}</dd>
-                  </div>
-                  <div class="assignment__active-row">
-                    <dt>码状态</dt>
-                    <dd>
-                      <StatusPill :tone="statusTone(activeCode.codeStatus)">{{ formatStatus(activeCode.codeStatus) }}</StatusPill>
-                    </dd>
-                  </div>
-                  <div class="assignment__active-row">
-                    <dt>打印次数</dt>
-                    <dd class="mono">{{ activeCode.printCount || 0 }}</dd>
-                  </div>
-                  <div class="assignment__active-row">
-                    <dt>激活人</dt>
-                    <dd>{{ activeCode.activatedByUsername || '-' }}</dd>
-                  </div>
-                  <div class="assignment__active-row">
-                    <dt>激活时间</dt>
-                    <dd class="mono">{{ activeCode.activatedTime || '-' }}</dd>
-                  </div>
-                </dl>
-                <BaseButton
-                  variant="secondary"
-                  size="sm"
-                  block
-                  data-test="assignment-active-go-detail"
-                  @click="goTraceDetail(activeCode.traceCode)"
-                >
-                  <template #icon><ExternalLink :size="13" /></template>
-                  查看溯源详情
-                </BaseButton>
-              </template>
-              <p v-else class="assignment__active-hint">请在表格中选择一个单品码，查看详情和最近一次激活状态。</p>
-            </aside>
+            <p v-if="!activeCode" class="assignment__active-hint">请在表格中选择一个单品码，查看详情和最近一次激活状态。</p>
           </div>
         </section>
       </div>
@@ -1198,10 +1204,49 @@ select.assignment__control {
 }
 
 .assignment__codes-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.assignment__active--strip {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 16px;
-  align-items: start;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.assignment__active-strip-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.assignment__active-strip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+  min-width: 0;
+}
+.assignment__active-strip-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  min-width: 0;
+}
+.assignment__active-strip-item dt {
+  color: var(--ink-subtle);
+  flex-shrink: 0;
+}
+.assignment__active-strip-item dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 500;
 }
 
 .assignment__table-wrap {
@@ -1214,7 +1259,15 @@ select.assignment__control {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  table-layout: fixed;
+  min-width: 720px;
 }
+.assignment__table .assignment__col-no { width: 48px; }
+.assignment__table .assignment__col-code { width: 230px; }
+.assignment__table .assignment__col-status { width: 96px; }
+.assignment__table .assignment__col-print { width: 76px; }
+.assignment__table .assignment__col-time { width: 120px; }
+.assignment__table .assignment__col-actions { width: auto; }
 .assignment__table th {
   text-align: left;
   font-weight: 500;
@@ -1232,17 +1285,17 @@ select.assignment__control {
   color: var(--ink);
   vertical-align: middle;
 }
-.assignment__row {
+.assignment__code-row {
   cursor: pointer;
   transition: background 0.12s;
 }
-.assignment__row:hover td {
+.assignment__code-row:hover td {
   background: var(--surface-2);
 }
-.assignment__row--active td {
+.assignment__code-row--active td {
   background: var(--primary-soft);
 }
-.assignment__row:last-child td {
+.assignment__code-row:last-child td {
   border-bottom: 0;
 }
 .assignment__cell-no {
@@ -1256,10 +1309,20 @@ select.assignment__control {
   white-space: nowrap;
 }
 .assignment__cell-actions {
-  display: flex;
+  text-align: right;
+  vertical-align: middle;
+  word-break: normal;
+  white-space: normal;
+}
+.assignment__cell-actions-row {
+  display: inline-flex;
   flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
+}
+.assignment__cell-code {
+  word-break: break-all;
+  vertical-align: middle;
 }
 
 .assignment__action {
@@ -1273,6 +1336,8 @@ select.assignment__control {
   color: var(--ink-muted);
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 .assignment__action:hover:not(:disabled) {
   border-color: var(--ink-subtle);
@@ -1366,11 +1431,12 @@ select.assignment__control {
   .assignment__form {
     position: static;
   }
-  .assignment__codes-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .assignment__recon-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .assignment__active--strip {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
   }
 }
 
