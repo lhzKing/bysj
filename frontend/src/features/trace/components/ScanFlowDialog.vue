@@ -6,7 +6,8 @@ import BaseDialog from '@/shared/components/ui/BaseDialog.vue'
 import BaseButton from '@/shared/components/ui/BaseButton.vue'
 import BaseFlowForm from './BaseFlowForm.vue'
 import { useToast } from '@/shared/composables/useToast'
-import { createEvent } from '@/features/trace/api'
+import { logger } from '@/shared/utils/logger'
+import { createEvent, getTraceCandidateFlowTasks, scanTraceFlowTask } from '@/features/trace/api'
 
 /**
  * ScanFlowDialog —— 入库 / 出库 / 流转三态共用的扫码登记对话框（Linear-light）。
@@ -19,6 +20,9 @@ import { createEvent } from '@/features/trace/api'
  * 接口契约（api-doc.md 2.5）：
  *   - POST /api/traces/{traceCode}/events，actionType ∈ {INBOUND, OUTBOUND, TRANSFER}
  *   - 由 ScanHub 透传 idempotencyKey（crypto.randomUUID()）；本组件透传到 createEvent payload
+ *   - 运单驱动模式：选定 candidate task 后改走 POST /api/trace-flow-tasks/{taskId}/scan，
+ *     由后端按 task source/target + 当前 snapshot 派生 fromNode/toNode/province/city，
+ *     联动 trace_flow_task.actualQuantity 与状态。
  *
  * 测试契约：保留 `formData` reactive + `handleSubmit` async，供 ScanFlowDialog.contract.test.js 通过 setupState 断言。
  */
@@ -71,6 +75,26 @@ const formData = reactive({
   remark: ''
 })
 
+// 运单候选状态
+const candidateTasks = ref([])
+const candidatesLoading = ref(false)
+const selectedTaskId = ref('')
+
+const expectedActionType = computed(() => apiActionMap[props.actionType] || '')
+
+/**
+ * 仅展示与用户当前选定动作（INBOUND/OUTBOUND/TRANSFER）类型一致的候选任务。
+ * 后端按 task type + snapshot status 派生 compatibleActionType，前端按这个字段过滤。
+ */
+const filteredCandidateTasks = computed(() => {
+  if (!expectedActionType.value) return []
+  return candidateTasks.value.filter((t) => t.compatibleActionType === expectedActionType.value)
+})
+
+const selectedTask = computed(() =>
+  filteredCandidateTasks.value.find((t) => String(t.id) === String(selectedTaskId.value)) || null
+)
+
 function resetForm() {
   formData.fromNode = ''
   formData.toNode = ''
@@ -80,12 +104,33 @@ function resetForm() {
   formData.correctionOf = null
   formData.actionType = apiActionMap[props.actionType]
   formData.remark = ''
+  selectedTaskId.value = ''
+}
+
+async function loadCandidates() {
+  if (!props.traceCode) return
+  candidatesLoading.value = true
+  try {
+    const list = await getTraceCandidateFlowTasks(props.traceCode)
+    candidateTasks.value = Array.isArray(list) ? list : []
+  } catch (error) {
+    // 静默失败：候选任务功能不应阻断常规扫码
+    logger.warn('加载运单候选失败，回退到普通扫码模式', error)
+    candidateTasks.value = []
+  } finally {
+    candidatesLoading.value = false
+  }
 }
 
 watch(
   () => props.modelValue,
   (open) => {
-    if (open) resetForm()
+    if (open) {
+      resetForm()
+      loadCandidates()
+    } else {
+      candidateTasks.value = []
+    }
   }
 )
 
@@ -93,8 +138,19 @@ watch(
   () => props.actionType,
   (next) => {
     formData.actionType = apiActionMap[next] || formData.actionType
+    selectedTaskId.value = ''
   }
 )
+
+watch(selectedTaskId, (newId) => {
+  if (!newId) return
+  const task = filteredCandidateTasks.value.find((t) => String(t.id) === String(newId))
+  if (!task) return
+  if (task.prefillFromNode) formData.fromNode = task.prefillFromNode
+  if (task.prefillToNode) formData.toNode = task.prefillToNode
+  if (task.prefillProvince) formData.province = task.prefillProvince
+  if (task.prefillCity) formData.city = task.prefillCity
+})
 
 function handleClose() {
   if (submitting.value) return
@@ -117,6 +173,24 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
+    if (selectedTask.value) {
+      // 运单驱动路径：路由到 /trace-flow-tasks/{id}/scan，由后端按任务上下文派生节点
+      const taskPayload = {
+        traceCode: props.traceCode,
+        eventTime: formatToBackend(formData.eventTime),
+        remark: formData.remark?.trim() || ''
+      }
+      if (props.idempotencyKey) {
+        taskPayload.idempotencyKey = props.idempotencyKey
+      }
+      await scanTraceFlowTask(selectedTask.value.id, taskPayload)
+      toast.success(`${operationName.value}记录提交成功（已计入运单 ${selectedTask.value.taskNo}）`)
+      emit('update:modelValue', false)
+      emit('success')
+      return
+    }
+
+    // 普通扫码路径：events 接口
     const apiData = {
       actionType: formData.actionType,
       eventTime: formatToBackend(formData.eventTime),
@@ -162,6 +236,36 @@ async function handleSubmit() {
         <span class="scan-flow__code mono">{{ traceCode }}</span>
         <p class="scan-flow__hint">
           系统会以 RSA 数字签名 + SHA-256 哈希链生成不可篡改记录；幂等键已注入，重复提交不会产生第二条日志。
+        </p>
+      </div>
+
+      <div
+        v-if="filteredCandidateTasks.length > 0"
+        class="scan-flow__task-picker"
+        data-test="scan-flow-task-picker"
+      >
+        <label class="scan-flow__task-label" for="scan-flow-task-select">
+          关联运单（可选）
+        </label>
+        <select
+          id="scan-flow-task-select"
+          v-model="selectedTaskId"
+          class="scan-flow__task-select"
+          data-test="scan-flow-task-select"
+        >
+          <option value="">不关联运单（仅写溯源事件）</option>
+          <option v-for="task in filteredCandidateTasks" :key="task.id" :value="task.id">
+            {{ task.taskNo }} · {{ task.taskTypeLabel }} ·
+            {{ task.sourceNodeName }} → {{ task.targetNodeName }}
+            · 剩余 {{ task.remainingQuantity }}/{{ task.expectedQuantity }}
+          </option>
+        </select>
+        <p v-if="selectedTask" class="scan-flow__task-hint" data-test="scan-flow-task-hint">
+          已选运单 <strong>{{ selectedTask.taskNo }}</strong>，节点 / 省 / 市 字段已自动填充；
+          提交时会同时累计到运单 actualQuantity。
+        </p>
+        <p v-else class="scan-flow__task-hint scan-flow__task-hint--muted">
+          选择一条运单可一键填表并把这次扫码计入运单进度（接通普通扫码 ↔ 任务工作台两条链路）。
         </p>
       </div>
 
@@ -225,5 +329,55 @@ async function handleSubmit() {
   font-size: 12.5px;
   color: var(--ink-subtle);
   line-height: 1.55;
+}
+.scan-flow__task-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px dashed color-mix(in srgb, var(--primary) 35%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary-soft) 60%, transparent);
+}
+.scan-flow__task-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.scan-flow__task-select {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px 14px;
+  padding-right: 32px;
+}
+.scan-flow__task-select:focus {
+  border-color: var(--primary-focus);
+  box-shadow: 0 0 0 3px var(--primary-ring);
+}
+.scan-flow__task-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-muted);
+  line-height: 1.55;
+}
+.scan-flow__task-hint--muted {
+  color: var(--ink-subtle);
+}
+.scan-flow__task-hint strong {
+  color: var(--primary);
+  font-weight: 600;
 }
 </style>

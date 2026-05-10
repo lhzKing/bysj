@@ -97,6 +97,17 @@ export function verifyTraceChain(traceCode) {
   return request.get(`/traces/${traceCode}/verify`)
 }
 
+/**
+ * 普通扫码弹窗运单驱动用：列出该追溯码当前可参与的开放运单（CREATED/PROCESSING）。
+ * 选定后用 candidate.prefill* 字段自动填入弹窗，并在提交时改走 /trace-flow-tasks/{id}/scan
+ * 以联动任务的 actualQuantity / status，把"普通扫码 + 任务扫码"两条链路接通。
+ * @param {string} traceCode
+ * @returns {Promise<Array<{id: number, taskNo: string, taskType: string, taskTypeLabel: string, status: string, statusLabel: string, sourceNodeName: string, targetNodeName: string, expectedQuantity: number, actualQuantity: number, remainingQuantity: number, compatibleActionType: string, prefillFromNode: string, prefillToNode: string, prefillProvince: string, prefillCity: string}>>}
+ */
+export function getTraceCandidateFlowTasks(traceCode) {
+  return request.get(`/traces/${traceCode}/candidate-flow-tasks`)
+}
+
 
 /**
  * Print a generated trace-code label.

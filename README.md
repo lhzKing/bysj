@@ -586,6 +586,50 @@ mysql -u root -p trace_db < backend/sql/sample_data_full.sql
 - `LOGISTICS` 侧重物流流转、任务扫码/完成和异常上报。
 - `USER` 仅具备查询类能力。
 
+### 扫码动作可见性的 5 维度门
+
+> 答辩 / 演示口径统一参考。回答「为什么这个账号扫码看不到入库动作？」时，按下表 5 维度逐项排查即可。
+
+`GET /api/traces/{code}/available-actions` 返回的 `availableActions[]` 是 5 道 AND 串联的过滤门的最终结果——任一门不通过，对应动作都不会出现：
+
+| 门 | 维度 | 数据源 | 控制点 | 不通过的典型现象 |
+|---|---|---|---|---|
+| 1 | HTTP 鉴权 | JWT Token + `token_version` | [`LoginInterceptor`](backend/src/main/java/com/example/trace/security/LoginInterceptor.java) | 整个接口直接 401 / 403 |
+| 2 | 角色权限（粗粒度） | `sys_role_permission` × `sys_permission` | [`PermissionInterceptor`](backend/src/main/java/com/example/trace/security/PermissionInterceptor.java) + `@RequirePermission` | `available-actions` 接口本身被拦（缺 `trace:view`） |
+| 3 | 状态机 | [`TraceTransitionPolicy`](backend/src/main/java/com/example/trace/service/policy/TraceTransitionPolicy.java) | `allowedActions(currentStatus)` | INIT 状态只能 `INBOUND` / `EXCEPTION_OPEN`；`TRANSFERRED` 是终点没常规动作 |
+| 4 | 角色对动作的允许集合（细粒度） | [`TraceActionPermissionPolicy`](backend/src/main/java/com/example/trace/service/policy/TraceActionPermissionPolicy.java) | `filterExecutable(roleId, stateAllowedActions)` | producer 没 `trace:inbound`，所以 INBOUND 即便状态机允许也会被剔除 |
+| 5 | 节点绑定 | `trace_user_node_binding` | [`TraceUserNodeBindingServiceImpl.canExecuteActionAtCurrentNode`](backend/src/main/java/com/example/trace/service/impl/TraceUserNodeBindingServiceImpl.java) | warehouse 绑定到 NODE-WAREHOUSE-SZ，但码当前在 NODE-FACTORY-BJ，OUTBOUND/TRANSFER 被滤掉（INBOUND 走「任意绑定即放行」短路） |
+
+代码入口：[`TraceAvailableActionService.availableActions`](backend/src/main/java/com/example/trace/service/impl/support/TraceAvailableActionService.java) 把 3-5 三道串起来，2 由拦截器在它之前完成。
+
+#### 排查口径
+
+UI 看到「当前用户未绑定当前可操作节点」时**不一定真是节点问题**——前端 [`ScanHub.vue:noActionGuidance`](frontend/src/features/trace/views/ScanHub.vue) 已对后端 4 类 reason 做过翻译：
+
+| 后端 `noActionReason` 关键字 | 真因 | 怎么处理 |
+|---|---|---|
+| 含「未绑定」/「节点扫码动作」 | 维度 4（角色没该动作权限）或维度 5（节点绑定不匹配） | 切换到承担该业务的角色；或给当前用户补 `trace_user_node_binding` |
+| 含「角色没有」/「扫码动作权限」 | 维度 4 角色权限缺失 | 切换 warehouse / logistics / producer |
+| 含「无常规可执行动作」/「状态」 | 维度 3 状态机限制（终点 / 异常态） | 走异常解冻或审计纠错流程 |
+| 含「角色上下文」 | 鉴权异常 | 重新登录 |
+
+#### 「业务角色 × 状态」可执行动作速查（默认权限）
+
+| 状态 → | INIT | IN_STOCK | IN_TRANSIT | TRANSFERRED | EXCEPTION |
+|---|---|---|---|---|---|
+| `producer` | EXCEPTION_OPEN（仅在绑定节点） | 同左 | 同左 | 同左 | EXCEPTION_CLOSE |
+| `warehouse` | **INBOUND** + EXCEPTION_OPEN | **OUTBOUND** + EXCEPTION_OPEN | **INBOUND**（接收）+ EXCEPTION_OPEN | INBOUND（接收）+ EXCEPTION_OPEN | EXCEPTION_CLOSE |
+| `logistics` | EXCEPTION_OPEN | EXCEPTION_OPEN | **TRANSFER** + EXCEPTION_OPEN | EXCEPTION_OPEN | EXCEPTION_CLOSE |
+| `superadmin` | 状态机允许的全部动作（受维度 5 节点绑定收窄；演示时若要全开可临时给 superadmin 绑定全部节点） | 同左 | 同左 | 同左 | 同左 |
+
+> 落到具体码上还要叠加维度 5：例如 warehouse 默认只绑了 NODE-WAREHOUSE-SZ，去扫一个落在 NODE-WAREHOUSE-GZ 的码，OUTBOUND/TRANSFER 也会被剔除（INBOUND 例外，因为「任意绑定即放行」短路用于跨节点接收场景）。
+
+#### 演示选账号的快捷决策
+
+- **要演示完整 INIT → IN_STOCK → IN_TRANSIT → TRANSFERRED 链路**：依次用 warehouse（INBOUND）→ warehouse（OUTBOUND）→ logistics（TRANSFER）。
+- **要演示生产赋码→打印→激活**：用 producer。
+- **要演示「全权限角色」**：用 superadmin（已有全部权限），但必须先在 `trace_user_node_binding` 给 superadmin 绑节点，否则维度 5 会过滤掉所有动作。
+
 ### 角色优先级体系
 
 | 角色代码 | 角色名称 | 优先级 | 说明 |

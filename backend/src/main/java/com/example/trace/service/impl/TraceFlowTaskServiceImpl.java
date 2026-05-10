@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.trace.common.BizCode;
 import com.example.trace.common.BizException;
 import com.example.trace.dto.ScanTraceRequest;
+import com.example.trace.dto.TraceFlowTaskCandidateResponse;
 import com.example.trace.dto.TraceFlowTaskCompleteRequest;
 import com.example.trace.dto.TraceFlowTaskCreateRequest;
 import com.example.trace.dto.TraceFlowTaskResponse;
@@ -77,6 +78,156 @@ public class TraceFlowTaskServiceImpl implements TraceFlowTaskService {
         wrapper.orderByDesc(TraceFlowTask::getCreateTime)
                 .orderByDesc(TraceFlowTask::getId);
         return toResponses(traceFlowTaskMapper.selectList(wrapper));
+    }
+
+    @Override
+    public List<TraceFlowTaskCandidateResponse> findCandidateFlowTasksForTrace(String traceCode) {
+        String normalizedTraceCode = normalizeTraceCode(traceCode);
+        TraceSnapshot snapshot = traceSnapshotMapper.selectById(normalizedTraceCode);
+        if (snapshot == null) {
+            throw new BizException(BizCode.TRACE_NOT_FOUND, "未知溯源码: " + normalizedTraceCode);
+        }
+        String currentNode = TraceLocationFieldConstraints.normalizeNode("currentNode", snapshot.getCurrentNode());
+        if (!StringUtils.hasText(currentNode)) {
+            return List.of();
+        }
+
+        // 找出与 currentNode 同名/同 code 的节点
+        List<TraceNode> matchedNodes = traceNodeMapper.selectList(new LambdaQueryWrapper<TraceNode>()
+                .and(w -> w.eq(TraceNode::getNodeName, currentNode)
+                        .or().eq(TraceNode::getNodeCode, currentNode)));
+        if (matchedNodes.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> matchedNodeIds = matchedNodes.stream()
+                .map(TraceNode::getId)
+                .collect(Collectors.toSet());
+
+        // 查所有开放任务（CREATED/PROCESSING）且来源或目标节点 ∈ matchedNodeIds
+        List<TraceFlowTask> openTasks = traceFlowTaskMapper.selectList(new LambdaQueryWrapper<TraceFlowTask>()
+                .in(TraceFlowTask::getStatus,
+                        TraceFlowTaskStatus.CREATED.getCode(),
+                        TraceFlowTaskStatus.PROCESSING.getCode())
+                .and(w -> w.in(TraceFlowTask::getSourceNodeId, matchedNodeIds)
+                        .or().in(TraceFlowTask::getTargetNodeId, matchedNodeIds))
+                .orderByDesc(TraceFlowTask::getCreateTime)
+                .orderByDesc(TraceFlowTask::getId));
+        if (openTasks.isEmpty()) {
+            return List.of();
+        }
+
+        // 任务涉及的所有节点一次拉取
+        Set<Long> taskNodeIds = new LinkedHashSet<>();
+        for (TraceFlowTask task : openTasks) {
+            if (task.getSourceNodeId() != null) taskNodeIds.add(task.getSourceNodeId());
+            if (task.getTargetNodeId() != null) taskNodeIds.add(task.getTargetNodeId());
+        }
+        Map<Long, TraceNode> nodesById = taskNodeIds.isEmpty()
+                ? Map.of()
+                : traceNodeMapper.selectBatchIds(taskNodeIds).stream()
+                        .collect(Collectors.toMap(TraceNode::getId, Function.identity()));
+
+        TraceStatus currentStatus = parseSnapshotStatus(normalizedTraceCode, snapshot);
+        List<TraceFlowTaskCandidateResponse> candidates = new ArrayList<>();
+        for (TraceFlowTask task : openTasks) {
+            TraceFlowTaskCandidateResponse candidate = buildCandidateIfMatch(
+                    task,
+                    nodesById,
+                    currentNode,
+                    currentStatus
+            );
+            if (candidate != null) {
+                candidates.add(candidate);
+            }
+        }
+        return candidates;
+    }
+
+    /**
+     * 复用 {@link #resolveTaskScanPlan} 的状态机判断，过滤出当前 snapshot 在该任务下能产生有效扫码计划的任务。
+     * 只接受会派生 INBOUND / OUTBOUND 的任务（TRANSFER 任务在任务扫码闭环里目前不支持）。
+     */
+    private TraceFlowTaskCandidateResponse buildCandidateIfMatch(
+            TraceFlowTask task,
+            Map<Long, TraceNode> nodesById,
+            String currentNode,
+            TraceStatus currentStatus
+    ) {
+        TraceFlowTaskType taskType;
+        try {
+            taskType = parseTaskType(task);
+        } catch (BizException e) {
+            return null;
+        }
+        if (taskType == TraceFlowTaskType.TRANSFER) {
+            return null; // 任务扫码闭环 B18 暂不支持
+        }
+        TraceNode sourceNode = task.getSourceNodeId() == null ? null : nodesById.get(task.getSourceNodeId());
+        TraceNode targetNode = task.getTargetNodeId() == null ? null : nodesById.get(task.getTargetNodeId());
+        if (sourceNode == null || targetNode == null) {
+            return null;
+        }
+
+        ActionType compatibleActionType;
+        TraceNode operationNode;
+        String prefillFromNode;
+        String prefillToNode;
+
+        switch (taskType) {
+            case OUTBOUND -> {
+                if (currentStatus == TraceStatus.IN_STOCK && matchesNode(sourceNode, currentNode)) {
+                    compatibleActionType = ActionType.OUTBOUND;
+                    operationNode = sourceNode;
+                    prefillFromNode = sourceNode.getNodeName();
+                    prefillToNode = targetNode.getNodeName();
+                } else if ((currentStatus == TraceStatus.IN_TRANSIT || currentStatus == TraceStatus.TRANSFERRED)
+                        && matchesNode(targetNode, currentNode)
+                        && (task.getActualQuantity() == null ? 0 : task.getActualQuantity()) > 0) {
+                    compatibleActionType = ActionType.INBOUND;
+                    operationNode = targetNode;
+                    prefillFromNode = currentNode;
+                    prefillToNode = targetNode.getNodeName();
+                } else {
+                    return null;
+                }
+            }
+            case INBOUND, RECEIVE -> {
+                if ((currentStatus == TraceStatus.IN_TRANSIT || currentStatus == TraceStatus.TRANSFERRED)
+                        && matchesNode(targetNode, currentNode)) {
+                    compatibleActionType = ActionType.INBOUND;
+                    operationNode = targetNode;
+                    prefillFromNode = currentNode;
+                    prefillToNode = targetNode.getNodeName();
+                } else {
+                    return null;
+                }
+            }
+            default -> {
+                return null;
+            }
+        }
+
+        TraceFlowTaskStatus status = parseStatus(task);
+        return TraceFlowTaskCandidateResponse.builder()
+                .id(task.getId())
+                .taskNo(task.getTaskNo())
+                .taskType(taskType)
+                .taskTypeLabel(taskType.getLabel())
+                .status(status)
+                .statusLabel(status.getLabel())
+                .sourceNodeCode(sourceNode.getNodeCode())
+                .sourceNodeName(sourceNode.getNodeName())
+                .targetNodeCode(targetNode.getNodeCode())
+                .targetNodeName(targetNode.getNodeName())
+                .expectedQuantity(task.getExpectedQuantity())
+                .actualQuantity(task.getActualQuantity())
+                .remainingQuantity(calculateRemainingQuantity(task))
+                .compatibleActionType(compatibleActionType)
+                .prefillFromNode(prefillFromNode)
+                .prefillToNode(prefillToNode)
+                .prefillProvince(operationNode.getProvince())
+                .prefillCity(operationNode.getCity())
+                .build();
     }
 
     @Override

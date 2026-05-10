@@ -15,9 +15,11 @@ import com.example.trace.dto.TraceCodeLabelActionResponse;
 import com.example.trace.dto.TraceCorrectionRequest;
 import com.example.trace.dto.TraceDetailResponse;
 import com.example.trace.dto.TraceExceptionCloseRequest;
+import com.example.trace.dto.TraceFlowTaskCandidateResponse;
 import com.example.trace.dto.TraceListItemResponse;
 import com.example.trace.dto.TracePageRequest;
 import com.example.trace.service.policy.TraceActionPermissionPolicy;
+import com.example.trace.service.TraceFlowTaskService;
 import com.example.trace.service.TraceService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -25,6 +27,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -48,10 +51,16 @@ public class TraceController {
     private static final String ATTR_ROLE_ID = "roleId";
 
     private final TraceService traceService;
+    private final TraceFlowTaskService traceFlowTaskService;
     private final TraceActionPermissionPolicy traceActionPermissionPolicy;
 
-    public TraceController(TraceService traceService, TraceActionPermissionPolicy traceActionPermissionPolicy) {
+    public TraceController(
+            TraceService traceService,
+            TraceFlowTaskService traceFlowTaskService,
+            TraceActionPermissionPolicy traceActionPermissionPolicy
+    ) {
         this.traceService = traceService;
+        this.traceFlowTaskService = traceFlowTaskService;
         this.traceActionPermissionPolicy = traceActionPermissionPolicy;
     }
 
@@ -279,6 +288,23 @@ public class TraceController {
         Long userId = (Long) httpReq.getAttribute(ATTR_USER_ID);
         TraceAvailableActionsResponse response = traceService.availableActions(traceCode, roleId, userId);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
+     * 扫码后可参与的开放运单候选列表
+     * GET /api/traces/{traceCode}/candidate-flow-tasks
+     *
+     * 用于普通扫码弹窗（ScanFlowDialog）展示运单下拉 + 自动填充 fromNode/toNode/省/市，
+     * 并把"普通扫码工位 ↔ 任务扫码工作台"两条链路在 UI 上接通。
+     */
+    @GetMapping("/{traceCode}/candidate-flow-tasks")
+    @RequirePermission("trace:view")
+    public ResponseEntity<ApiResponse<List<TraceFlowTaskCandidateResponse>>> candidateFlowTasks(
+            @PathVariable String traceCode
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(
+                traceFlowTaskService.findCandidateFlowTasksForTrace(traceCode)
+        ));
     }
 
     /**
