@@ -28,3 +28,6 @@ trace:
     auto-generate: ${TRACE_SIGNATURE_AUTO_GENERATE:true}
   demo-data:
     enabled: ${TRACE_DEMO_DATA_ENABLED:true}
+  qr:
+    # test profile 默认空字符串：qrPayload 写裸 traceCode，与历史契约测试保持一致。
+    public-base-url: ${TRACE_PUBLIC_BASE_URL:}

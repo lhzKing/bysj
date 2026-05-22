@@ -17,17 +17,19 @@ logging:
 
 trace:
   signature:
-    # dev profile 默认 auto-generate=true：开箱即用、跨平台（Windows / macOS / Linux 任何机器都能直接 mvn spring-boot:run -Dspring-boot.run.profiles=dev 启动）。
-    # 代价：每次重启会生成新内存密钥，旧 lifecycle log 的签名将无法验证（dev 演示数据需要重新生成）。
-    # 如需稳定密钥（保留历史签名验证），通过环境变量指向外部 key 文件即可：
-    #   TRACE_SIGNATURE_PRIVATE_KEY_PATH=D:/trace-runtime/keys/private_key.pem
-    #   TRACE_SIGNATURE_PUBLIC_KEY_PATH=D:/trace-runtime/keys/public_key.pem
-    #   TRACE_SIGNATURE_AUTO_GENERATE=false
+    # dev profile 默认指向本机固定密钥 D:/trace-runtime/keys/，让 lifecycle_log 的签名跨重启稳定。
+    # 演示数据（含 scripts/seed_extended_data.py 离线签好的 3621 条 log）需要这把固定密钥才能通过 /verify。
+    # 跨平台同事 / CI：在自己环境用 export TRACE_SIGNATURE_PRIVATE_KEY_PATH=... 覆盖默认值，或在没有
+    # key 文件时通过 export TRACE_SIGNATURE_AUTO_GENERATE=true + 清空两条 path 走 in-memory 模式。
     # 注意：path 与 auto-generate 不能同时启用——SignatureUtil 优先 path，其次 auto-generate。
-    private-key-path: ${TRACE_SIGNATURE_PRIVATE_KEY_PATH:}
-    public-key-path: ${TRACE_SIGNATURE_PUBLIC_KEY_PATH:}
+    private-key-path: ${TRACE_SIGNATURE_PRIVATE_KEY_PATH:D:/trace-runtime/keys/private_key.pem}
+    public-key-path: ${TRACE_SIGNATURE_PUBLIC_KEY_PATH:D:/trace-runtime/keys/public_key.pem}
     key-id: ${TRACE_SIGNATURE_KEY_ID:default}
     key-version: ${TRACE_SIGNATURE_KEY_VERSION:1}
-    auto-generate: ${TRACE_SIGNATURE_AUTO_GENERATE:true}
+    auto-generate: ${TRACE_SIGNATURE_AUTO_GENERATE:false}
   demo-data:
     enabled: ${TRACE_DEMO_DATA_ENABLED:true}
+  qr:
+    # dev profile 默认指向 Vite HTTPS 端口（与 frontend npm run dev 一致），生成的二维码可被手机原生扫码直接跳 /public/traces/<code>。
+    # 走 HTTP 或换端口：export TRACE_PUBLIC_BASE_URL=http://192.168.x.x:5173 覆盖。
+    public-base-url: ${TRACE_PUBLIC_BASE_URL:https://localhost:5173}

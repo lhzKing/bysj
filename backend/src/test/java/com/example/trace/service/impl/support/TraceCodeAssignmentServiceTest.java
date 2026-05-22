@@ -86,7 +86,8 @@ class TraceCodeAssignmentServiceTest {
                 traceLogFactory,
                 batchCommitter,
                 traceCodeStatusService,
-                traceAssignBatchService
+                traceAssignBatchService,
+                new com.example.trace.config.TraceQrProperties()
         );
     }
 

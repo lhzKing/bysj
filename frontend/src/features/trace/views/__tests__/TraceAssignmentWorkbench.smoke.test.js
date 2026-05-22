@@ -188,7 +188,7 @@ describe('TraceAssignmentWorkbench (Linear shell)', () => {
     expect(wrapper.find('[data-testid="assignment-action-void-TRACE-001"]').exists()).toBe(true)
   })
 
-  it('reprint flow uses usePrompt instead of window.prompt to capture reason', async () => {
+  it('reprint flow uses usePrompt for reason then defers API call until dialog confirms', async () => {
     promptMock.mockResolvedValueOnce('标签丢失')
     const wrapper = mountWorkbench()
     await flushPromises()
@@ -202,6 +202,17 @@ describe('TraceAssignmentWorkbench (Linear shell)', () => {
 
     expect(promptMock).toHaveBeenCalledTimes(1)
     expect(promptMock.mock.calls[0][0]).toEqual(expect.objectContaining({ title: '重打标签' }))
+    // 新行为：仅 prompt 后不直接调 API，要等用户在打印预览 dialog 里点"打印"才上链
+    expect(reprintTraceCodeMock).not.toHaveBeenCalled()
+
+    const dialog = wrapper.findComponent({ name: 'PrintLabelDialog' })
+    expect(dialog.exists()).toBe(true)
+    expect(dialog.props('modelValue')).toBe(true)
+    expect(dialog.props('mode')).toBe('reprint')
+
+    dialog.vm.$emit('confirm', dialog.props('codes'))
+    await flushPromises()
+
     expect(reprintTraceCodeMock).toHaveBeenCalledWith('TRACE-001', { remark: '标签丢失' })
   })
 
@@ -261,7 +272,7 @@ describe('TraceAssignmentWorkbench (Linear shell)', () => {
     expect(routerPushMock).toHaveBeenCalledWith('/traces/TRACE-002')
   })
 
-  it('batch print confirms then iterates over GENERATED-only codes', async () => {
+  it('batch print confirms then opens dialog, only printing on dialog confirm (GENERATED-only)', async () => {
     printTraceCodeMock.mockResolvedValue({})
     const wrapper = mountWorkbench()
     await flushPromises()
@@ -275,6 +286,18 @@ describe('TraceAssignmentWorkbench (Linear shell)', () => {
 
     expect(confirmMock).toHaveBeenCalledTimes(1)
     expect(confirmMock.mock.calls[0][0]).toEqual(expect.objectContaining({ title: '批量打印标签' }))
+    // 新行为：confirm 后不直接调 API，先弹打印预览 dialog
+    expect(printTraceCodeMock).not.toHaveBeenCalled()
+
+    const dialog = wrapper.findComponent({ name: 'PrintLabelDialog' })
+    expect(dialog.exists()).toBe(true)
+    expect(dialog.props('modelValue')).toBe(true)
+    const dialogCodes = dialog.props('codes')
+    expect(dialogCodes.map((c) => c.traceCode)).toEqual(['TRACE-002'])
+
+    dialog.vm.$emit('confirm', dialogCodes)
+    await flushPromises()
+
     expect(printTraceCodeMock).toHaveBeenCalledTimes(1)
     expect(printTraceCodeMock).toHaveBeenCalledWith('TRACE-002', { remark: '生产工作台批量打印标签' })
   })

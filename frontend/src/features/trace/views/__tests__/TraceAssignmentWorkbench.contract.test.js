@@ -138,7 +138,7 @@ describe('TraceAssignmentWorkbench', () => {
     expect(wrapper.text()).toContain('对账状态：MISMATCH')
   })
 
-  it('prints a single generated code and refreshes batch detail', async () => {
+  it('prints a single generated code via dialog confirm and refreshes batch detail', async () => {
     const wrapper = mountWorkbench()
     await flushPromises()
 
@@ -147,6 +147,14 @@ describe('TraceAssignmentWorkbench', () => {
     await flushPromises()
 
     await wrapper.find('[data-test="assignment-code-row-TRACE-001"] button').trigger('click')
+    await flushPromises()
+
+    // 单码打印走"先弹预览 → 确认 → 调 API"流程，仅点行内按钮还不会触发 API
+    expect(printTraceCodeMock).not.toHaveBeenCalled()
+    const dialog = wrapper.findComponent({ name: 'PrintLabelDialog' })
+    expect(dialog.exists()).toBe(true)
+    expect(dialog.props('modelValue')).toBe(true)
+    dialog.vm.$emit('confirm', dialog.props('codes'))
     await flushPromises()
 
     expect(printTraceCodeMock).toHaveBeenCalledWith('TRACE-001', { remark: '生产工作台打印标签' })

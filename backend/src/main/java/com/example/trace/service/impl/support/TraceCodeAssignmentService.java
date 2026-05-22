@@ -3,6 +3,7 @@ package com.example.trace.service.impl.support;
 import cn.hutool.core.util.IdUtil;
 import com.example.trace.common.BizCode;
 import com.example.trace.common.BizException;
+import com.example.trace.config.TraceQrProperties;
 import com.example.trace.dto.ProduceAssignRequest;
 import com.example.trace.dto.ProduceAssignResponse;
 import com.example.trace.entity.BasePartSpec;
@@ -56,19 +57,22 @@ public class TraceCodeAssignmentService {
     private final TraceBatchCommitter batchCommitter;
     private final TraceCodeStatusService traceCodeStatusService;
     private final TraceAssignBatchService traceAssignBatchService;
+    private final TraceQrProperties traceQrProperties;
 
     public TraceCodeAssignmentService(
             BasePartSpecMapper basePartSpecMapper,
             TraceLogFactory traceLogFactory,
             TraceBatchCommitter batchCommitter,
             TraceCodeStatusService traceCodeStatusService,
-            TraceAssignBatchService traceAssignBatchService
+            TraceAssignBatchService traceAssignBatchService,
+            TraceQrProperties traceQrProperties
     ) {
         this.basePartSpecMapper = basePartSpecMapper;
         this.traceLogFactory = traceLogFactory;
         this.batchCommitter = batchCommitter;
         this.traceCodeStatusService = traceCodeStatusService;
         this.traceAssignBatchService = traceAssignBatchService;
+        this.traceQrProperties = traceQrProperties;
     }
 
     public ProduceAssignResponse produceAssign(ProduceAssignRequest request, String operator) {
@@ -140,7 +144,7 @@ public class TraceCodeAssignmentService {
                         batch.getId(),
                         spuId,
                         i + 1,
-                        traceCode,
+                        traceQrProperties.renderQrPayload(traceCode),
                         traceCode
                 ));
                 units.add(new TraceBatchCommitter.AssignmentUnit(initLog, snapshot, codeStatus));

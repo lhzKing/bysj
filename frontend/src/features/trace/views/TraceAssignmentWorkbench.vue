@@ -22,6 +22,7 @@ import EmptyState from '@/shared/components/ui/EmptyState.vue'
 import LoadingSkeleton from '@/shared/components/ui/LoadingSkeleton.vue'
 import KbdShortcut from '@/shared/components/ui/KbdShortcut.vue'
 import QRScanner from '@/shared/components/QRScanner.vue'
+import PrintLabelDialog from '@/features/trace/components/PrintLabelDialog.vue'
 import { useConfirm } from '@/shared/composables/useConfirm'
 import { useToast } from '@/shared/composables/useToast'
 import { usePrompt } from '@/shared/composables/usePrompt'
@@ -56,6 +57,15 @@ const batchCodes = ref([])
 const createError = ref('')
 const lookupBatchId = ref('')
 const activationDeviceId = ref('')
+
+// 打印对话框状态。pendingAction 描述确认后要发起的请求：
+//   { kind: 'print' | 'reprint' | 'batch-print', codes, reason? }
+const printDialogOpen = ref(false)
+const printDialogTitle = ref('打印标签')
+const printDialogConfirmText = ref('打印')
+const printDialogMode = ref('print')
+const printDialogCodes = ref([])
+const pendingPrintAction = ref(null)
 
 const createForm = reactive({
   partCode: '',
@@ -323,20 +333,47 @@ function selectCode(traceCode) {
   selectedTraceCode.value = traceCode
 }
 
+const selectedPart = computed(() =>
+  parts.value.find((p) => p.partCode === createForm.partCode) || null
+)
+const partLabel = computed(() => {
+  const p = selectedPart.value || (batchDetail.value?.partCode
+    ? parts.value.find((x) => x.partCode === batchDetail.value.partCode)
+    : null)
+  if (!p) return batchDetail.value?.partCode || ''
+  return `${p.partCode} · ${p.partName}`
+})
+
 async function runCodeAction(code, action) {
   if (!code?.traceCode) return
+  if (action === 'print') {
+    openPrintDialog({
+      kind: 'print',
+      codes: [code],
+      title: '打印标签',
+      confirmText: '打印',
+      mode: 'print'
+    })
+    return
+  }
+  if (action === 'reprint') {
+    const reason = await promptReason('重打标签', `请填写 ${code.traceCode} 的重打原因`)
+    if (!reason) return
+    openPrintDialog({
+      kind: 'reprint',
+      codes: [code],
+      reason,
+      title: '重打标签',
+      confirmText: '打印（重打）',
+      mode: 'reprint'
+    })
+    return
+  }
+
   const key = `${action}:${code.traceCode}`
   actionLoadingKey.value = key
   try {
-    if (action === 'print') {
-      await printTraceCode(code.traceCode, { remark: '生产工作台打印标签' })
-      toast.success('标签打印已记录')
-    } else if (action === 'reprint') {
-      const reason = await promptReason('重打标签', `请填写 ${code.traceCode} 的重打原因`)
-      if (!reason) return
-      await reprintTraceCode(code.traceCode, { remark: reason })
-      toast.success('标签重打已记录')
-    } else if (action === 'void') {
+    if (action === 'void') {
       const accepted = await confirm({
         title: '作废标签',
         message: `确定作废 ${code.traceCode} 吗？作废后不能激活或流转。`,
@@ -362,6 +399,66 @@ async function runCodeAction(code, action) {
   }
 }
 
+function openPrintDialog({ kind, codes, reason, title, confirmText, mode }) {
+  pendingPrintAction.value = { kind, codes, reason: reason || '' }
+  printDialogCodes.value = codes
+  printDialogTitle.value = title
+  printDialogConfirmText.value = confirmText
+  printDialogMode.value = mode
+  printDialogOpen.value = true
+}
+
+function closePrintDialog() {
+  printDialogOpen.value = false
+  pendingPrintAction.value = null
+  printDialogCodes.value = []
+}
+
+async function handlePrintDialogConfirm() {
+  const action = pendingPrintAction.value
+  if (!action) {
+    printDialogOpen.value = false
+    return
+  }
+  const { kind, codes, reason } = action
+  // 关闭对话框前先把状态清掉，避免 window.print() 时 dialog 还遮罩；
+  // dialog 自身的 doPrint 已触发浏览器打印，下面只负责记录链上事件
+  printDialogOpen.value = false
+  pendingPrintAction.value = null
+
+  const loadingKey = kind === 'batch-print' ? 'batch:print' : `${kind}:${codes[0]?.traceCode}`
+  actionLoadingKey.value = loadingKey
+  let succeeded = 0
+  try {
+    if (kind === 'print') {
+      await printTraceCode(codes[0].traceCode, { remark: '生产工作台打印标签' })
+      toast.success('标签打印已记录')
+    } else if (kind === 'reprint') {
+      await reprintTraceCode(codes[0].traceCode, { remark: reason })
+      toast.success('标签重打已记录')
+    } else if (kind === 'batch-print') {
+      for (const code of codes) {
+        await printTraceCode(code.traceCode, { remark: '生产工作台批量打印标签' })
+        succeeded += 1
+      }
+      toast.success(`批量打印完成：${succeeded}/${codes.length}`)
+    }
+    await refreshCurrentBatch({
+      selectTraceCode: kind === 'batch-print' ? selectedTraceCode.value : codes[0]?.traceCode
+    })
+  } catch (error) {
+    logger.error('打印链上事件记录失败', error)
+    if (kind === 'batch-print') {
+      toast.error(`批量打印中断：${succeeded}/${codes.length}，${error?.message || '请重试'}`)
+      await refreshCurrentBatch()
+    } else {
+      toast.error(error?.message || '打印事件上链失败')
+    }
+  } finally {
+    actionLoadingKey.value = ''
+  }
+}
+
 async function handleBatchPrint() {
   const printableCodes = sortedBatchCodes.value.filter((code) => canPrint(code))
   if (printableCodes.length === 0) {
@@ -370,28 +467,19 @@ async function handleBatchPrint() {
   }
   const accepted = await confirm({
     title: '批量打印标签',
-    message: `将为 ${printableCodes.length} 个未打印单品码记录 PRINT_CODE 事件。`,
-    confirmText: '开始打印',
+    message: `将弹出 ${printableCodes.length} 张标签的打印预览，确认后浏览器打印对话框会出现，同时为每张码记录 PRINT_CODE 事件。`,
+    confirmText: '继续',
     cancelText: '取消'
   })
   if (!accepted) return
 
-  actionLoadingKey.value = 'batch:print'
-  let succeeded = 0
-  try {
-    for (const code of printableCodes) {
-      await printTraceCode(code.traceCode, { remark: '生产工作台批量打印标签' })
-      succeeded += 1
-    }
-    toast.success(`批量打印完成：${succeeded}/${printableCodes.length}`)
-    await refreshCurrentBatch()
-  } catch (error) {
-    logger.error('批量打印失败', error)
-    toast.error(`批量打印中断：${succeeded}/${printableCodes.length}，${error?.message || '请重试'}`)
-    await refreshCurrentBatch()
-  } finally {
-    actionLoadingKey.value = ''
-  }
+  openPrintDialog({
+    kind: 'batch-print',
+    codes: printableCodes,
+    title: '批量打印标签',
+    confirmText: `打印 ${printableCodes.length} 张`,
+    mode: 'print'
+  })
 }
 
 async function handleScanActivate(traceCode) {
@@ -934,6 +1022,19 @@ function goTraceDetail(traceCode) {
     </section>
 
     <QRScanner v-if="scannerOpen" @scan="handleScanActivate" @close="scannerOpen = false" />
+
+    <PrintLabelDialog
+      v-model="printDialogOpen"
+      :codes="printDialogCodes"
+      :batch="batchDetail"
+      :part-label="partLabel"
+      :title="printDialogTitle"
+      :confirm-text="printDialogConfirmText"
+      :mode="printDialogMode"
+      data-test="assignment-print-dialog"
+      @confirm="handlePrintDialogConfirm"
+      @cancel="closePrintDialog"
+    />
   </div>
 </template>
 

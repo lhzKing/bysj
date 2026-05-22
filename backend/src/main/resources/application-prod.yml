@@ -25,3 +25,7 @@ trace:
     auto-generate: ${TRACE_SIGNATURE_AUTO_GENERATE:false}
   demo-data:
     enabled: ${TRACE_DEMO_DATA_ENABLED:false}
+  qr:
+    # prod 必须通过环境变量 TRACE_PUBLIC_BASE_URL 注入前端真实域名（含 scheme，不含尾部斜杠），例如 https://trace.example.com。
+    # 空字符串=回退为裸 traceCode 载荷（与历史一致，但失去手机原生扫码跳转能力）。
+    public-base-url: ${TRACE_PUBLIC_BASE_URL:}

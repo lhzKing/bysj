@@ -51,3 +51,9 @@ trace:
     # 调小可降低单事务内 INSERT 数（峰值连接占用更短）但增加事务次数；
     # 调大反之。500 quantity 在默认 50 下为 10 个子事务。
     commit-size: ${TRACE_BATCH_COMMIT_SIZE:50}
+  qr:
+    # 单品码 qrPayload 生成的公开基址。空值=不启用 URL 载荷，qrPayload 仅写裸 traceCode。
+    # dev/test profile 默认指向前端 Vite 端口，让"打印标签"演示生成的二维码可被手机原生扫码直接跳公开溯源页。
+    # prod 必须通过 TRACE_PUBLIC_BASE_URL 注入真实前端域名。
+    public-base-url: ${TRACE_PUBLIC_BASE_URL:}
+    path-template: ${TRACE_QR_PATH_TEMPLATE:/public/traces/{code}}

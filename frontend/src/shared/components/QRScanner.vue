@@ -35,7 +35,24 @@ const constraints = computed(() => {
 
 const onDetect = (codes) => {
   const value = codes?.[0]?.rawValue
-  if (value) emit('scan', value)
+  if (value) emit('scan', extractTraceCode(value))
+}
+
+// 兼容两种 QR 载荷：
+//   1. 新生成的 QR 编码为完整 URL（http(s)://host/public/traces/<code> 或 /traces/<code>），手机原生扫码可直接跳转
+//   2. 历史 QR / 手动输入：纯 traceCode 字符串
+// 路径形如 /public/traces/<code> 与 /traces/<code> 都尝试提取；解不出来则原样回传，让下游业务报错给用户看
+function extractTraceCode(raw) {
+  const trimmed = String(raw || '').trim()
+  if (!trimmed) return ''
+  try {
+    const url = new URL(trimmed)
+    const match = url.pathname.match(/\/(?:public\/)?traces\/([^/?#]+)/)
+    if (match) return decodeURIComponent(match[1])
+  } catch {
+    // 不是合法 URL，按裸 traceCode 处理
+  }
+  return trimmed
 }
 
 const onCameraOn = (capabilities) => {
