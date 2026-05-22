@@ -85,3 +85,22 @@ docs/specs/
 docs/superpowers/
 docs/design/
 docs/progress/phase-*.md
+
+# Playwright / browser verification artifacts (local-only)
+.browser-verify/
+.playwright-mcp/
+
+# Local-only working materials (thesis sources, screenshots, helper scripts)
+scripts/
+论文/
+论文-图表/
+测试截图_20260511/
+
+# Local-only working markdown drafts (test reports, defense prep)
+/前端测试问题二次复核与修复建议_20260510.md
+/数据库批量演示数据生成记录_20260511.md
+/文章目录.md
+/浏览器测试任务清单_20260511.md
+/答辩问答预案_20260523.md
+/项目全面说明文档_20260513.md
+/项目核心业务逻辑讲解_20260510.md

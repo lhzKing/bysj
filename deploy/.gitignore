@@ -1,0 +1,10 @@
+# 千万不要提交生产配置和数据
+.env
+keys/
+mysql-data/
+redis-data/
+mysql-init/
+caddy-data/
+caddy-config/
+caddy-logs/
+nginx-logs/
