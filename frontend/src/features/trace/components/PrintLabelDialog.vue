@@ -11,11 +11,19 @@ const props = defineProps({
   partLabel: { type: String, default: '' },
   title: { type: String, default: '打印标签' },
   confirmText: { type: String, default: '打印' },
-  // 'print' = 首次打印；'reprint' = 重打（标签角标加 RP 提示）
+  // 'print'   = 首次打印（confirm 后父组件调 printTraceCode 上链）
+  // 'reprint' = 重打（标签角标加 RP 提示；confirm 后父组件调 reprintTraceCode 上链）
+  // 'view'    = 仅预览（任何登录用户都能看 QR，但不上链——给无 trace:code:print 权限的角色 + 终态码用）
   mode: { type: String, default: 'print' }
 })
 
 const emit = defineEmits(['update:modelValue', 'confirm', 'cancel'])
+
+const isViewMode = computed(() => props.mode === 'view')
+const resolvedConfirmText = computed(() => {
+  if (props.confirmText && props.confirmText !== '打印') return props.confirmText
+  return isViewMode.value ? '打印（仅预览，不上链）' : '打印'
+})
 
 // 渲染单张标签的 QR 内容。新数据 qrPayload 已是完整 URL，扫码直跳 /public/traces/<code>；
 // 老数据 qrPayload=traceCode（裸码），这里用当前页面 origin 补齐 URL，让演示效果一致。
@@ -39,7 +47,11 @@ function doPrint() {
   // 反过来 emit 先发就坏了——父组件会立刻把 modelValue 置 false 销毁 dialog，
   // 之后 window.print() 抓到的 DOM 已经没有标签内容，打印预览全白。
   window.print()
-  emit('confirm', visibleCodes.value)
+  // view 模式（无打印权限或终态码）只允许浏览器本地打印，绝不触发父组件的链上事件回调；
+  // 这是公开页 + 详情页双入口的"仅预览"安全门——把"看 QR"与"写链"在 UI 层就分离。
+  if (!isViewMode.value) {
+    emit('confirm', visibleCodes.value)
+  }
 }
 </script>
 
@@ -64,8 +76,14 @@ function doPrint() {
         </header>
 
         <div class="print-dialog__hint">
-          预览正在显示打印效果，下面网格中的每一张就是一张实物标签。
-          点击"打印"会弹出浏览器打印对话框，可选打印机或"另存为 PDF"。
+          <template v-if="isViewMode">
+            <strong>仅预览模式：</strong>点击"{{ resolvedConfirmText }}"会调用浏览器本地打印 / 另存为 PDF，
+            <strong>不会</strong>记录链上打印事件。如需正式打印请在生产赋码工作台进行。
+          </template>
+          <template v-else>
+            预览正在显示打印效果，下面网格中的每一张就是一张实物标签。
+            点击"打印"会弹出浏览器打印对话框，可选打印机或"另存为 PDF"。
+          </template>
         </div>
 
         <div class="print-dialog__sheet" data-test="print-label-sheet">
@@ -114,11 +132,12 @@ function doPrint() {
           <BaseButton
             variant="primary"
             data-test="print-label-confirm"
+            :data-mode="mode"
             :disabled="visibleCodes.length === 0"
             @click="doPrint"
           >
             <template #icon><Printer :size="13" /></template>
-            {{ confirmText }}
+            {{ resolvedConfirmText }}
           </BaseButton>
         </footer>
       </article>

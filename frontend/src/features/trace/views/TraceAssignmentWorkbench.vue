@@ -32,11 +32,13 @@ import {
   createTrace,
   getTraceBatch,
   getTraceBatchCodes,
+  getTraceCodeByCode,
   getTraceNodes,
   printTraceCode,
   reprintTraceCode,
   voidTraceCode
 } from '@/features/trace/api'
+import { canActivate, canPrint, canReprint, canVoid } from '@/features/trace/utils/codeActions'
 import { logger } from '@/shared/utils/logger'
 
 const router = useRouter()
@@ -56,6 +58,8 @@ const batchDetail = ref(null)
 const batchCodes = ref([])
 const createError = ref('')
 const lookupBatchId = ref('')
+const lookupTraceCode = ref('')
+const loadingLookupTraceCode = ref(false)
 const activationDeviceId = ref('')
 
 // 打印对话框状态。pendingAction 描述确认后要发起的请求：
@@ -103,6 +107,8 @@ const RECONCILIATION_TONE = {
 }
 
 const hasBatch = computed(() => Boolean(batchDetail.value?.batchId))
+// 按追溯码反查 v11 历史回填的码可能没有批次——批次卡片不能渲染，但码列表要能显示这一行
+const hasCodesToShow = computed(() => hasBatch.value || sortedBatchCodes.value.length > 0)
 
 const sortedBatchCodes = computed(() =>
   [...batchCodes.value].sort((left, right) => {
@@ -277,6 +283,47 @@ async function handleLookupBatch() {
     return
   }
   await loadBatch(lookupBatchId.value)
+}
+
+async function handleLookupTraceCode() {
+  const code = String(lookupTraceCode.value || '').trim()
+  if (!code) {
+    toast.error('请输入追溯码')
+    return
+  }
+  loadingLookupTraceCode.value = true
+  try {
+    const record = await getTraceCodeByCode(code)
+    if (record?.batchId) {
+      // 走批次：复用现有 loadBatch 完整对账加载，再把 selectedTraceCode 高亮到目标码
+      await loadBatch(record.batchId)
+      lookupTraceCode.value = record.traceCode || code
+      selectedTraceCode.value = record.traceCode || code
+    } else {
+      // v11 历史回填的码 batch_id 为 NULL——没有对账批次可加载，单行展示，行内按钮按状态启用
+      batchDetail.value = null
+      batchCodes.value = [{
+        serialNo: record?.serialNo || 1,
+        printCount: record?.printCount || 0,
+        codeStatus: record?.codeStatus || 'GENERATED',
+        batchId: null,
+        traceCode: record?.traceCode || code,
+        spuId: record?.spuId,
+        qrPayload: record?.qrPayload || '',
+        activatedTime: record?.activatedTime,
+        activatedByUsername: record?.activatedByUsername
+      }]
+      selectedTraceCode.value = record?.traceCode || code
+      lookupBatchId.value = ''
+      lookupTraceCode.value = record?.traceCode || code
+    }
+  } catch (error) {
+    logger.error('按追溯码查询失败', error)
+    // request.js 已经按 HTTP 状态自动 toast 错误信息（404 时是后端"追溯码不存在: X"）；
+    // 这里只在 catch 里做兜底，避免双 toast
+  } finally {
+    loadingLookupTraceCode.value = false
+  }
 }
 
 async function loadBatch(batchId, fallbackCodes = []) {
@@ -535,18 +582,6 @@ function pickNumber(value, fallback) {
   return typeof value === 'number' ? value : fallback
 }
 
-function canPrint(code) {
-  return code?.codeStatus === 'GENERATED'
-}
-function canReprint(code) {
-  return code && code.codeStatus !== 'VOIDED' && code.codeStatus !== 'SCRAPPED'
-}
-function canVoid(code) {
-  return code && ['GENERATED', 'PRINTED'].includes(code.codeStatus)
-}
-function canActivate(code) {
-  return code && ['GENERATED', 'PRINTED'].includes(code.codeStatus)
-}
 function isActivatedStatus(status) {
   return ['ACTIVATED', 'IN_STOCK', 'IN_TRANSIT', 'EXCEPTION'].includes(status)
 }
@@ -812,6 +847,28 @@ function goTraceDetail(traceCode) {
               刷新
             </BaseButton>
           </div>
+          <div class="assignment__lookup-row">
+            <input
+              id="assignment-lookup-trace-code"
+              v-model="lookupTraceCode"
+              type="text"
+              maxlength="64"
+              placeholder="或粘贴追溯码反查（v11 历史码也支持）"
+              class="assignment__control assignment__control--mono assignment__lookup-input"
+              data-test="assignment-lookup-trace-code-input"
+              @keydown.enter="handleLookupTraceCode"
+            />
+            <BaseButton
+              variant="secondary"
+              :loading="loadingLookupTraceCode"
+              :disabled="loadingLookupTraceCode"
+              data-test="assignment-lookup-trace-code-submit"
+              @click="handleLookupTraceCode"
+            >
+              <template #icon><QrCode :size="13" /></template>
+              按追溯码查询
+            </BaseButton>
+          </div>
         </section>
 
         <!-- 对账卡 -->
@@ -886,7 +943,7 @@ function goTraceDetail(traceCode) {
             <LoadingSkeleton type="table" :rows="4" />
           </div>
 
-          <div v-else-if="!hasBatch" class="assignment__codes-empty">
+          <div v-else-if="!hasCodesToShow" class="assignment__codes-empty">
             <EmptyState
               :icon="QrCode"
               title="暂无批次码列表"

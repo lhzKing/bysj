@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Clock, Download } from 'lucide-vue-next'
 import BaseButton from '@/shared/components/ui/BaseButton.vue'
@@ -7,6 +7,7 @@ import BaseInput from '@/shared/components/ui/BaseInput.vue'
 import { useUserStore } from '@/core/stores/user'
 import { usePrompt } from '@/shared/composables/usePrompt'
 import { useToast } from '@/shared/composables/useToast'
+import { resolveAccessibleRoute } from '@/core/router/access'
 
 const FAILURE_THRESHOLD = 3
 const LOCKOUT_SECONDS = 5
@@ -92,7 +93,9 @@ const handleSubmit = async () => {
 
   failureCount.value = 0
   try {
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
+    // 落地优先级：URL 上的 redirect → 用户能进的第一个页面 → /login（兜底；route guard 会 logout 再回来带 no-access）
+    const fallback = resolveAccessibleRoute(userStore) || '/login'
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : fallback
     await router.push(redirect)
     toast.success('登录成功')
   } finally {
@@ -112,6 +115,19 @@ const openAuditVerify = async () => {
   await router.push({ path: `/public/traces/${code.trim()}` })
 }
 
+const handleContactAdmin = () => {
+  // 演示系统没接邮件 / 工单，用 toast 给出明确指引；
+  // 用 info 级别避免被误读为"登录出错"
+  toast.info('请联系系统管理员开通账号（默认超级管理员账号：superadmin）')
+}
+
+onMounted(() => {
+  // 路由守卫检测到"登录态但无任何可访问页面"时会把人踢回来并带 ?error=no-access
+  if (route.query.error === 'no-access') {
+    errorMessage.value = '当前账号没有任何可访问的页面，请联系管理员分配权限'
+  }
+})
+
 onUnmounted(() => {
   stopLockout()
 })
@@ -128,7 +144,6 @@ onUnmounted(() => {
         </span>
         <span class="login-brand__text">trace.</span>
       </a>
-      <a class="login-link login-link--muted" href="#help" aria-label="需要帮助？">需要帮助？</a>
     </header>
 
     <main class="login-main">
@@ -212,7 +227,12 @@ onUnmounted(() => {
         </form>
 
         <p class="login-footnote">
-          没有账号？<span class="login-link login-link--accent">联系管理员注册</span>
+          没有账号？<button
+            type="button"
+            class="login-link login-link--accent"
+            data-test="login-contact-admin"
+            @click="handleContactAdmin"
+          >联系管理员注册</button>
         </p>
 
         <section class="login-audit" aria-label="外部审计入口">

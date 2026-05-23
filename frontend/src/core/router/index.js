@@ -2,6 +2,7 @@
 import { setUnauthorizedHandler } from '@/core/api/request'
 import { useUserStore } from '@/core/stores/user'
 import { PERMISSIONS, TRACE_SCAN_HUB_ACCESS } from '@/shared/constants'
+import { resolveAccessibleRoute } from '@/core/router/access'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -63,6 +64,16 @@ const router = createRouter({
           component: () => import('@/features/trace/views/TraceList.vue'),
           meta: {
             title: '追溯查询',
+            // 仅业务/审计/管理角色能进全表列表；纯 trace:view 的 USER 角色走 /scan-trace
+            permissions: PERMISSIONS.TRACE.LIST_ACCESS
+          }
+        },
+        {
+          path: 'scan-trace',
+          name: 'scan-trace-landing',
+          component: () => import('@/features/trace/views/TraceScanLanding.vue'),
+          meta: {
+            title: '扫码查询',
             permissions: [PERMISSIONS.TRACE.VIEW]
           }
         },
@@ -122,7 +133,7 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const store = useUserStore()
 
   if (to.meta.title) {
@@ -138,7 +149,15 @@ router.beforeEach((to, from, next) => {
   }
 
   if (to.path === '/login' && store.isLoggedIn) {
-    next('/')
+    // 已登录但又访问 /login —— 找一个用户能进的页面跳过去
+    const fallback = resolveAccessibleRoute(store)
+    if (fallback) {
+      next(fallback)
+    } else {
+      // 登录态但无任何可访问页面（极端配置或权限被全撤）—— 退出登录，留在 login 并提示
+      await store.logout()
+      next({ path: '/login', query: { error: 'no-access' }, replace: true })
+    }
     return
   }
 
@@ -147,7 +166,17 @@ router.beforeEach((to, from, next) => {
 
     if (!hasPermission) {
       console.warn(`Access denied: missing permissions [${to.meta.permissions.join(', ')}]`)
-      next({ path: '/', replace: true })
+      const fallback = resolveAccessibleRoute(store)
+      if (fallback && fallback !== to.path) {
+        next({ path: fallback, replace: true })
+      } else if (!fallback) {
+        // 用户登录但无任何可访问页面 —— 退出 + 回 login 带 error 标记
+        await store.logout()
+        next({ path: '/login', query: { error: 'no-access' }, replace: true })
+      } else {
+        // fallback === to.path：理论上不会进来（同一守卫已 hasPermission=true 才到这），保险走 false
+        next(false)
+      }
       return
     }
   }

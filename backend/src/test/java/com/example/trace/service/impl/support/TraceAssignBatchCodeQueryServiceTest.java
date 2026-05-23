@@ -72,4 +72,67 @@ class TraceAssignBatchCodeQueryServiceTest {
                     assertThat(exception.getMessage()).contains("赋码批次不存在");
                 });
     }
+
+    @Test
+    void findByTraceCode_shouldReturnMappedResponse() {
+        TraceCode code = new TraceCode();
+        code.setBatchId(9L);
+        code.setTraceCode("TRACE-LOOKUP");
+        code.setSpuId(2L);
+        code.setSerialNo(7);
+        code.setQrPayload("http://localhost/public/traces/TRACE-LOOKUP");
+        code.setCodeStatus("PRINTED");
+        code.setPrintCount(1);
+        when(traceCodeMapper.selectByTraceCode("TRACE-LOOKUP")).thenReturn(code);
+
+        TraceAssignBatchCodeResponse response = service.findByTraceCode("TRACE-LOOKUP");
+
+        assertThat(response.getTraceCode()).isEqualTo("TRACE-LOOKUP");
+        assertThat(response.getBatchId()).isEqualTo(9L);
+        assertThat(response.getCodeStatus()).isEqualTo("PRINTED");
+        assertThat(response.getQrPayload()).isEqualTo("http://localhost/public/traces/TRACE-LOOKUP");
+        verify(traceCodeMapper).selectByTraceCode("TRACE-LOOKUP");
+    }
+
+    @Test
+    void findByTraceCode_shouldSupportHistoricCodeWithoutBatch() {
+        // v11 历史回填的码 batch_id 为 NULL，仍要能查到完整字段（前端会单独展示）
+        TraceCode code = new TraceCode();
+        code.setBatchId(null);
+        code.setTraceCode("LEGACY-1");
+        code.setSpuId(3L);
+        code.setQrPayload("LEGACY-1");
+        code.setCodeStatus("ACTIVATED");
+        code.setPrintCount(0);
+        when(traceCodeMapper.selectByTraceCode("LEGACY-1")).thenReturn(code);
+
+        TraceAssignBatchCodeResponse response = service.findByTraceCode("LEGACY-1");
+
+        assertThat(response.getBatchId()).isNull();
+        assertThat(response.getTraceCode()).isEqualTo("LEGACY-1");
+        assertThat(response.getCodeStatus()).isEqualTo("ACTIVATED");
+    }
+
+    @Test
+    void findByTraceCode_shouldRejectUnknownTraceCode() {
+        when(traceCodeMapper.selectByTraceCode("MISSING")).thenReturn(null);
+
+        assertThatThrownBy(() -> service.findByTraceCode("MISSING"))
+                .isInstanceOf(BizException.class)
+                .satisfies(error -> {
+                    BizException exception = (BizException) error;
+                    assertThat(exception.getCode()).isEqualTo(BizCode.NOT_FOUND);
+                    assertThat(exception.getMessage()).contains("追溯码不存在");
+                });
+    }
+
+    @Test
+    void findByTraceCode_shouldRejectBlankInput() {
+        assertThatThrownBy(() -> service.findByTraceCode("  "))
+                .isInstanceOf(BizException.class)
+                .satisfies(error -> {
+                    BizException exception = (BizException) error;
+                    assertThat(exception.getCode()).isEqualTo(BizCode.PARAM_ERROR);
+                });
+    }
 }

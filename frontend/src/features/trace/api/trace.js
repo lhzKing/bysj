@@ -110,6 +110,23 @@ export function getTraceCandidateFlowTasks(traceCode) {
 
 
 /**
+ * Look up a single trace-code by its code value (QR dual-entry point).
+ * Backed by GET /api/trace-codes/{traceCode}, requires `trace:view`.
+ * Returns the same shape as the workbench `getTraceBatchCodes` row, so
+ * dialogs / tables can consume either source uniformly.
+ *
+ * v11 历史回填的码 `batchId` 可能为 null——前端拿到这种行时不应假设有批次，
+ * 应直接单行展示（不调 loadBatch）。
+ *
+ * @param {string} traceCode
+ * @returns {Promise<{traceCode: string, batchId: number|null, spuId: number, serialNo?: number, qrPayload: string, codeStatus: string, printCount: number, activatedTime?: string, activatedByUsername?: string}>}
+ */
+export function getTraceCodeByCode(traceCode) {
+  return request.get(`/trace-codes/${traceCode}`)
+}
+
+
+/**
  * Print a generated trace-code label.
  * @param {string} traceCode
  * @param {{ eventTime?: string, remark?: string }} data

@@ -397,7 +397,16 @@ const sortLabel = computed(() => {
     <!-- Filter bar -->
     <section class="trace-list__filter-bar">
       <div class="trace-list__search-box" data-testid="trace-list-search-box">
-        <Search class="trace-list__search-icon" />
+        <button
+          type="button"
+          class="trace-list__search-trigger"
+          title="搜索（Enter）"
+          aria-label="搜索"
+          data-testid="trace-list-search-trigger"
+          @click="handleSearchEnter"
+        >
+          <Search class="trace-list__search-icon" />
+        </button>
         <input
           ref="searchInputRef"
           v-model="filters.keyword"
@@ -781,6 +790,32 @@ const sortLabel = computed(() => {
   height: 13px;
   color: var(--ink-tertiary);
   flex-shrink: 0;
+}
+
+.trace-list__search-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  flex-shrink: 0;
+}
+.trace-list__search-trigger:hover {
+  background: var(--surface-2);
+}
+.trace-list__search-trigger:hover .trace-list__search-icon {
+  color: var(--ink);
+}
+.trace-list__search-trigger:focus-visible {
+  outline: 2px solid var(--primary-focus, #5e69d1);
+  outline-offset: 1px;
 }
 
 .trace-list__search-input {

@@ -19,7 +19,9 @@ vi.mock('vue-router', () => ({
 
 vi.mock('@/core/stores/user', () => ({
   useUserStore: () => ({
-    hasPermission: (p) => currentUser.permissions.includes(p)
+    hasPermission: (p) => currentUser.permissions.includes(p),
+    // 登记动作按钮的可见性走 hasAnyPermission；不 mock 会让 TraceDetail 渲染抛 TypeError
+    hasAnyPermission: (required = []) => required.some((p) => currentUser.permissions.includes(p))
   })
 }))
 
@@ -27,7 +29,8 @@ vi.mock('@/features/trace/api', () => ({
   getTraceDetail: (...args) => getTraceDetailMock(...args),
   verifyTraceChain: (...args) => verifyTraceChainMock(...args),
   closeTraceException: vi.fn(),
-  createTraceCorrection: vi.fn()
+  createTraceCorrection: vi.fn(),
+  getTraceCodeByCode: vi.fn().mockResolvedValue(null)
 }))
 
 const passthroughStub = { template: '<div><slot /></div>' }

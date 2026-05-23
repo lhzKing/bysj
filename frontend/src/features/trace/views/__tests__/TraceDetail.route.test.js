@@ -19,6 +19,7 @@ const getTraceDetailMock = vi.fn()
 const verifyTraceChainMock = vi.fn()
 const closeTraceExceptionMock = vi.fn()
 const createTraceCorrectionMock = vi.fn()
+const getTraceCodeByCodeMock = vi.fn()
 let consoleErrorSpy
 
 vi.mock('vue-router', () => ({
@@ -31,7 +32,9 @@ vi.mock('vue-router', () => ({
 
 vi.mock('@/core/stores/user', () => ({
   useUserStore: () => ({
-    hasPermission: (permission) => currentUser.permissions.includes(permission)
+    hasPermission: (permission) => currentUser.permissions.includes(permission),
+    // 登记动作按钮的可见性走 hasAnyPermission 走多权限 OR 检测（含 trace:scan super 权限）
+    hasAnyPermission: (required = []) => required.some((p) => currentUser.permissions.includes(p))
   })
 }))
 
@@ -39,7 +42,8 @@ vi.mock('@/features/trace/api', () => ({
   getTraceDetail: (...args) => getTraceDetailMock(...args),
   verifyTraceChain: (...args) => verifyTraceChainMock(...args),
   closeTraceException: (...args) => closeTraceExceptionMock(...args),
-  createTraceCorrection: (...args) => createTraceCorrectionMock(...args)
+  createTraceCorrection: (...args) => createTraceCorrectionMock(...args),
+  getTraceCodeByCode: (...args) => getTraceCodeByCodeMock(...args)
 }))
 
 const passthroughStub = {
@@ -139,6 +143,7 @@ const mountTraceDetail = () => mount(TraceDetail, {
         template: '<div data-testid="correction-dialog" :data-open="modelValue"></div>'
       },
       TraceRouteMap: true,
+      PrintLabelDialog: true,
       'el-button': passthroughStub,
       'el-dropdown': dropdownStub,
       'el-dropdown-menu': passthroughStub,
@@ -160,9 +165,21 @@ describe('TraceDetail route reuse and detail views', () => {
     verifyTraceChainMock.mockReset()
     closeTraceExceptionMock.mockReset()
     createTraceCorrectionMock.mockReset()
+    getTraceCodeByCodeMock.mockReset()
 
     getTraceDetailMock.mockImplementation((code, view = 'effective') =>
       Promise.resolve(traceDetailResponse(code, view))
+    )
+
+    // 默认让 codeRecord 拿到一个 PRINTED 状态的单品码，避免详情页 mode 计算到边界态
+    getTraceCodeByCodeMock.mockImplementation((code) =>
+      Promise.resolve({
+        traceCode: code,
+        batchId: 9,
+        codeStatus: 'PRINTED',
+        printCount: 1,
+        qrPayload: `http://localhost/public/traces/${code}`
+      })
     )
 
     verifyTraceChainMock.mockResolvedValue({
@@ -311,5 +328,116 @@ describe('TraceDetail route reuse and detail views', () => {
     await auditTab.trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('仅展示 CORRECTION / EXCEPTION 类事件')
+  })
+
+  it('label button reads "打印标签" with mode=print when user has print permission and code is GENERATED', async () => {
+    currentUser.permissions = ['trace:view', 'trace:code:print']
+    getTraceCodeByCodeMock.mockResolvedValueOnce({
+      traceCode: 'TRACE-001',
+      batchId: 9,
+      codeStatus: 'GENERATED',
+      printCount: 0
+    })
+    const wrapper = mountTraceDetail()
+    await flushPromises()
+
+    const btn = wrapper.find('[data-testid="trace-detail-label-button"]')
+    expect(btn.exists()).toBe(true)
+    expect(btn.text()).toContain('打印标签')
+    expect(btn.attributes('data-mode')).toBe('print')
+  })
+
+  it('label button reads "重打标签" with mode=reprint for non-terminal printed/activated codes', async () => {
+    currentUser.permissions = ['trace:view', 'trace:code:print']
+    getTraceCodeByCodeMock.mockResolvedValueOnce({
+      traceCode: 'TRACE-001',
+      batchId: 9,
+      codeStatus: 'ACTIVATED',
+      printCount: 1
+    })
+    const wrapper = mountTraceDetail()
+    await flushPromises()
+
+    const btn = wrapper.find('[data-testid="trace-detail-label-button"]')
+    expect(btn.text()).toContain('重打标签')
+    expect(btn.attributes('data-mode')).toBe('reprint')
+  })
+
+  it('label button forces view mode for terminal (VOIDED) codes even with print permission', async () => {
+    currentUser.permissions = ['trace:view', 'trace:code:print']
+    getTraceCodeByCodeMock.mockResolvedValueOnce({
+      traceCode: 'TRACE-001',
+      batchId: 9,
+      codeStatus: 'VOIDED',
+      printCount: 2
+    })
+    const wrapper = mountTraceDetail()
+    await flushPromises()
+
+    const btn = wrapper.find('[data-testid="trace-detail-label-button"]')
+    expect(btn.text()).toContain('查看二维码')
+    expect(btn.attributes('data-mode')).toBe('view')
+    // tooltip 应当说明"已作废"
+    expect(btn.attributes('title')).toContain('作废')
+  })
+
+  it('label button is hidden entirely for users without trace:code:print permission', async () => {
+    currentUser.permissions = ['trace:view']
+    getTraceCodeByCodeMock.mockResolvedValueOnce({
+      traceCode: 'TRACE-001',
+      batchId: 9,
+      codeStatus: 'GENERATED',
+      printCount: 0
+    })
+    const wrapper = mountTraceDetail()
+    await flushPromises()
+
+    // 没有 trace:code:print 权限的普通用户根本看不到按钮 —— 也就没法触发任何打印 / 预览 dialog
+    expect(wrapper.find('[data-testid="trace-detail-label-button"]').exists()).toBe(false)
+  })
+
+  it('hides 登记动作 dropdown entirely for users without any scan write permission (USER role)', async () => {
+    // USER 只有 trace:view —— 既没 inbound/outbound/transfer，也没 super 的 trace:scan
+    currentUser.permissions = ['trace:view']
+    const wrapper = mountTraceDetail()
+    await flushPromises()
+
+    // 整个"登记动作"按钮都不应该渲染，避免用户点开看到空 dropdown 或点击触发 403
+    expect(wrapper.text()).not.toContain('登记动作')
+  })
+
+  it('shows 登记动作 with only the menu items the user actually has permission for', async () => {
+    // 模拟 WAREHOUSE 角色：有 inbound / outbound，没 transfer
+    currentUser.permissions = ['trace:view', 'trace:inbound', 'trace:outbound']
+    const wrapper = mountTraceDetail()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('登记动作')
+
+    const menuTrigger = wrapper.findAll('button').find((b) => b.text().includes('登记动作'))
+    expect(menuTrigger).toBeTruthy()
+    await menuTrigger.trigger('click')
+    await flushPromises()
+
+    // 看到 inbound/outbound 两条，看不到 transfer（物流流转）
+    expect(wrapper.text()).toContain('入库登记')
+    expect(wrapper.text()).toContain('出库登记')
+    expect(wrapper.text()).not.toContain('物流流转')
+  })
+
+  it('shows all 3 menu items when user has trace:scan super permission', async () => {
+    // trace:scan 是 super 权限，应当覆盖 inbound/outbound/transfer 三条菜单
+    currentUser.permissions = ['trace:view', 'trace:scan']
+    const wrapper = mountTraceDetail()
+    await flushPromises()
+
+    const menuTrigger = wrapper.findAll('button').find((b) => b.text().includes('登记动作'))
+    expect(menuTrigger).toBeTruthy()
+    await menuTrigger.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('入库登记')
+    expect(wrapper.text()).toContain('出库登记')
+    expect(wrapper.text()).toContain('物流流转')
   })
 })

@@ -13,6 +13,7 @@ const {
   createTraceMock,
   getTraceBatchMock,
   getTraceBatchCodesMock,
+  getTraceCodeByCodeMock,
   printTraceCodeMock,
   reprintTraceCodeMock,
   voidTraceCodeMock,
@@ -28,6 +29,7 @@ const {
   createTraceMock: vi.fn(),
   getTraceBatchMock: vi.fn(),
   getTraceBatchCodesMock: vi.fn(),
+  getTraceCodeByCodeMock: vi.fn(),
   printTraceCodeMock: vi.fn(),
   reprintTraceCodeMock: vi.fn(),
   voidTraceCodeMock: vi.fn(),
@@ -63,6 +65,7 @@ vi.mock('@/features/trace/api', () => ({
   createTrace: createTraceMock,
   getTraceBatch: getTraceBatchMock,
   getTraceBatchCodes: getTraceBatchCodesMock,
+  getTraceCodeByCode: getTraceCodeByCodeMock,
   printTraceCode: printTraceCodeMock,
   reprintTraceCode: reprintTraceCodeMock,
   voidTraceCode: voidTraceCodeMock,
@@ -115,6 +118,7 @@ beforeEach(() => {
   createTraceMock.mockReset()
   getTraceBatchMock.mockReset()
   getTraceBatchCodesMock.mockReset()
+  getTraceCodeByCodeMock.mockReset()
   printTraceCodeMock.mockReset()
   reprintTraceCodeMock.mockReset()
   voidTraceCodeMock.mockReset()
@@ -300,5 +304,75 @@ describe('TraceAssignmentWorkbench (Linear shell)', () => {
 
     expect(printTraceCodeMock).toHaveBeenCalledTimes(1)
     expect(printTraceCodeMock).toHaveBeenCalledWith('TRACE-002', { remark: '生产工作台批量打印标签' })
+  })
+
+  it('lookup by trace code with batchId triggers loadBatch and highlights selected code', async () => {
+    getTraceCodeByCodeMock.mockResolvedValue({
+      traceCode: 'TRACE-002',
+      batchId: 9,
+      codeStatus: 'GENERATED',
+      printCount: 0,
+      serialNo: 2,
+      qrPayload: 'TRACE-002'
+    })
+    const wrapper = mountWorkbench()
+    await flushPromises()
+
+    await wrapper.find('[data-test="assignment-lookup-trace-code-input"]').setValue('TRACE-002')
+    await wrapper.find('[data-test="assignment-lookup-trace-code-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(getTraceCodeByCodeMock).toHaveBeenCalledWith('TRACE-002')
+    expect(getTraceBatchMock).toHaveBeenCalledWith(9)
+    expect(getTraceBatchCodesMock).toHaveBeenCalledWith(9)
+    // selectedTraceCode 应被高亮成查询的码（不是 loadBatch 默认的第一条）
+    const activePanel = wrapper.find('[data-test="assignment-active-code-panel"]')
+    expect(activePanel.exists()).toBe(true)
+    expect(activePanel.text()).toContain('TRACE-002')
+  })
+
+  it('lookup by trace code without batchId shows single historic row and keeps reconciliation empty', async () => {
+    // v11 历史回填的码 batch_id 为 NULL
+    getTraceCodeByCodeMock.mockResolvedValue({
+      traceCode: 'LEGACY-001',
+      batchId: null,
+      codeStatus: 'ACTIVATED',
+      printCount: 0,
+      qrPayload: 'LEGACY-001'
+    })
+    const wrapper = mountWorkbench()
+    await flushPromises()
+
+    await wrapper.find('[data-test="assignment-lookup-trace-code-input"]').setValue('LEGACY-001')
+    await wrapper.find('[data-test="assignment-lookup-trace-code-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(getTraceCodeByCodeMock).toHaveBeenCalledWith('LEGACY-001')
+    // 不应调批次相关 API
+    expect(getTraceBatchMock).not.toHaveBeenCalled()
+    expect(getTraceBatchCodesMock).not.toHaveBeenCalled()
+    // 码列表里能看到这一行
+    const row = wrapper.find('[data-test="assignment-code-row-LEGACY-001"]')
+    expect(row.exists()).toBe(true)
+    // 对账卡保留空态——因为没有批次可对账
+    expect(wrapper.find('[data-test="assignment-recon-empty"]').exists()).toBe(true)
+  })
+
+  it('lookup by trace code not found does not break the workbench (404 rejection)', async () => {
+    const notFoundError = new Error('追溯码不存在: MISSING')
+    notFoundError.response = { status: 404 }
+    getTraceCodeByCodeMock.mockRejectedValue(notFoundError)
+    const wrapper = mountWorkbench()
+    await flushPromises()
+
+    await wrapper.find('[data-test="assignment-lookup-trace-code-input"]').setValue('MISSING')
+    await wrapper.find('[data-test="assignment-lookup-trace-code-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(getTraceCodeByCodeMock).toHaveBeenCalledWith('MISSING')
+    // 404 时不应误把批次卡 / 码表清空——之前状态保持
+    expect(getTraceBatchMock).not.toHaveBeenCalled()
+    // 按钮可以继续点击，loading 标志已清零
+    expect(wrapper.find('[data-test="assignment-lookup-trace-code-submit"]').attributes('disabled')).toBeUndefined()
   })
 })

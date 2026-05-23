@@ -58,7 +58,16 @@ function onReset() {
 <template>
   <section class="user-filter" data-testid="user-filter">
     <div class="user-filter__search" data-testid="user-filter-search-box">
-      <Search class="user-filter__search-icon" />
+      <button
+        type="button"
+        class="user-filter__search-trigger"
+        title="搜索（Enter）"
+        aria-label="搜索"
+        data-testid="user-filter-search-trigger"
+        @click="onEnter"
+      >
+        <Search class="user-filter__search-icon" />
+      </button>
       <input
         :value="username"
         class="user-filter__search-input"
@@ -146,6 +155,31 @@ function onReset() {
   height: 13px;
   color: var(--ink-tertiary);
   flex-shrink: 0;
+}
+.user-filter__search-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  flex-shrink: 0;
+}
+.user-filter__search-trigger:hover {
+  background: var(--surface-2);
+}
+.user-filter__search-trigger:hover .user-filter__search-icon {
+  color: var(--ink);
+}
+.user-filter__search-trigger:focus-visible {
+  outline: 2px solid var(--primary-focus, #5e69d1);
+  outline-offset: 1px;
 }
 .user-filter__search-input {
   flex: 1 1 auto;

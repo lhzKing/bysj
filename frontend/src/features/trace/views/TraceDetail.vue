@@ -10,6 +10,7 @@ import {
   Package as PackageIn,
   PackageOpen as PackageOut,
   Navigation,
+  QrCode,
   ShieldAlert,
   ShieldCheck,
   ScanLine
@@ -18,11 +19,13 @@ import dayjs from 'dayjs'
 import ScanFlowDialog from '@/features/trace/components/ScanFlowDialog.vue'
 import TraceCorrectionDialog from '@/features/trace/components/TraceCorrectionDialog.vue'
 import TraceExceptionCloseDialog from '@/features/trace/components/TraceExceptionCloseDialog.vue'
+import PrintLabelDialog from '@/features/trace/components/PrintLabelDialog.vue'
 import TraceRouteMap from '@/features/trace/components/TraceRouteMap.vue'
 import TraceSummary from '@/features/trace/components/TraceSummary.vue'
 import TraceTimeline from '@/features/trace/components/TraceTimeline.vue'
 import TraceVerificationPanel from '@/features/trace/components/TraceVerificationPanel.vue'
-import { getTraceDetail, verifyTraceChain } from '@/features/trace/api'
+import { getTraceCodeByCode, getTraceDetail, verifyTraceChain } from '@/features/trace/api'
+import { canPrint, canReprint } from '@/features/trace/utils/codeActions'
 import { useUserStore } from '@/core/stores/user'
 import { PERMISSIONS } from '@/shared/constants'
 import BaseButton from '@/shared/components/ui/BaseButton.vue'
@@ -65,6 +68,8 @@ const verifying = ref(false)
 const showScanDialog = ref(false)
 const showExceptionCloseDialog = ref(false)
 const showCorrectionDialog = ref(false)
+const showLabelDialog = ref(false)
+const codeRecord = ref(null)
 const selectedActionType = ref('transfer')
 const isMenuOpen = ref(false)
 const activeTab = ref('flow')
@@ -74,6 +79,38 @@ const canHandleException = computed(() =>
   userStore.hasPermission(PERMISSIONS.TRACE.EXCEPTION_HANDLE)
     || userStore.hasPermission(PERMISSIONS.TRACE.SCAN)
 )
+const canCodePrint = computed(() => userStore.hasPermission(PERMISSIONS.TRACE.CODE_PRINT))
+const codeIsTerminal = computed(
+  () => codeRecord.value && ['VOIDED', 'SCRAPPED'].includes(codeRecord.value.codeStatus)
+)
+// 按钮 v-if="canCodePrint" 已经先把无 trace:code:print 权限的用户挡在外面——
+// 进到这里 mode 只在 print / reprint / view（终态）之间切。
+const labelDialogMode = computed(() => {
+  if (codeIsTerminal.value) return 'view'
+  if (canPrint(codeRecord.value)) return 'print'
+  if (canReprint(codeRecord.value)) return 'reprint'
+  return 'view'
+})
+const labelButtonText = computed(() => {
+  if (labelDialogMode.value === 'print') return '打印标签'
+  if (labelDialogMode.value === 'reprint') return '重打标签'
+  return '查看二维码'
+})
+const labelButtonTooltip = computed(() => {
+  if (codeIsTerminal.value) return '该码已作废或已报废，仅支持预览二维码'
+  return ''
+})
+const labelDialogCodes = computed(() => {
+  // dialog 内部 qrValueOf 会用 window.location.origin 兜底，无需提前补全 URL
+  const fallback = { traceCode: traceCode.value, qrPayload: '' }
+  if (!codeRecord.value) return [fallback]
+  return [{
+    traceCode: codeRecord.value.traceCode || traceCode.value,
+    serialNo: codeRecord.value.serialNo,
+    qrPayload: codeRecord.value.qrPayload || '',
+    codeStatus: codeRecord.value.codeStatus
+  }]
+})
 const isExceptionHeld = computed(() => snapshot.value?.currentStatus === 'EXCEPTION')
 const historyCount = computed(() => history.value.length)
 const aggregationHistoryCount = computed(() => aggregationHistory.value.length)
@@ -140,11 +177,21 @@ const loadDetail = async (code = traceCode.value, view = detailView.value) => {
     viewError.value = ''
     const data = await getTraceDetail(code, requestedView)
     applyDetailData(data, requestedView)
-    await verifyChain(code)
+    await Promise.all([verifyChain(code), loadCodeRecord(code)])
   } catch (err) {
     error.value = err.message || '获取详情失败'
   } finally {
     loading.value = false
+  }
+}
+
+const loadCodeRecord = async (code) => {
+  // 详情页能展示意味着 trace_snapshot 存在，trace_code 通常也存在；
+  // 但 v11 历史回填 / 中途数据修复场景下可能缺失，所以失败时静默退化为 view 模式。
+  try {
+    codeRecord.value = await getTraceCodeByCode(code)
+  } catch (e) {
+    codeRecord.value = null
   }
 }
 
@@ -220,10 +267,17 @@ const aggregationScopeLabel = (item) => {
 }
 
 const menuItems = [
-  { key: 'inbound', label: '入库登记', icon: PackageIn },
-  { key: 'outbound', label: '出库登记', icon: PackageOut },
-  { key: 'transfer', label: '物流流转', icon: Navigation }
+  // 每条动作都标 perms：用户至少有其一才会看到这条菜单项；trace:scan 是 super 权限覆盖所有扫码动作
+  { key: 'inbound', label: '入库登记', icon: PackageIn, perms: [PERMISSIONS.TRACE.INBOUND, PERMISSIONS.TRACE.SCAN] },
+  { key: 'outbound', label: '出库登记', icon: PackageOut, perms: [PERMISSIONS.TRACE.OUTBOUND, PERMISSIONS.TRACE.SCAN] },
+  { key: 'transfer', label: '物流流转', icon: Navigation, perms: [PERMISSIONS.TRACE.TRANSFER, PERMISSIONS.TRACE.SCAN] }
 ]
+// 没有任何登记权限的用户（如 USER 只读角色）不应该看到"登记动作"按钮，
+// 否则点开是个空 dropdown 或后端 403 上链失败，体验和安全都不好
+const visibleMenuItems = computed(() =>
+  menuItems.filter((item) => userStore.hasAnyPermission(item.perms))
+)
+const canRegisterAction = computed(() => visibleMenuItems.value.length > 0)
 
 watch(
   () => route.params.code,
@@ -239,6 +293,7 @@ watch(
       viewError.value = ''
       verification.value = null
       verifiedAt.value = null
+      codeRecord.value = null
       return
     }
     loading.value = true
@@ -247,6 +302,7 @@ watch(
     loadedView.value = 'effective'
     viewError.value = ''
     activeTab.value = 'flow'
+    codeRecord.value = null
     await loadDetail(newCode, 'effective')
   },
   { immediate: true }
@@ -317,7 +373,7 @@ watch(
               </button>
             </div>
 
-            <div class="trace-detail__menu">
+            <div v-if="canRegisterAction" class="trace-detail__menu">
               <BaseButton variant="primary" size="sm" @click="isMenuOpen = !isMenuOpen" @blur="closeMenuDelay">
                 <template #icon><ScanLine class="trace-detail__menu-icon" /></template>
                 登记动作
@@ -326,7 +382,7 @@ watch(
               <Transition name="trace-detail-dropdown">
                 <div v-if="isMenuOpen" class="trace-detail__menu-pop">
                   <button
-                    v-for="item in menuItems"
+                    v-for="item in visibleMenuItems"
                     :key="item.key"
                     type="button"
                     class="trace-detail__menu-item"
@@ -338,6 +394,19 @@ watch(
                 </div>
               </Transition>
             </div>
+
+            <BaseButton
+              v-if="canCodePrint"
+              variant="secondary"
+              size="sm"
+              :title="labelButtonTooltip || undefined"
+              data-testid="trace-detail-label-button"
+              :data-mode="labelDialogMode"
+              @click="showLabelDialog = true"
+            >
+              <template #icon><QrCode class="trace-detail__menu-icon" /></template>
+              {{ labelButtonText }}
+            </BaseButton>
 
             <BaseButton
               v-if="canHandleException && isExceptionHeld"
@@ -543,6 +612,14 @@ watch(
       v-model="showCorrectionDialog"
       :trace-code="traceCode"
       @success="handleScanSuccess"
+    />
+
+    <PrintLabelDialog
+      v-model="showLabelDialog"
+      :codes="labelDialogCodes"
+      :mode="labelDialogMode"
+      :title="labelButtonText"
+      data-testid="trace-detail-label-dialog"
     />
   </div>
 </template>

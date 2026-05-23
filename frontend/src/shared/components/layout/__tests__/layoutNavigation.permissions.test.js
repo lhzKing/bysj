@@ -57,4 +57,36 @@ describe('scan permission navigation model', () => {
     expect(taskRoute.meta.permissions).not.toContain(PERMISSIONS.TRACE.VIEW)
   })
 
+  it('exposes /scan-trace as the trace:view landing for read-only users (USER role)', () => {
+    const landingNav = layoutNavigation.find((item) => item.key === 'scan-trace-landing')
+    const landingRoute = router.getRoutes().find((route) => route.name === 'scan-trace-landing')
+
+    expect(landingNav).toBeTruthy()
+    expect(landingRoute).toBeTruthy()
+    expect(landingNav.permissions).toEqual([PERMISSIONS.TRACE.VIEW])
+    expect(landingRoute.meta.permissions).toEqual([PERMISSIONS.TRACE.VIEW])
+  })
+
+  it('gates /traces full-table list by business/audit permissions, not bare trace:view', () => {
+    // 关键安全门：纯只读用户（仅有 trace:view）不能进 /traces 列表全表，
+    // 防止低权限角色查看所有产品 / 客户 / 节点的隐私数据
+    const tracesNav = layoutNavigation.find((item) => item.key === 'traces')
+    const tracesRoute = router.getRoutes().find((route) => route.name === 'traces')
+
+    expect(tracesNav).toBeTruthy()
+    expect(tracesRoute).toBeTruthy()
+    expect(tracesNav.permissions).toEqual(PERMISSIONS.TRACE.LIST_ACCESS)
+    expect(tracesRoute.meta.permissions).toEqual(PERMISSIONS.TRACE.LIST_ACCESS)
+    expect(tracesNav.permissions).not.toContain(PERMISSIONS.TRACE.VIEW)
+
+    // 业务角色至少有一个能命中
+    const hasAny = (granted, required) => required.some((p) => granted.includes(p))
+    expect(hasAny(['trace:create'], tracesNav.permissions)).toBe(true)        // PRODUCER
+    expect(hasAny(['trace:inbound'], tracesNav.permissions)).toBe(true)       // WAREHOUSE
+    expect(hasAny(['trace:transfer'], tracesNav.permissions)).toBe(true)      // LOGISTICS
+    expect(hasAny(['trace:audit:view'], tracesNav.permissions)).toBe(true)    // ADMIN / SUPER_ADMIN
+    // USER 角色（仅 trace:view + dashboard:view）应被挡在外面
+    expect(hasAny(['trace:view', 'dashboard:view'], tracesNav.permissions)).toBe(false)
+  })
+
 })

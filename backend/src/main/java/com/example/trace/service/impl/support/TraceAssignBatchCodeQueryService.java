@@ -33,6 +33,18 @@ public class TraceAssignBatchCodeQueryService {
                 .toList();
     }
 
+    public TraceAssignBatchCodeResponse findByTraceCode(String traceCode) {
+        // 历史 v11 回填的码 batch_id 可能为 NULL，但 selectByTraceCode 不依赖批次外键，能返回完整行。
+        if (traceCode == null || traceCode.isBlank()) {
+            throw new BizException(BizCode.PARAM_ERROR, "traceCode 不能为空");
+        }
+        TraceCode code = traceCodeMapper.selectByTraceCode(traceCode);
+        if (code == null) {
+            throw new BizException(BizCode.NOT_FOUND, "追溯码不存在: " + traceCode);
+        }
+        return toResponse(code);
+    }
+
     private TraceAssignBatch requireBatch(Long batchId) {
         if (batchId == null) {
             throw new BizException(BizCode.PARAM_ERROR, "batchId 不能为空");

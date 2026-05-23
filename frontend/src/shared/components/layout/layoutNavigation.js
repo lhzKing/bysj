@@ -58,13 +58,21 @@ export const layoutNavigation = [
     permissions: PERMISSIONS.TRACE.FLOW_TASK_ACCESS
   },
   {
+    key: 'scan-trace-landing',
+    section: 'main',
+    label: '扫码查询',
+    path: '/scan-trace',
+    icon: ScanLine,
+    permissions: [PERMISSIONS.TRACE.VIEW]
+  },
+  {
     key: 'traces',
     section: 'main',
     label: '追溯查询',
     path: '/traces',
     icon: Search,
     kbd: 'G T',
-    permissions: [PERMISSIONS.TRACE.VIEW]
+    permissions: PERMISSIONS.TRACE.LIST_ACCESS
   },
   {
     key: 'parts',
