@@ -60,19 +60,34 @@
 
 ## 2. 把项目代码上传到服务器
 
+### 2.1 准备目录（与 1Panel 应用风格一致）
+
+放到 `/opt/1panel/apps/bysj/`，和你已经在跑的 `/opt/1panel/apps/new-api/` 并排。这个目录默认 owner 是 `root`，普通用户没写权限，先一次性授权：
+
+```bash
+# SSH 到服务器后
+sudo mkdir -p /opt/1panel/apps/bysj
+sudo chown -R azureuser:azureuser /opt/1panel/apps/bysj
+```
+
+> 改 owner 而不是 `chmod 777`：保证 `docker compose` 能在 `mysql-data/`、`redis-data/`、`keys/` 里读写，同时避免世界可写带来的安全风险。
+
+### 2.2 把代码丢进去
+
 在本地 PowerShell：
 
 ```powershell
 # 推荐：用 git
 ssh -i D:\obsidian_note\CS_learning\azure\cloud-japan-east_key.pem -p 9683 azureuser@20.191.176.25
 # 上去后：
-git clone <你的仓库地址> ~/bysj
+git clone <你的仓库地址> /opt/1panel/apps/bysj
 # 或者你不想用 git
 exit
-scp -i D:\obsidian_note\CS_learning\azure\cloud-japan-east_key.pem -P 9683 -r d:\bysj azureuser@20.191.176.25:~/
+scp -i D:\obsidian_note\CS_learning\azure\cloud-japan-east_key.pem -P 9683 -r `
+  d:\bysj\* azureuser@20.191.176.25:/opt/1panel/apps/bysj/
 ```
 
-放哪都行；为了和你 1Panel 习惯一致，下文假设路径为 `/home/azureuser/bysj/`。
+下文统一假设代码路径为 `/opt/1panel/apps/bysj/`。
 
 ---
 
@@ -81,7 +96,7 @@ scp -i D:\obsidian_note\CS_learning\azure\cloud-japan-east_key.pem -P 9683 -r d:
 SSH 到服务器，进入项目目录：
 
 ```bash
-cd /home/azureuser/bysj/deploy
+cd /opt/1panel/apps/bysj/deploy
 cp .env.example .env
 nano .env
 ```
@@ -121,7 +136,7 @@ cp ../backend/sql/schema_consolidated.sql ./mysql-init/01-init.sql
 ## 4. 一键启动 4 个容器
 
 ```bash
-cd /home/azureuser/bysj/deploy
+cd /opt/1panel/apps/bysj/deploy
 docker compose up -d --build
 docker compose ps                  # 四个容器都该 Up，mysql/redis 还会带 (healthy)
 docker compose logs -f backend     # 看后端启动有没有 ERROR、prod guard 没拒
@@ -231,7 +246,7 @@ curl -X POST "https://trace.coldhz.codes/api/admin/generate-sample-data?count=50
 ## 8. 日常运维
 
 ```bash
-cd /home/azureuser/bysj/deploy
+cd /opt/1panel/apps/bysj/deploy
 
 # 看日志
 docker compose logs -f backend
@@ -241,7 +256,7 @@ docker compose logs -f frontend
 docker compose restart backend
 
 # 改了代码（git pull 之后）重建并启动
-git -C /home/azureuser/bysj pull
+git -C /opt/1panel/apps/bysj pull
 docker compose up -d --build
 
 # 备份数据库（建议放 cron 每天跑）
@@ -403,19 +418,19 @@ mysqldump -u root -p `
 
 ```powershell
 scp -i D:\obsidian_note\CS_learning\azure\cloud-japan-east_key.pem -P 9683 `
-  d:\bysj\local-dump.sql azureuser@20.191.176.25:~/
+  d:\bysj\local-dump.sql azureuser@20.191.176.25:/opt/1panel/apps/bysj/
 ```
 
 服务器上导入到 Docker MySQL：
 
 ```bash
-cd /home/azureuser/bysj/deploy
+cd /opt/1panel/apps/bysj/deploy
 # 注意：要先确保数据库已经空了（如果是全新部署，跳过下一行）
 # docker compose exec mysql mysql -uroot -p"$ROOT" -e "DROP DATABASE trace_db; CREATE DATABASE trace_db CHARACTER SET utf8mb4;"
 
 docker compose exec -T mysql mysql \
   -uroot -p"$(grep TRACE_DB_ROOT_PASSWORD .env | cut -d= -f2)" \
-  trace_db < ~/local-dump.sql
+  trace_db < /opt/1panel/apps/bysj/local-dump.sql
 ```
 
 导完后云上库 = 本地库的快照。
@@ -440,7 +455,7 @@ docker compose exec -T mysql mysql \
 **仅当未上线、没有真实数据时**可以推倒重来：
 
 ```bash
-cd /home/azureuser/bysj/deploy
+cd /opt/1panel/apps/bysj/deploy
 docker compose down
 sudo rm -rf mysql-data/                                          # ⚠ 不可逆
 cp ../backend/sql/schema_consolidated.sql ./mysql-init/01-init.sql   # 同步最新版
@@ -462,14 +477,14 @@ docker compose exec mysql mysql -uroot -p"$ROOT" trace_db -e "source /tmp/m.sql"
 
 ```bash
 # /etc/cron.d/trace-mysql-backup
-0 3 * * * azureuser cd /home/azureuser/bysj/deploy && \
+0 3 * * * azureuser cd /opt/1panel/apps/bysj/deploy && \
   docker compose exec -T mysql mysqldump -uroot \
     -p"$(grep TRACE_DB_ROOT_PASSWORD .env | cut -d= -f2)" \
-    trace_db | gzip > /home/azureuser/backups/trace-$(date +\%F).sql.gz && \
-  find /home/azureuser/backups -name "trace-*.sql.gz" -mtime +14 -delete
+    trace_db | gzip > /opt/1panel/apps/bysj/backups/trace-$(date +\%F).sql.gz && \
+  find /opt/1panel/apps/bysj/backups -name "trace-*.sql.gz" -mtime +14 -delete
 ```
 
-`mkdir -p ~/backups` 一次即可。
+`mkdir -p /opt/1panel/apps/bysj/backups` 一次即可（注意 owner 是 azureuser）。
 
 ---
 
@@ -519,7 +534,7 @@ sudo bash quick_start.sh              # 端口你自己定，例如 23562
 
 - 端口：本项目用 18080/18081（内网回环），New API 用 5000；不冲突
 - 容器名：本项目用 `trace-*` 前缀，New API 用 `new-api`；不冲突
-- 数据卷：本项目用 `~/bysj/deploy/{mysql,redis}-data`，New API 用 `/opt/1panel/apps/new-api/data`；不冲突
+- 数据卷：本项目用 `/opt/1panel/apps/bysj/deploy/{mysql,redis}-data`，New API 用 `/opt/1panel/apps/new-api/data`；不冲突
 - 域名：本项目用 `trace.*` / `trace-api.*`，New API 用 `api.*`；不冲突
 - 证书：共用同一张 `*.coldhz.codes` Cloudflare 源证书
 
