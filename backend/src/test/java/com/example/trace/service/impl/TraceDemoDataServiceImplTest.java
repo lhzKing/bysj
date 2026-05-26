@@ -59,8 +59,10 @@ class TraceDemoDataServiceImplTest {
         when(traceDemoDataProperties.isEnabled()).thenReturn(true);
         batchProperties = new TraceBatchProperties();
         // Two-pass construction so the @Lazy self-proxy points at the real instance.
-        batchCommitter = new TraceBatchCommitter(logMapper, snapshotMapper, traceCodeMapper, batchProperties, null);
-        batchCommitter = new TraceBatchCommitter(logMapper, snapshotMapper, traceCodeMapper, batchProperties, batchCommitter);
+        batchCommitter = new TraceBatchCommitter(logMapper, snapshotMapper, traceCodeMapper,
+                null, null, null, null, batchProperties, null);
+        batchCommitter = new TraceBatchCommitter(logMapper, snapshotMapper, traceCodeMapper,
+                null, null, null, null, batchProperties, batchCommitter);
         service = new TraceDemoDataServiceImpl(
                 partSpecMapper,
                 logMapper,

@@ -1,10 +1,18 @@
 package com.example.trace.service.impl.support;
 
 import com.example.trace.config.TraceBatchProperties;
+import com.example.trace.entity.TraceAggregation;
+import com.example.trace.entity.TraceAssignBatch;
 import com.example.trace.entity.TraceCode;
+import com.example.trace.entity.TraceFlowTask;
+import com.example.trace.entity.TraceFlowTaskScan;
 import com.example.trace.entity.TraceLifecycleLog;
 import com.example.trace.entity.TraceSnapshot;
+import com.example.trace.mapper.TraceAggregationMapper;
+import com.example.trace.mapper.TraceAssignBatchMapper;
 import com.example.trace.mapper.TraceCodeMapper;
+import com.example.trace.mapper.TraceFlowTaskMapper;
+import com.example.trace.mapper.TraceFlowTaskScanMapper;
 import com.example.trace.mapper.TraceLifecycleLogMapper;
 import com.example.trace.mapper.TraceSnapshotMapper;
 import org.slf4j.Logger;
@@ -54,6 +62,10 @@ public class TraceBatchCommitter {
     private final TraceLifecycleLogMapper lifecycleLogMapper;
     private final TraceSnapshotMapper snapshotMapper;
     private final TraceCodeMapper traceCodeMapper;
+    private final TraceAssignBatchMapper assignBatchMapper;
+    private final TraceFlowTaskMapper flowTaskMapper;
+    private final TraceFlowTaskScanMapper flowTaskScanMapper;
+    private final TraceAggregationMapper aggregationMapper;
     private final TraceBatchProperties batchProperties;
     private final TraceBatchCommitter selfProxy;
 
@@ -61,12 +73,20 @@ public class TraceBatchCommitter {
             TraceLifecycleLogMapper lifecycleLogMapper,
             TraceSnapshotMapper snapshotMapper,
             TraceCodeMapper traceCodeMapper,
+            TraceAssignBatchMapper assignBatchMapper,
+            TraceFlowTaskMapper flowTaskMapper,
+            TraceFlowTaskScanMapper flowTaskScanMapper,
+            TraceAggregationMapper aggregationMapper,
             TraceBatchProperties batchProperties,
             @Lazy TraceBatchCommitter selfProxy
     ) {
         this.lifecycleLogMapper = lifecycleLogMapper;
         this.snapshotMapper = snapshotMapper;
         this.traceCodeMapper = traceCodeMapper;
+        this.assignBatchMapper = assignBatchMapper;
+        this.flowTaskMapper = flowTaskMapper;
+        this.flowTaskScanMapper = flowTaskScanMapper;
+        this.aggregationMapper = aggregationMapper;
         this.batchProperties = batchProperties;
         this.selfProxy = selfProxy;
     }
@@ -185,6 +205,95 @@ public class TraceBatchCommitter {
     }
 
     /**
+     * Commits demo trace units that also carry a {@link TraceCode} status row.
+     * For each unit the order is: insert all logs → set snapshot.lastLogId →
+     * insert snapshot → insert trace_code. {@code traceCode.currentSnapshotId}
+     * is filled by the caller (or left = trace_code's own pk) before commit.
+     */
+    public int commitDemoUnitsWithCodeInChunks(List<DemoTraceWithCodeUnit> units) {
+        return chunked(units.size(), (start, end) ->
+                delegate().persistDemoUnitsWithCodeChunk(units.subList(start, end)));
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void persistDemoUnitsWithCodeChunk(List<DemoTraceWithCodeUnit> units) {
+        for (DemoTraceWithCodeUnit unit : units) {
+            Long lastLogId = null;
+            for (TraceLifecycleLog logEntry : unit.logs()) {
+                lifecycleLogMapper.insert(logEntry);
+                lastLogId = logEntry.getId();
+            }
+            TraceSnapshot snapshot = unit.snapshot();
+            snapshot.setLastLogId(lastLogId);
+            snapshotMapper.insert(snapshot);
+            traceCodeMapper.insert(unit.traceCode());
+        }
+    }
+
+    /**
+     * Commits demo {@link TraceAssignBatch} rows in chunks. Each commit assigns
+     * the auto-increment id back onto the entity instance so callers can
+     * back-fill {@code TraceCode.batchId} in memory before persisting codes.
+     */
+    public int commitAssignBatchesInChunks(List<TraceAssignBatch> batches) {
+        if (assignBatchMapper == null) {
+            throw new IllegalStateException("assignBatchMapper is required for batch commits");
+        }
+        return chunked(batches.size(), (start, end) ->
+                delegate().persistAssignBatchesChunk(batches.subList(start, end)));
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void persistAssignBatchesChunk(List<TraceAssignBatch> batches) {
+        for (TraceAssignBatch batch : batches) {
+            assignBatchMapper.insert(batch);
+        }
+    }
+
+    /**
+     * Commits demo {@link TraceFlowTask} rows plus their (possibly empty) scan
+     * detail lists. The task INSERT assigns its auto-increment id; every scan's
+     * {@code taskId} is back-filled here before its INSERT.
+     */
+    public int commitFlowTasksInChunks(List<FlowTaskWithScansUnit> units) {
+        if (flowTaskMapper == null || flowTaskScanMapper == null) {
+            throw new IllegalStateException("flowTaskMapper and flowTaskScanMapper are required");
+        }
+        return chunked(units.size(), (start, end) ->
+                delegate().persistFlowTasksChunk(units.subList(start, end)));
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void persistFlowTasksChunk(List<FlowTaskWithScansUnit> units) {
+        for (FlowTaskWithScansUnit unit : units) {
+            TraceFlowTask task = unit.task();
+            flowTaskMapper.insert(task);
+            for (TraceFlowTaskScan scan : unit.scans()) {
+                scan.setTaskId(task.getId());
+                flowTaskScanMapper.insert(scan);
+            }
+        }
+    }
+
+    /**
+     * Commits demo {@link TraceAggregation} rows in chunks.
+     */
+    public int commitAggregationsInChunks(List<TraceAggregation> rows) {
+        if (aggregationMapper == null) {
+            throw new IllegalStateException("aggregationMapper is required for aggregation commits");
+        }
+        return chunked(rows.size(), (start, end) ->
+                delegate().persistAggregationsChunk(rows.subList(start, end)));
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void persistAggregationsChunk(List<TraceAggregation> rows) {
+        for (TraceAggregation row : rows) {
+            aggregationMapper.insert(row);
+        }
+    }
+
+    /**
      * Bundle of "all logs + tail snapshot" for one demo trace. The logs MUST be
      * already hash-chained and signed — the committer only persists, never
      * computes.
@@ -204,6 +313,36 @@ public class TraceBatchCommitter {
             TraceSnapshot snapshot,
             TraceCode traceCode
     ) {
+    }
+
+    /**
+     * Bundle of "all logs + tail snapshot + trace_code status row" for one demo
+     * trace. Used by {@code generate-sample-data} when each trace also produces
+     * a {@link TraceCode} status entry. Logs MUST be already hash-chained and
+     * signed; the committer only persists.
+     */
+    public record DemoTraceWithCodeUnit(
+            List<TraceLifecycleLog> logs,
+            TraceSnapshot snapshot,
+            TraceCode traceCode
+    ) {
+        public DemoTraceWithCodeUnit {
+            logs = List.copyOf(logs);
+        }
+    }
+
+    /**
+     * Bundle of "one flow task + its task-scan detail rows". Task INSERT runs
+     * first to assign an id; scan rows are back-filled with that id before
+     * their own INSERT.
+     */
+    public record FlowTaskWithScansUnit(
+            TraceFlowTask task,
+            List<TraceFlowTaskScan> scans
+    ) {
+        public FlowTaskWithScansUnit {
+            scans = List.copyOf(scans);
+        }
     }
 
     public record CommitResult(int committedCount, RuntimeException failure) {

@@ -68,6 +68,10 @@ class TraceCodeAssignmentServiceTest {
                 traceLifecycleLogMapper,
                 traceSnapshotMapper,
                 traceCodeMapper,
+                null,
+                null,
+                null,
+                null,
                 batchProperties,
                 null
         );
@@ -77,6 +81,10 @@ class TraceCodeAssignmentServiceTest {
                 traceLifecycleLogMapper,
                 traceSnapshotMapper,
                 traceCodeMapper,
+                null,
+                null,
+                null,
+                null,
                 batchProperties,
                 batchCommitter
         );
