@@ -41,11 +41,15 @@ function loadHttpsCertOrFail(rootDir, keyPath, certPath) {
 }
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, __dirname, '')
   const httpsEnabled = env.VITE_DEV_HTTPS !== 'false'
   const keyPath = env.VITE_DEV_CERT_KEY || 'certs/localhost.key'
   const certPath = env.VITE_DEV_CERT_CERT || 'certs/localhost.crt'
+  // 证书仅 dev server (`vite`) 启动 HTTPS 时需要；`vite build` 产物是纯静态文件，不读证书。
+  // 在 build/CI/Docker 镜像里 certs/ 通常被 .gitignore 排除（自签证书不入库），
+  // 必须用 command 守卫，否则 build 阶段会因找不到证书直接失败。
+  const isDevServer = command === 'serve'
 
   return {
     plugins: [
@@ -71,7 +75,7 @@ export default defineConfig(({ mode }) => {
       css: true
     },
     server: {
-      https: httpsEnabled ? loadHttpsCertOrFail(__dirname, keyPath, certPath) : false,
+      https: isDevServer && httpsEnabled ? loadHttpsCertOrFail(__dirname, keyPath, certPath) : false,
       host: env.VITE_DEV_HOST || '0.0.0.0', // 允许局域网访问
       port: Number(env.VITE_DEV_PORT || 5173),
       proxy: {
