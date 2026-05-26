@@ -144,24 +144,35 @@ const loadAMapScript = () => {
 
 const initMap = async () => {
   if (!AMAP_KEY) return // 如果没有key，直接不初始化，展示缺省图
-  
+
   loading.value = true
   error.value = ''
-  
+
   try {
     AMap = await loadAMapScript()
+
+    // 关键：在 new AMap.Map 之前必须把 canvas 容器变回可见。
+    // v-show 在 loading=true 时给 canvas 设 display:none，宽高=0，
+    // 此时 AMap 内部测量出来的视口就是 0×0，瓦片永远不请求 —— 桌面上偶尔
+    // 因为后续 resize 事件被救回，手机端不会触发那个事件，结果只剩 marker。
+    loading.value = false
     await nextTick()
-    
+
     if (!mapContainer.value) throw new Error('地图容器未就绪')
-    
+
     map = new AMap.Map(mapContainer.value, {
       zoom: 5,
       center: [116.405285, 39.904989],
       mapStyle: 'amap://styles/whitesmoke'
     })
-    
+
+    // 再兜底一次：若容器在 init 时仍未拿到最终尺寸（如父级 flex 布局延迟计算），
+    // 在下一帧主动触发 resize，让瓦片层按真实尺寸重绘。
+    requestAnimationFrame(() => {
+      if (map && typeof map.resize === 'function') map.resize()
+    })
+
     drawRoute()
-    loading.value = false
   } catch (err) {
     console.error('地图初始化失败:', err)
     error.value = err.message || '地图加载失败'
