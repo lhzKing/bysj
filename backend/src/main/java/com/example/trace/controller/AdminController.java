@@ -4,6 +4,7 @@ import com.example.trace.annotation.RequirePermission;
 import com.example.trace.common.ApiResponse;
 import com.example.trace.common.BizException;
 import com.example.trace.service.TraceDemoDataService;
+import com.example.trace.service.TraceMasterDataSeedService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,9 +26,20 @@ public class AdminController {
     private static final String CLEAR_TRACE_DATA_CONFIRMATION = "DELETE_TRACE_DATA";
 
     private final TraceDemoDataService traceDemoDataService;
+    private final TraceMasterDataSeedService traceMasterDataSeedService;
 
-    public AdminController(TraceDemoDataService traceDemoDataService) {
+    public AdminController(TraceDemoDataService traceDemoDataService,
+                           TraceMasterDataSeedService traceMasterDataSeedService) {
         this.traceDemoDataService = traceDemoDataService;
+        this.traceMasterDataSeedService = traceMasterDataSeedService;
+    }
+
+    @PostMapping("/seed-master-data")
+    @RequirePermission("trace:data:seed-master")
+    public ApiResponse<Map<String, Object>> seedMasterData(HttpServletRequest request) {
+        String operator = requestAttribute(request, ATTR_USERNAME);
+        String operatorRole = requestAttribute(request, ATTR_ROLE);
+        return ApiResponse.success(traceMasterDataSeedService.seedMasterData(operator, operatorRole));
     }
 
     @PostMapping("/generate-sample-data")

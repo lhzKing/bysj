@@ -451,13 +451,14 @@ INSERT INTO `sys_permission` (`id`, `perm_code`, `perm_name`, `api_method`, `api
 (20, 'trace:task:complete',  '完成流转任务',      'POST',   '/api/trace-flow-tasks/*/complete', '完成任务并处理少扫/多扫差异'),
 (21, 'trace:exception:handle','处理溯源异常',     NULL,     NULL,                                '上报或处理溯源生命周期异常；由动作权限策略校验'),
 (29, 'trace:data:generate',  '生成示例数据',      'POST',   '/api/admin/generate-sample-data',  '生成演示/验证用溯源数据'),
-(30, 'trace:data:clear',     '清空溯源数据',      'DELETE', '/api/admin/clear-trace-data',      '危险操作：清空全部溯源日志和快照');
+(30, 'trace:data:clear',     '清空溯源数据',      'DELETE', '/api/admin/clear-trace-data',      '危险操作：清空全部溯源日志和快照'),
+(31, 'trace:data:seed-master','种入主数据',       'POST',   '/api/admin/seed-master-data',     '幂等地种入 trace_node / base_part_spec / demo 用户 / 用户节点绑定');
 
 -- 8.3 角色—权限映射
 INSERT INTO `sys_role_permission` (`role_id`, `permission_id`) VALUES
 -- SUPER_ADMIN 全量
 (1,1),(1,2),(1,3),(1,4),(1,5),(1,6),(1,7),(1,8),(1,9),(1,10),
-(1,11),(1,12),(1,13),(1,14),(1,15),(1,16),(1,17),(1,18),(1,19),(1,20),(1,21),(1,29),(1,30),
+(1,11),(1,12),(1,13),(1,14),(1,15),(1,16),(1,17),(1,18),(1,19),(1,20),(1,21),(1,29),(1,30),(1,31),
 -- ADMIN（去掉跨网点 inbound/outbound/transfer 三个低粒度权限）
 (2,1),(2,2),(2,3),(2,4),(2,5),(2,6),(2,7),(2,8),(2,9),(2,10),
 (2,14),(2,15),(2,16),(2,17),(2,18),(2,19),(2,20),(2,21),(2,29),(2,30),
@@ -476,7 +477,7 @@ INSERT INTO `sys_user` (`id`, `username`, `password`, `role_id`, `token_version`
 
 -- 重置 AUTO_INCREMENT 至下一个空位
 ALTER TABLE `sys_role` AUTO_INCREMENT = 7;
-ALTER TABLE `sys_permission` AUTO_INCREMENT = 31;
+ALTER TABLE `sys_permission` AUTO_INCREMENT = 32;
 ALTER TABLE `sys_user` AUTO_INCREMENT = 2;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -484,7 +485,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- =====================================================================
 -- 完成。如需快速验证：
 --   SELECT COUNT(*) FROM sys_role;             -- 6
---   SELECT COUNT(*) FROM sys_permission;       -- 23（去掉历史空洞）
---   SELECT COUNT(*) FROM sys_role_permission;  -- 69
+--   SELECT COUNT(*) FROM sys_permission;       -- 24（去掉历史空洞）
+--   SELECT COUNT(*) FROM sys_role_permission;  -- 70
 --   SELECT username, role_id FROM sys_user;    -- superadmin / 1
 -- =====================================================================

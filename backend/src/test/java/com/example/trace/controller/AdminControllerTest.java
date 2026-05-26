@@ -5,6 +5,7 @@ import com.example.trace.common.ApiResponse;
 import com.example.trace.common.BizCode;
 import com.example.trace.common.BizException;
 import com.example.trace.service.TraceDemoDataService;
+import com.example.trace.service.TraceMasterDataSeedService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,8 +28,27 @@ class AdminControllerTest {
     @Mock
     private TraceDemoDataService traceDemoDataService;
 
+    @Mock
+    private TraceMasterDataSeedService traceMasterDataSeedService;
+
     @InjectMocks
     private AdminController adminController;
+
+    @Test
+    void seedMasterData_shouldDelegateToService() {
+        Map<String, Object> serviceResult = Map.of(
+                "demoUsers", Map.of("inserted", 8, "skipped", 0),
+                "traceNodes", Map.of("inserted", 18, "skipped", 0),
+                "partSpecs", Map.of("inserted", 15, "skipped", 0),
+                "userNodeBindings", Map.of("inserted", 16, "skipped", 0));
+        MockHttpServletRequest request = requestWithOperator("superadmin", "SUPER_ADMIN");
+        when(traceMasterDataSeedService.seedMasterData("superadmin", "SUPER_ADMIN")).thenReturn(serviceResult);
+
+        ApiResponse<Map<String, Object>> response = adminController.seedMasterData(request);
+
+        assertThat(response.getData()).isEqualTo(serviceResult);
+        verify(traceMasterDataSeedService).seedMasterData("superadmin", "SUPER_ADMIN");
+    }
 
     @Test
     void generateSampleData_shouldDelegateToTraceDemoDataService() {
@@ -77,9 +97,13 @@ class AdminControllerTest {
         RequirePermission clearPermission = AdminController.class
                 .getMethod("clearTraceData", String.class, HttpServletRequest.class)
                 .getAnnotation(RequirePermission.class);
+        RequirePermission seedMasterPermission = AdminController.class
+                .getMethod("seedMasterData", HttpServletRequest.class)
+                .getAnnotation(RequirePermission.class);
 
         assertThat(generatePermission.value()).containsExactly("trace:data:generate");
         assertThat(clearPermission.value()).containsExactly("trace:data:clear");
+        assertThat(seedMasterPermission.value()).containsExactly("trace:data:seed-master");
     }
 
     private static MockHttpServletRequest requestWithOperator(String username, String role) {

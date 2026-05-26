@@ -47,6 +47,7 @@ class ApiPermissionMatcherDataAuditTest {
         rows.add(perm("part:manage", "*", "/api/parts/*"));
         rows.add(perm("trace:data:generate", "POST", "/api/admin/generate-sample-data"));
         rows.add(perm("trace:data:clear", "DELETE", "/api/admin/clear-trace-data"));
+        rows.add(perm("trace:data:seed-master", "POST", "/api/admin/seed-master-data"));
         rows.add(perm("trace:inbound", "POST", "/api/traces/*/events"));
         rows.add(perm("trace:outbound", "POST", "/api/traces/*/events"));
         rows.add(perm("trace:transfer", "POST", "/api/traces/*/events"));
@@ -257,6 +258,12 @@ class ApiPermissionMatcherDataAuditTest {
             assertThat(matchingCodes("DELETE", "/api/admin/clear-trace-data"))
                 .containsExactly("trace:data:clear");
         }
+
+        @Test
+        void adminSeedMasterDataMatchesOnlyDataSeedMaster() {
+            assertThat(matchingCodes("POST", "/api/admin/seed-master-data"))
+                .containsExactly("trace:data:seed-master");
+        }
     }
 
     @Nested
@@ -332,14 +339,16 @@ class ApiPermissionMatcherDataAuditTest {
 
         @Test
         void adminEndpointsDoNotMatchAnyOtherPermission() {
-            // /api/admin/* is NOT covered by any seeded pattern other than the two exact rows.
+            // /api/admin/* is NOT covered by any seeded pattern other than the three exact rows.
             for (SysPermission p : seededPermissions()) {
                 if (p.getPermCode().equals("trace:data:generate")
-                        || p.getPermCode().equals("trace:data:clear")) {
+                        || p.getPermCode().equals("trace:data:clear")
+                        || p.getPermCode().equals("trace:data:seed-master")) {
                     continue;
                 }
                 assertThat(matcher.matches(p, "POST", "/api/admin/generate-sample-data")).isFalse();
                 assertThat(matcher.matches(p, "DELETE", "/api/admin/clear-trace-data")).isFalse();
+                assertThat(matcher.matches(p, "POST", "/api/admin/seed-master-data")).isFalse();
             }
         }
     }
