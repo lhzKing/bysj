@@ -12,9 +12,10 @@
  *   - 选定动作后由对应 Dialog 调 POST /api/traces/{code}/events，请求体含 idempotencyKey
  *   - idempotencyKey 在本视图于动作选定瞬间用 crypto.randomUUID() 生成，作为 prop 透传
  *
- * 键盘：
+ * 键盘 / 触屏：
  *   - 默认态：Space 启动摄像头
- *   - 取景态：Esc 取消（由 QRScanner inline 模式 emit close 触发，本视图额外监听 Esc 兜底）
+ *   - 取景态：Esc 取消（QRScanner inline 模式自带 Esc 提示和 × 关闭按钮，与 modal 视觉一致；
+ *     本视图额外监听页面级 Esc 作为兜底）
  *   - 已识别态：F1-F4 绑定前 4 个可执行动作；Esc 重置回默认态
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'

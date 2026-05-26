@@ -216,9 +216,8 @@ onUnmounted(() => {
             </span>
           </div>
           <div class="qr-card__top-right">
-            <KbdShortcut v-if="!props.inline" tone="inverse" keys="Esc" />
+            <KbdShortcut tone="inverse" keys="Esc" />
             <button
-              v-if="!props.inline"
               type="button"
               class="qr-card__icon-btn"
               data-test="qr-scanner-close"

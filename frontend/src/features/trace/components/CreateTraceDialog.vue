@@ -29,6 +29,11 @@ const props = defineProps({
  */
 const emit = defineEmits(['update:modelValue', 'success'])
 
+// 与后端 ProduceAssignRequest.MAX_QUANTITY 对齐：单次最多生成 500 条溯源码。
+// 前端在此卡上限，避免明显越界的请求白白走一次签名 / 上链流程被后端拒掉。
+const MAX_QUANTITY = 500
+const MIN_QUANTITY = 1
+
 const submitting = ref(false)
 const error = ref('')
 
@@ -64,8 +69,17 @@ function validateForm() {
     error.value = '请选择一个配件或输入有效的产品 ID'
     return false
   }
-  if (!formData.value.quantity || Number(formData.value.quantity) < 1) {
-    error.value = '数量必须大于 0'
+  const quantity = Number(formData.value.quantity)
+  if (!quantity || quantity < MIN_QUANTITY) {
+    error.value = `数量必须不小于 ${MIN_QUANTITY}`
+    return false
+  }
+  if (quantity > MAX_QUANTITY) {
+    error.value = `单次生成数量不能超过 ${MAX_QUANTITY}，如需更多请分批提交`
+    return false
+  }
+  if (!Number.isInteger(quantity)) {
+    error.value = '数量必须是整数'
     return false
   }
   if (!formData.value.manufacturerNode?.trim()) {
@@ -168,12 +182,15 @@ watch(
       </div>
 
       <div class="create-trace__field">
-        <label class="create-trace__label">生产数量 <span class="create-trace__star">*</span></label>
+        <label class="create-trace__label">
+          生产数量 <span class="create-trace__star">*</span>
+          <span class="create-trace__hint">（{{ MIN_QUANTITY }}–{{ MAX_QUANTITY }}）</span>
+        </label>
         <input
-          v-model="formData.quantity"
+          v-model.number="formData.quantity"
           type="number"
-          min="1"
-          placeholder="请输入生产数量"
+          inputmode="numeric"
+          :placeholder="`请输入生产数量（${MIN_QUANTITY}–${MAX_QUANTITY}）`"
           class="create-trace__input create-trace__input--mono"
         />
       </div>
@@ -264,6 +281,12 @@ watch(
   font-size: 13px;
   font-weight: 500;
   color: var(--ink);
+}
+.create-trace__hint {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-subtle);
 }
 .create-trace__star {
   color: var(--error);

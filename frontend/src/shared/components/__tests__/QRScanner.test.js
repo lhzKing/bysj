@@ -45,14 +45,14 @@ describe('QRScanner', () => {
     wrapper.unmount()
   })
 
-  it('renders inline shell without backdrop or close button when inline prop is set', () => {
+  it('renders inline shell without backdrop, but keeps the close button so the host view stays consistent with modal mode', () => {
     const wrapper = mount(QRScanner, {
       props: { inline: true },
       attachTo: document.body
     })
     expect(wrapper.find('[data-test="qr-scanner"]').classes()).toContain('qr-scanner--inline')
     expect(wrapper.find('[data-test="qr-scanner-backdrop"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="qr-scanner-close"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="qr-scanner-close"]').exists()).toBe(true)
     wrapper.unmount()
   })
 
