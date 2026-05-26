@@ -384,22 +384,58 @@ volumes:
 | 方式 | 适合场景 | 数据来源 |
 |---|---|---|
 | **A. 不灌**，直接登录用 | 答辩演示新功能，从 0 开始干净 | 仅 superadmin + 角色权限 |
-| **B. 调"生成示例数据"接口** | 演示需要看到列表/图表有数据 | 后端代码生成 N 条假数据 |
+| **B. 调"种主数据 + 生成示例数据"接口** | 演示需要看到列表/图表/任务/聚合都有数据 | 后端代码生成完整 demo 数据 |
 | **C. 从本地导出再导入** | 你本地有精心准备的演示链路 | 你本地 MySQL 的真实数据 |
 
-#### B：调接口生成（最方便）
+#### B：两步调接口生成（最方便、零外部依赖）
+
+`schema_consolidated.sql` 只灌 RBAC + superadmin。要让所有页面都有数据：
 
 ```bash
 TOKEN=$(curl -s -X POST https://trace.coldhz.codes/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"superadmin","password":"superadmin123456"}' \
-  | grep -oP '"token":"\K[^"]+')
+  | python -c "import sys,json; print(json.load(sys.stdin)['data']['token'])")
 
+# 第 1 步：种主数据（demo 用户 / 节点 / SPU / 用户-节点绑定，幂等可反复调）
+curl -X POST "https://trace.coldhz.codes/api/admin/seed-master-data" \
+  -H "Authorization: Bearer $TOKEN"
+
+# 第 2 步：一次性生成全部业务流水（batch / trace_code / lifecycle / snapshot /
+# flow_task / scan / aggregation 共 8 张表）
 curl -X POST "https://trace.coldhz.codes/api/admin/generate-sample-data?count=500" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
+**返回示例**（`count=500` 用时 ~30s，看板/列表/任务/聚合页全有数据）：
+
+```json
+{
+  "batches": 25, "traceCodes": 500, "lifecycleLogs": 3009, "snapshots": 500,
+  "flowTasks": 60, "flowTaskScans": 623, "aggregations": 325, "durationMillis": 35784
+}
+```
+
+**业务保证**：
+- 每条 lifecycle log 的 hash + RSA 签名由后端运行时密钥**真实生成**，前端 `/verify` 接口验签 100% 通过
+- demo 用户密码：`producer/producer123456`、`warehouse/warehouse123456`、`logistics/logistics123456`、`user/user123456`（producer2/warehouse2/logistics2/dealer1 与对应主用户共用密码）
+
+**清空重灌**：
+
+```bash
+# 清流水（保留节点/SPU/用户/绑定等主数据）
+curl -X DELETE "https://trace.coldhz.codes/api/admin/clear-trace-data?confirm=DELETE_TRACE_DATA" \
+  -H "Authorization: Bearer $TOKEN"
+
+# 然后重新调 generate-sample-data 即可（无需再调 seed-master-data）
+```
+
 `count` 上限由后端 `TRACE_DEMO_DATA_MAX_GENERATE_COUNT` 控制（默认 500）。
+prod profile 默认禁用所有 demo 接口；如需启用，设 `TRACE_DEMO_DATA_ENABLED=true`。
+
+> 历史方式 `scripts/seed_extended_data.py`（Python + pymysql 直连）作为离线兜底
+> 保留：服务器没起或需要把数据 dump 成 SQL 文件时可用。日常演示用 HTTP API 即可。
+
 
 #### C：本地数据库整库迁移到云上
 
@@ -485,6 +521,93 @@ docker compose exec mysql mysql -uroot -p"$ROOT" trace_db -e "source /tmp/m.sql"
 ```
 
 `mkdir -p /opt/1panel/apps/bysj/backups` 一次即可（注意 owner 是 azureuser）。
+
+---
+
+## 12. HTTPS 链路与证书
+
+> 这一节回答另一个容易绕住的问题：**部署后 HTTPS 是谁给的？我本地 `frontend/certs/localhost.{key,crt}` 和 Cloudflare 那张源证书是什么关系？需要把本地证书也上传服务器吗？**
+
+### 12.1 一句话先讲清
+
+**两张证书各管各的，不能互相代替；部署到服务器后，你不需要给容器配任何证书，HTTPS 由 Cloudflare 自动提供。**
+
+### 12.2 本地开发的链路（一段 HTTPS）
+
+```
+你电脑浏览器  ──HTTPS──►  Vite dev server  ──HTTP──►  Spring Boot
+              :5173                              :8080
+              ▲
+              │ 这一段要 HTTPS，因为浏览器 getUserMedia（摄像头）只在 secure context 下允许
+              │
+              证书：frontend/certs/localhost.{key,crt}
+              签的域名：localhost
+              CA：generate-cert.js 临时建的，没人信任 → 浏览器弹"不安全"，你手动点继续
+```
+
+### 12.3 部署后的链路（三段，不是一段）
+
+```
+全世界用户浏览器
+   │
+   ├─ A ── HTTPS ──►  Cloudflare 边缘节点
+   │                       │
+   │                       ├─ B ── HTTPS ──►  Azure 服务器 OpenResty :443
+   │                                              │
+   │                                              ├─ C ── HTTP ──►  容器内 nginx :80
+   │                                                                       │
+   │                                                                       └──►  容器内 backend
+```
+
+| 段 | 证书 | 谁签的 | 谁信任 |
+|---|---|---|---|
+| **A**：浏览器 → CF 边缘 | Cloudflare 通用 SSL（系统给的，你看不到） | 公共 CA | 全世界浏览器 ✓ |
+| **B**：CF → 你服务器 | **Cloudflare 源证书 `*.coldhz.codes`**（你上传到 1Panel 那张） | Cloudflare 自家 CA | 仅 Cloudflare 边缘（普通浏览器不信） |
+| **C**：OpenResty → 容器 | **无**，纯 HTTP | — | — |
+
+### 12.4 两张证书能不能互换
+
+**不能**。证书必须绑定**域名**，签发什么域名就只能证明那个域名的身份：
+
+- 本地 `localhost.crt` 签的是 `localhost`，给真域名 `trace.coldhz.codes` 用 → 浏览器 `ERR_CERT_COMMON_NAME_INVALID` 直接拒绝
+- Cloudflare 源证书签的是 `*.coldhz.codes`，给 `localhost:5173` 用 → 同样的报错
+
+它们解决的是**不同链路段的 TLS 信任问题**，不可替换。
+
+### 12.5 部署后扫码摄像头还能用吗？
+
+**能用，且你什么都不用做**。
+
+- 用户访问的是 `https://trace.coldhz.codes`
+- 浏览器看到的是 Cloudflare 给的**通用 SSL 证书**（A 段），完全信任，绿锁🔒
+- secure context 成立 → 摄像头 API 可用 → 扫码功能正常
+
+前提是你笔记里第 8 节那个「Cloudflare → 边缘证书 → 始终使用 HTTPS」打开了（你已经开过）。
+
+### 12.6 为什么容器里那个 nginx 不配 HTTPS
+
+工业界规范：**外层网关做 TLS 终结，内部一律 HTTP**。原因：
+
+- 容器 nginx 只跟同机的 OpenResty 通信（`127.0.0.1:18080`），流量不出本机网卡，没人能窃听
+- 给它配 HTTPS 要再准备一张自签证书，徒增复杂度，毫无收益
+- Kubernetes / AWS ELB / 阿里云 SLB 全是这个模式
+
+所以 [frontend/nginx.conf](../frontend/nginx.conf) 里只 `listen 80`，没有 `listen 443`。
+
+### 12.7 `frontend/certs/` 要上传服务器吗
+
+**不要**。也不能——它们已经被 [frontend/.gitignore](../frontend/.gitignore) 排除（`certs/*` 那行），自签证书本来就不该入库。
+
+如果你曾经因为 `vite build` 报「未找到 HTTPS 证书」误以为是少了证书，那其实是 `vite.config.js` 的一个 bug——`vite build` 产物是纯静态文件根本不需要证书。修复已经合入：只有 dev server（`command === 'serve'`）才加载证书，build 跳过。
+
+### 12.8 整套 HTTPS 体系的"谁负责什么"速记
+
+| 你想要的效果 | 谁负责 | 你做了什么 |
+|---|---|---|
+| 用户在浏览器看到绿锁 | Cloudflare 通用 SSL（A 段） | 把域名托管到 CF + 「始终使用 HTTPS」开关 |
+| Cloudflare 回源到你服务器走 HTTPS（不被中间人窃听） | Cloudflare 源证书 `*.coldhz.codes`（B 段） | 1Panel 上传源证书 + OpenResty 反代启用 HTTPS + CF 侧 SSL 模式「完全（严格）」 |
+| 容器之间通信 | 不需要 TLS | 啥也不做（纯 HTTP，仅本机回环） |
+| 本地开发摄像头能用 | 本地 `certs/localhost.{key,crt}`（独立链路） | `node generate-cert.js` 生成自签证书 |
 
 ---
 
