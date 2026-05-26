@@ -33,13 +33,16 @@
 `index.html` 中的 meta CSP 是前端构建产物的兜底策略。生产部署时应优先在网关/Nginx/CDN 返回 HTTP Header，并保持与 meta 内容一致：
 
 ```nginx
-add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'none'; script-src 'self' https://webapi.amap.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.amap.com https://*.autonavi.com; connect-src 'self' https://*.amap.com https://*.autonavi.com; font-src 'self' data:; worker-src 'self' blob:; media-src 'self' blob:" always;
+add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.amap.com https://*.autonavi.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.amap.com; img-src 'self' data: blob: https://*.amap.com https://*.autonavi.com; connect-src 'self' https://*.amap.com https://*.autonavi.com; font-src 'self' data: https://fonts.gstatic.com; worker-src 'self' blob:; media-src 'self' blob:" always;
 ```
 
 说明：
 
-- `style-src 'unsafe-inline'` 暂时保留，用于兼容现有 Vue 动态样式、地图 Marker 内容和第三方地图样式注入。
-- 如生产前端不需要高德地图，可移除 `https://webapi.amap.com`、`https://*.amap.com`、`https://*.autonavi.com`。
+- `style-src 'unsafe-inline'` 用于兼容 Vue 动态样式 + 高德 marker 内容 + 第三方地图样式注入。
+- `script-src 'unsafe-inline'` 为高德地图 `watchSize` 内部使用 `javascript:` URL 监听容器尺寸而必需；移除会导致地图瓦片加载失败、只能渲染 marker（手机端尤其明显，桌面偶有重试救回）。
+- `script-src 'unsafe-eval'` 为高德地图 JS API 内部 `new Function(...)` 路径所需。
+- 高德相关域名统一用 `https://*.amap.com` 通配，覆盖 `webapi.amap.com`（脚本）、`restapi.amap.com`（搜索）、`vdata.amap.com`（瓦片元数据 JSONP）、`tile.amap.com` 等多个子域。
+- 如生产前端不需要高德地图，可移除 `https://*.amap.com`、`https://*.autonavi.com`、以及 script-src 的 `'unsafe-inline' 'unsafe-eval'`。
 - meta CSP 不支持可靠设置 `frame-ancestors`，生产必须使用 HTTP Header 补齐防嵌套策略。
 
 ## 4. 后续迁移路径
