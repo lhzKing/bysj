@@ -11,12 +11,16 @@ import {
   createUser,
   deleteUser,
   getRoles,
+  getSelectableTraceNodes,
+  getUserTraceNodes,
   getUsers,
+  replaceUserTraceNodes,
   resetUserPassword,
   updateUser,
   updateUserStatus
 } from '@/features/user/api'
 import UserEditDialog from '../components/UserEditDialog.vue'
+import UserNodeBindingDialog from '../components/UserNodeBindingDialog.vue'
 import UserSearchFilter from '../components/UserSearchFilter.vue'
 import UserTable from '../components/UserTable.vue'
 
@@ -46,6 +50,14 @@ const formData = reactive({
   roleId: '',
   status: 1
 })
+
+// Trace-node binding dialog state
+const showBindingDialog = ref(false)
+const bindingUser = ref(null)
+const bindingLoading = ref(false)
+const bindingSaving = ref(false)
+const allTraceNodes = ref([])
+const currentBindings = ref([])
 
 const { confirm } = useConfirm()
 const { prompt } = usePrompt()
@@ -285,6 +297,42 @@ async function handleResetPassword(user) {
   }
 }
 
+async function handleManageNodes(user) {
+  bindingUser.value = user
+  showBindingDialog.value = true
+  bindingLoading.value = true
+  currentBindings.value = []
+  try {
+    // Fetch in parallel: full selectable node pool + this user's current bindings.
+    const [pool, mine] = await Promise.all([
+      allTraceNodes.value.length ? Promise.resolve(allTraceNodes.value) : getSelectableTraceNodes(),
+      getUserTraceNodes(user.id)
+    ])
+    allTraceNodes.value = Array.isArray(pool) ? pool : []
+    currentBindings.value = Array.isArray(mine) ? mine : []
+  } catch (error) {
+    /* request.js already toasted; dialog stays open showing empty state */
+  } finally {
+    bindingLoading.value = false
+  }
+}
+
+async function handleSaveBinding(payload) {
+  if (!bindingUser.value) return
+  bindingSaving.value = true
+  try {
+    await replaceUserTraceNodes(bindingUser.value.id, payload)
+    toast.success(`「${bindingUser.value.username}」节点绑定已更新（${payload.nodeIds.length} 个节点）`)
+    showBindingDialog.value = false
+    bindingUser.value = null
+    currentBindings.value = []
+  } catch (error) {
+    /* request.js already toasted (403 越权、400 节点 id 非法、500 服务端等) */
+  } finally {
+    bindingSaving.value = false
+  }
+}
+
 function handleSelectionChange(ids) {
   selectedIds.value = ids
 }
@@ -353,6 +401,7 @@ onMounted(() => {
       @enable="handleEnable"
       @disable="handleDisable"
       @reset-password="handleResetPassword"
+      @manage-nodes="handleManageNodes"
       @page-change="handlePageChange"
       @create="handleCreate"
       @update:selected="handleSelectionChange"
@@ -367,6 +416,16 @@ onMounted(() => {
       :roles="roles"
       :saving="saving"
       @save="handleSave"
+    />
+
+    <UserNodeBindingDialog
+      v-model:visible="showBindingDialog"
+      :user="bindingUser"
+      :all-nodes="allTraceNodes"
+      :current-bindings="currentBindings"
+      :loading="bindingLoading"
+      :saving="bindingSaving"
+      @save="handleSaveBinding"
     />
   </div>
 </template>

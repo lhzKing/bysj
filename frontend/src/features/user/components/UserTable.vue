@@ -4,7 +4,7 @@ import BaseButton from '@/shared/components/ui/BaseButton.vue'
 import EmptyState from '@/shared/components/ui/EmptyState.vue'
 import LoadingSkeleton from '@/shared/components/ui/LoadingSkeleton.vue'
 import StatusPill from '@/shared/components/ui/StatusPill.vue'
-import { Edit, KeyRound, Power, PowerOff, Trash2, Users } from 'lucide-vue-next'
+import { Edit, KeyRound, MapPin, Power, PowerOff, Trash2, Users } from 'lucide-vue-next'
 
 /**
  * UserTable —— Linear-light dense 用户表 + 移动端卡片列表 + 多选批量删除工具条 + 启停状态 + 角色 chip。
@@ -40,6 +40,7 @@ const emit = defineEmits([
   'enable',
   'disable',
   'reset-password',
+  'manage-nodes',
   'page-change',
   'create',
   'update:selected',
@@ -118,6 +119,9 @@ function onDisable(user) {
 }
 function onResetPassword(user) {
   emit('reset-password', user)
+}
+function onManageNodes(user) {
+  emit('manage-nodes', user)
 }
 function onPrev() {
   emit('page-change', -1)
@@ -271,6 +275,16 @@ function onClearSelection() {
                   重置密码
                 </button>
                 <button
+                  type="button"
+                  class="user-table__row-link"
+                  data-testid="user-table-row-nodes"
+                  title="管理该用户可操作的溯源节点"
+                  @click="onManageNodes(user)"
+                >
+                  <MapPin class="user-table__action-icon" />
+                  节点绑定
+                </button>
+                <button
                   v-if="isEnabled(user)"
                   type="button"
                   class="user-table__row-link user-table__row-link--warn"
@@ -357,6 +371,10 @@ function onClearSelection() {
             <BaseButton variant="text" size="sm" data-testid="user-table-card-reset" @click="onResetPassword(user)">
               <template #icon><KeyRound class="user-table__action-icon" /></template>
               重置密码
+            </BaseButton>
+            <BaseButton variant="text" size="sm" data-testid="user-table-card-nodes" @click="onManageNodes(user)">
+              <template #icon><MapPin class="user-table__action-icon" /></template>
+              节点绑定
             </BaseButton>
             <BaseButton
               v-if="isEnabled(user)"
@@ -487,7 +505,7 @@ function onClearSelection() {
   padding-right: 0;
 }
 .user-table__th--actions {
-  width: 280px;
+  width: 360px;
   padding-right: 16px;
   text-align: right;
 }

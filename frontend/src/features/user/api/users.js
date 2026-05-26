@@ -89,3 +89,35 @@ export function batchDeleteUsers(ids) {
 export function resetUserPassword(id, newPassword) {
   return request.post(`/users/${id}/reset-password`, { newPassword })
 }
+
+/**
+ * Get a user's currently bound trace nodes (operable scan locations).
+ * Returns rows from trace_user_node_binding joined with trace_node — fields per
+ * TraceUserNodeBindingResponse: bindingId, nodeId, nodeCode, nodeName, nodeType,
+ * province, city, defaultNode, bindingEnabled, nodeEnabled.
+ * @param {number} id
+ * @returns {Promise<Array>}
+ */
+export function getUserTraceNodes(id) {
+  return request.get(`/users/${id}/trace-nodes`)
+}
+
+/**
+ * Replace a user's full set of operable trace-node bindings. Backend swaps the
+ * binding rows transactionally.
+ * @param {number} id
+ * @param {{ nodeIds: Array<number>, defaultNodeId?: number | null }} payload
+ * @returns {Promise<Array>}
+ */
+export function replaceUserTraceNodes(id, payload) {
+  return request.put(`/users/${id}/trace-nodes`, payload)
+}
+
+/**
+ * List every enabled trace_node — used as the selectable pool when editing
+ * a user's bindings. Reuses the public /trace-nodes/selectable endpoint.
+ * @returns {Promise<Array>}
+ */
+export function getSelectableTraceNodes() {
+  return request.get('/trace-nodes/selectable')
+}
