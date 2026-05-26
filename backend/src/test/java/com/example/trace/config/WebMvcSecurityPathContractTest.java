@@ -26,7 +26,7 @@ class WebMvcSecurityPathContractTest {
         MappedInterceptor loginMapping = mappingFor(mappedInterceptors, loginInterceptor);
         assertThat(loginMapping.getIncludePathPatterns()).containsExactly("/api/**");
         assertThat(loginMapping.getExcludePathPatterns())
-                .containsExactly("/api/auth/login", "/api/auth/register", "/api/traces/public-key");
+                .containsExactly("/api/auth/login", "/api/auth/register", "/api/traces/public-key", "/api/public/**");
 
         assertThat(loginMapping.matches(request("GET", "/api/users"))).isTrue();
         assertThat(loginMapping.matches(request("POST", "/api/users"))).isTrue();
@@ -34,6 +34,8 @@ class WebMvcSecurityPathContractTest {
         assertThat(loginMapping.matches(request("POST", "/api/auth/register"))).isFalse();
         assertThat(loginMapping.matches(request("POST", "/api/auth/login"))).isFalse();
         assertThat(loginMapping.matches(request("GET", "/api/traces/public-key"))).isFalse();
+        // /api/public/** is the anonymous self-verify landing for consumer scans — must skip login interceptor.
+        assertThat(loginMapping.matches(request("GET", "/api/public/traces/TC-001"))).isFalse();
     }
 
     @Test
@@ -50,13 +52,14 @@ class WebMvcSecurityPathContractTest {
         MappedInterceptor permissionMapping = mappingFor(mappedInterceptors, permissionInterceptor);
         assertThat(permissionMapping.getIncludePathPatterns()).containsExactly("/api/**");
         assertThat(permissionMapping.getExcludePathPatterns())
-                .containsExactly("/api/auth/**", "/api/traces/public-key");
+                .containsExactly("/api/auth/**", "/api/traces/public-key", "/api/public/**");
 
         assertThat(permissionMapping.matches(request("GET", "/api/users"))).isTrue();
         assertThat(permissionMapping.matches(request("POST", "/api/traces/TRACE-001/events"))).isTrue();
         assertThat(permissionMapping.matches(request("POST", "/api/auth/register"))).isFalse();
         assertThat(permissionMapping.matches(request("POST", "/api/auth/refresh"))).isFalse();
         assertThat(permissionMapping.matches(request("GET", "/api/traces/public-key"))).isFalse();
+        assertThat(permissionMapping.matches(request("GET", "/api/public/traces/TC-001"))).isFalse();
     }
 
     private static List<MappedInterceptor> mappedInterceptors(
