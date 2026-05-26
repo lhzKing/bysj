@@ -4,10 +4,12 @@ import com.example.trace.common.BizCode;
 import com.example.trace.common.BizException;
 import com.example.trace.dto.TraceUserNodeBindingResponse;
 import com.example.trace.dto.TraceUserNodeBindingUpdateRequest;
+import com.example.trace.entity.SysRole;
 import com.example.trace.entity.SysUser;
 import com.example.trace.entity.TraceNode;
 import com.example.trace.entity.TraceUserNodeBinding;
 import com.example.trace.enums.ActionType;
+import com.example.trace.mapper.SysRoleMapper;
 import com.example.trace.mapper.SysUserMapper;
 import com.example.trace.mapper.TraceNodeMapper;
 import com.example.trace.mapper.TraceUserNodeBindingMapper;
@@ -38,17 +40,20 @@ class TraceUserNodeBindingServiceImplTest {
     private TraceNodeMapper traceNodeMapper;
     @Mock
     private SysUserMapper userMapper;
+    @Mock
+    private SysRoleMapper roleMapper;
 
     private TraceUserNodeBindingServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new TraceUserNodeBindingServiceImpl(bindingMapper, traceNodeMapper, userMapper);
+        service = new TraceUserNodeBindingServiceImpl(bindingMapper, traceNodeMapper, userMapper, roleMapper);
     }
 
     @Test
     void replaceUserBindings_shouldReplaceWithUniqueEnabledNodesAndDefaultNode() {
         when(userMapper.selectById(7L)).thenReturn(user(7L));
+        when(roleMapper.selectById(4L)).thenReturn(role(4L, "WAREHOUSE"));
         when(traceNodeMapper.selectBatchIds(any(Collection.class)))
                 .thenReturn(List.of(node(1L, "FACTORY-BJ", "北京工厂", 10L, true),
                         node(2L, "WAREHOUSE-SH", "上海仓库", 20L, true)));
@@ -80,6 +85,7 @@ class TraceUserNodeBindingServiceImplTest {
     @Test
     void replaceUserBindings_shouldRejectDisabledNode() {
         when(userMapper.selectById(7L)).thenReturn(user(7L));
+        when(roleMapper.selectById(4L)).thenReturn(role(4L, "WAREHOUSE"));
         when(traceNodeMapper.selectBatchIds(any(Collection.class)))
                 .thenReturn(List.of(node(1L, "WAREHOUSE-X", "停用仓库", 10L, false)));
         TraceUserNodeBindingUpdateRequest request = new TraceUserNodeBindingUpdateRequest();
@@ -147,12 +153,67 @@ class TraceUserNodeBindingServiceImplTest {
         assertThat(service.canExecuteActionAtCurrentNode(7L, ActionType.OUTBOUND, "FACTORY-BJ")).isTrue();
     }
 
+    @Test
+    void replaceUserBindings_shouldRejectUserRoleBecauseItHasNoScanRbac() {
+        // USER 角色没有 trace:inbound/outbound/transfer 等扫码权限，绑节点会成为死数据，
+        // 因此 service 层在 RBAC 校验之外多加一道角色白名单守门。
+        when(userMapper.selectById(99L)).thenReturn(user(99L, 6L)); // 6L = USER role
+        when(roleMapper.selectById(6L)).thenReturn(role(6L, "USER"));
+
+        TraceUserNodeBindingUpdateRequest request = new TraceUserNodeBindingUpdateRequest();
+        request.setNodeIds(List.of(1L));
+
+        assertThatThrownBy(() -> service.replaceUserBindings(99L, request))
+                .isInstanceOf(BizException.class)
+                .satisfies(error -> {
+                    BizException ex = (BizException) error;
+                    assertThat(ex.getCode()).isEqualTo(BizCode.PARAM_ERROR);
+                    assertThat(ex.getMessage()).contains("USER").contains("不支持节点绑定");
+                });
+
+        // USER 应该在校验阶段就被拦下，不能 touch binding 表
+        verify(bindingMapper, org.mockito.Mockito.never()).delete(any());
+        verify(bindingMapper, org.mockito.Mockito.never()).insert(any(TraceUserNodeBinding.class));
+    }
+
+    @Test
+    void replaceUserBindings_shouldAllowAdminAndSuperAdminForRescueScenarios() {
+        // ADMIN / SUPER_ADMIN 允许绑节点用于救场（业务角色不可用时管理员临时操作）。
+        // 实际安全防护由前端 warning banner + lifecycle_log.operator 审计字段共同承担。
+        when(userMapper.selectById(2L)).thenReturn(user(2L, 2L)); // 2L = ADMIN
+        when(roleMapper.selectById(2L)).thenReturn(role(2L, "ADMIN"));
+        when(traceNodeMapper.selectBatchIds(any(Collection.class)))
+                .thenReturn(List.of(node(1L, "FACTORY-BJ", "北京工厂", 10L, true)));
+        when(bindingMapper.selectList(any())).thenReturn(List.of(binding(91L, 2L, 1L, 10L, true, true)));
+
+        TraceUserNodeBindingUpdateRequest request = new TraceUserNodeBindingUpdateRequest();
+        request.setNodeIds(List.of(1L));
+
+        List<TraceUserNodeBindingResponse> responses = service.replaceUserBindings(2L, request);
+
+        assertThat(responses).hasSize(1);
+        verify(bindingMapper).insert(any(TraceUserNodeBinding.class));
+    }
+
     private static SysUser user(Long id) {
+        return user(id, 4L); // default to WAREHOUSE role (priority 1, on the binding whitelist)
+    }
+
+    private static SysUser user(Long id, Long roleId) {
         SysUser user = new SysUser();
         user.setId(id);
         user.setUsername("operator-" + id);
+        user.setRoleId(roleId);
         user.setStatus(1);
         return user;
+    }
+
+    private static SysRole role(Long id, String roleCode) {
+        SysRole role = new SysRole();
+        role.setId(id);
+        role.setRoleCode(roleCode);
+        role.setRoleName(roleCode);
+        return role;
     }
 
     private static TraceUserNodeBinding binding(

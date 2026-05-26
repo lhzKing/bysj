@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { MapPin, Star } from 'lucide-vue-next'
+import { AlertTriangle, MapPin, Star } from 'lucide-vue-next'
 import BaseButton from '@/shared/components/ui/BaseButton.vue'
 import BaseDialog from '@/shared/components/ui/BaseDialog.vue'
 import EmptyState from '@/shared/components/ui/EmptyState.vue'
@@ -85,6 +85,14 @@ const groupedNodes = computed(() => {
 
 const selectedCount = computed(() => selectedIds.value.size)
 
+// ADMIN / SUPER_ADMIN can own bindings (backend whitelist allows it) but it's
+// considered a救场 path rather than the normal flow — show a warning banner so
+// admins don't accidentally use their account for routine scanning.
+const isManagerRole = computed(() => {
+  const code = props.user?.roleCode || props.user?.role_code || ''
+  return code === 'ADMIN' || code === 'SUPER_ADMIN'
+})
+
 function isChecked(nodeId) {
   return selectedIds.value.has(nodeId)
 }
@@ -147,6 +155,23 @@ function nodeRegion(node) {
     data-testid="user-node-binding-dialog"
   >
     <div class="binding-form" data-testid="user-node-binding-form">
+      <div
+        v-if="isManagerRole"
+        class="binding-form__manager-warning"
+        data-testid="binding-form-manager-warning"
+        role="alert"
+      >
+        <AlertTriangle class="binding-form__manager-warning-icon" />
+        <div class="binding-form__manager-warning-body">
+          <strong>这是管理员账号</strong>
+          <p>
+            管理员绑定节点应仅用于业务角色不可用时的<b>救场场景</b>，常规业务请使用
+            PRODUCER / WAREHOUSE / LOGISTICS 账号操作，便于审计追踪。
+            管理员的扫码动作会在 lifecycle_log.operator 字段留下账号名。
+          </p>
+        </div>
+      </div>
+
       <div v-if="loading" class="binding-form__loading">
         <LoadingSkeleton v-for="i in 4" :key="i" height="32px" />
       </div>
@@ -240,6 +265,42 @@ function nodeRegion(node) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.binding-form__manager-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--warn-soft);
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+  color: var(--ink);
+}
+.binding-form__manager-warning-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--warn);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.binding-form__manager-warning-body {
+  flex: 1;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.binding-form__manager-warning-body strong {
+  display: block;
+  color: var(--warn);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.binding-form__manager-warning-body p {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.binding-form__manager-warning-body b {
+  color: var(--ink);
+  font-weight: 600;
 }
 .binding-form__hint {
   margin: 0;

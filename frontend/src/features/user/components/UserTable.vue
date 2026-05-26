@@ -83,6 +83,15 @@ function getCreateTime(user) {
   return user?.createTime || user?.create_time || '-'
 }
 
+// Roles allowed to own trace_node bindings — must stay in sync with backend
+// TraceUserNodeBindingServiceImpl.NODE_BINDABLE_ROLES. USER is excluded because
+// it has no scan RBAC; ADMIN/SUPER_ADMIN show a warning banner in the dialog.
+const NODE_BINDABLE_ROLES = new Set(['PRODUCER', 'WAREHOUSE', 'LOGISTICS', 'ADMIN', 'SUPER_ADMIN'])
+function canBindNodes(user) {
+  const code = user?.roleCode || user?.role_code || ''
+  return NODE_BINDABLE_ROLES.has(code)
+}
+
 function toggleRow(user, checked) {
   if (!isSelectable(user)) return
   const next = new Set(props.selected)
@@ -275,6 +284,7 @@ function onClearSelection() {
                   重置密码
                 </button>
                 <button
+                  v-if="canBindNodes(user)"
                   type="button"
                   class="user-table__row-link"
                   data-testid="user-table-row-nodes"
@@ -372,7 +382,7 @@ function onClearSelection() {
               <template #icon><KeyRound class="user-table__action-icon" /></template>
               重置密码
             </BaseButton>
-            <BaseButton variant="text" size="sm" data-testid="user-table-card-nodes" @click="onManageNodes(user)">
+            <BaseButton v-if="canBindNodes(user)" variant="text" size="sm" data-testid="user-table-card-nodes" @click="onManageNodes(user)">
               <template #icon><MapPin class="user-table__action-icon" /></template>
               节点绑定
             </BaseButton>

@@ -5,10 +5,12 @@ import com.example.trace.common.BizCode;
 import com.example.trace.common.BizException;
 import com.example.trace.dto.TraceUserNodeBindingResponse;
 import com.example.trace.dto.TraceUserNodeBindingUpdateRequest;
+import com.example.trace.entity.SysRole;
 import com.example.trace.entity.SysUser;
 import com.example.trace.entity.TraceNode;
 import com.example.trace.entity.TraceUserNodeBinding;
 import com.example.trace.enums.ActionType;
+import com.example.trace.mapper.SysRoleMapper;
 import com.example.trace.mapper.SysUserMapper;
 import com.example.trace.mapper.TraceNodeMapper;
 import com.example.trace.mapper.TraceUserNodeBindingMapper;
@@ -37,6 +39,24 @@ public class TraceUserNodeBindingServiceImpl implements TraceUserNodeBindingServ
     private final TraceUserNodeBindingMapper bindingMapper;
     private final TraceNodeMapper traceNodeMapper;
     private final SysUserMapper userMapper;
+    private final SysRoleMapper roleMapper;
+
+    /**
+     * Role codes whose users are allowed to own trace-node bindings.
+     *
+     * <p>Business roles (PRODUCER/WAREHOUSE/LOGISTICS) need bindings to scan at
+     * their operating sites; ADMIN/SUPER_ADMIN need them only as a救场 fallback
+     * when business operators are unavailable (the dialog shows a warning
+     * banner for these two — see UserNodeBindingDialog).</p>
+     *
+     * <p>USER is excluded because it has only {@code trace:view} +
+     * {@code dashboard:view}, so any binding row would be silently dead data —
+     * the RBAC scan check rejects them at the door anyway.</p>
+     */
+    private static final Set<String> NODE_BINDABLE_ROLES = Set.of(
+            "PRODUCER", "WAREHOUSE", "LOGISTICS",
+            "ADMIN", "SUPER_ADMIN"
+    );
 
     @Override
     public List<TraceUserNodeBindingResponse> listUserBindings(Long userId) {
@@ -50,7 +70,8 @@ public class TraceUserNodeBindingServiceImpl implements TraceUserNodeBindingServ
             Long userId,
             TraceUserNodeBindingUpdateRequest request
     ) {
-        requireExistingUser(userId);
+        SysUser target = requireExistingUser(userId);
+        ensureRoleAllowsBinding(target);
         if (request == null) {
             throw new BizException(BizCode.PARAM_ERROR, "节点绑定参数不能为空");
         }
@@ -324,6 +345,22 @@ public class TraceUserNodeBindingServiceImpl implements TraceUserNodeBindingServ
             throw new BizException(BizCode.NOT_FOUND, "用户不存在: " + userId);
         }
         return user;
+    }
+
+    private void ensureRoleAllowsBinding(SysUser user) {
+        SysRole role = roleMapper.selectById(user.getRoleId());
+        if (role == null) {
+            throw new BizException(BizCode.SERVER_ERROR,
+                    "目标用户角色不存在: userId=" + user.getId() + ", roleId=" + user.getRoleId());
+        }
+        if (!NODE_BINDABLE_ROLES.contains(role.getRoleCode())) {
+            // USER 角色没有扫码 RBAC 权限，绑节点是死数据；其余未来新增的角色默认也挡，
+            // 直到显式加入白名单。
+            throw new BizException(BizCode.PARAM_ERROR,
+                    "目标用户角色 " + role.getRoleCode() + " 不支持节点绑定。"
+                            + "仅业务角色（PRODUCER/WAREHOUSE/LOGISTICS）"
+                            + "及管理角色（ADMIN/SUPER_ADMIN，仅救场使用）可绑定。");
+        }
     }
 
     private List<TraceUserNodeBindingResponse> toResponses(List<TraceUserNodeBinding> bindings) {
