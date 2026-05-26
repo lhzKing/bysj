@@ -85,6 +85,10 @@ services:
       # 手机扫码跳转的公开溯源页基址（=前端域名）
       TRACE_PUBLIC_BASE_URL: ${TRACE_PUBLIC_BASE_URL}
       TRACE_SECURITY_LOG_LEVEL: WARN
+      # 演示数据管理接口（seed-master / generate-sample / clear-trace）开关。
+      # prod profile 默认禁用，需要灌 demo 数据时临时设为 true，演示完务必改回 false。
+      TRACE_DEMO_DATA_ENABLED: ${TRACE_DEMO_DATA_ENABLED:-false}
+      TRACE_DEMO_DATA_MAX_GENERATE_COUNT: ${TRACE_DEMO_DATA_MAX_GENERATE_COUNT:-500}
     volumes:
       - ./keys:/app/keys:ro
     ports:
