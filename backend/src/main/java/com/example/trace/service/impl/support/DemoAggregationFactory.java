@@ -1,6 +1,7 @@
 package com.example.trace.service.impl.support;
 
 import com.example.trace.entity.TraceAggregation;
+import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -29,6 +30,7 @@ import java.util.UUID;
  * <p>Carton parents are not themselves trace_code rows (a carton is a
  * higher-level container code; only single items live in trace_code).</p>
  */
+@Component
 public class DemoAggregationFactory {
 
     public static final int TARGET_CARTONS = 24;

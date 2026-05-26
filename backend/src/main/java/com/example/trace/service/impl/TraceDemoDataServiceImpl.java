@@ -1,23 +1,34 @@
 package com.example.trace.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import cn.hutool.core.util.IdUtil;
 import com.example.trace.common.BizException;
 import com.example.trace.config.TraceDemoDataProperties;
 import com.example.trace.entity.BasePartSpec;
+import com.example.trace.entity.SysUser;
+import com.example.trace.entity.TraceAggregation;
+import com.example.trace.entity.TraceAssignBatch;
+import com.example.trace.entity.TraceCode;
 import com.example.trace.entity.TraceLifecycleLog;
+import com.example.trace.entity.TraceNode;
 import com.example.trace.entity.TraceSnapshot;
-import com.example.trace.enums.ActionType;
-import com.example.trace.enums.TraceStatus;
 import com.example.trace.mapper.BasePartSpecMapper;
+import com.example.trace.mapper.SysUserMapper;
+import com.example.trace.mapper.TraceAggregationMapper;
+import com.example.trace.mapper.TraceAssignBatchMapper;
 import com.example.trace.mapper.TraceCodeMapper;
+import com.example.trace.mapper.TraceFlowTaskMapper;
+import com.example.trace.mapper.TraceFlowTaskScanMapper;
 import com.example.trace.mapper.TraceLifecycleLogMapper;
+import com.example.trace.mapper.TraceNodeMapper;
+import com.example.trace.mapper.TraceScanIdempotencyMapper;
 import com.example.trace.mapper.TraceSnapshotMapper;
 import com.example.trace.service.TraceDemoDataService;
+import com.example.trace.service.impl.support.DemoAggregationFactory;
+import com.example.trace.service.impl.support.DemoChainBuilder;
+import com.example.trace.service.impl.support.DemoFlowTaskFactory;
+import com.example.trace.service.impl.support.DemoUserRef;
 import com.example.trace.service.impl.support.TraceBatchCommitter;
-import com.example.trace.service.impl.support.TraceBatchCommitter.DemoTraceUnit;
-import com.example.trace.util.HashUtil;
-import com.example.trace.util.ProvinceUtil;
-import com.example.trace.util.SignatureUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -28,67 +39,90 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
- * Demo data generator with two-phase persistence (T-P1-01).
+ * One-stop demo data generator covering 8 business tables in a single call:
+ * trace_assign_batch / trace_code / trace_lifecycle_log / trace_snapshot /
+ * trace_flow_task / trace_flow_task_scan / trace_aggregation.
  *
- * <p>Stage 1 (no transaction): build all lifecycle logs + snapshots in memory,
- * including RSA signing. Stage 2: chunked {@code REQUIRES_NEW} commits via
- * {@link TraceBatchCommitter}. Part-spec creation stays in its own
- * {@code @Transactional} helper because it's a small fixed-size operation
- * (≤ 5 rows) and lives ahead of the heavy loop.</p>
+ * <p>Master data (trace_node / base_part_spec / sys_user demo accounts /
+ * trace_user_node_binding) must already exist — call
+ * {@code POST /api/admin/seed-master-data} first, or run
+ * {@code scripts/seed_extended_data.py} as an offline fallback.</p>
+ *
+ * <p>Persistence follows the T-P1-01 two-phase contract: stage 1 builds every
+ * entity (including RSA signatures) in memory with no transaction; stage 2
+ * commits per-table in chunks via {@link TraceBatchCommitter}, each chunk in
+ * its own {@code REQUIRES_NEW} transaction.</p>
  */
 @Service
 public class TraceDemoDataServiceImpl implements TraceDemoDataService {
 
     private static final Logger log = LoggerFactory.getLogger(TraceDemoDataServiceImpl.class);
-    private static final String GENESIS_HASH = "GENESIS";
-    private static final DateTimeFormatter TRACE_CODE_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
-    private static final List<PartDef> PART_DEFINITIONS = List.of(
-            new PartDef("SPU-VALVE-002", "气动球阀", "阀门类", "V-2024002", "上海阀门厂"),
-            new PartDef("SPU-BEAR-001", "深沟球轴承", "轴承类", "B-6205", "SKF中国"),
-            new PartDef("SPU-MOTOR-001", "三相异步电机", "电机类", "M-Y160M", "卧龙电机"),
-            new PartDef("SPU-SENS-001", "温度传感器", "传感器类", "S-PT100", "E+H中国"),
-            new PartDef("SPU-PIPE-001", "无缝钢管", "管件类", "P-DN100", "宝钢股份")
-    );
-
-    private static final List<RegionDef> REGIONS = List.of(
-            new RegionDef("上海", "上海市", List.of("上海生产车间A", "上海中心仓")),
-            new RegionDef("江苏", "苏州市", List.of("苏州工业园", "苏州成品仓")),
-            new RegionDef("浙江", "杭州市", List.of("杭州生产基地", "杭州石化仓库")),
-            new RegionDef("广东", "广州市", List.of("广州电机工厂", "广州仓储中心")),
-            new RegionDef("北京", "北京市", List.of("北京分销仓库", "北京物流中心"))
-    );
+    // Tunable: how many trace codes per batch. The Python reference seeder uses (15, 25).
+    private static final int TRACE_CODES_PER_BATCH_MIN = 15;
+    private static final int TRACE_CODES_PER_BATCH_MAX = 25;
 
     private final BasePartSpecMapper partSpecMapper;
     private final TraceLifecycleLogMapper logMapper;
     private final TraceSnapshotMapper snapshotMapper;
     private final TraceCodeMapper traceCodeMapper;
-    private final SignatureUtil signatureUtil;
+    private final TraceAssignBatchMapper assignBatchMapper;
+    private final TraceFlowTaskMapper flowTaskMapper;
+    private final TraceFlowTaskScanMapper flowTaskScanMapper;
+    private final TraceAggregationMapper aggregationMapper;
+    private final TraceScanIdempotencyMapper scanIdempotencyMapper;
+    private final TraceNodeMapper traceNodeMapper;
+    private final SysUserMapper sysUserMapper;
     private final TraceDemoDataProperties traceDemoDataProperties;
     private final TraceBatchCommitter batchCommitter;
-    private final Random random = new Random(System.currentTimeMillis());
+    private final DemoChainBuilder chainBuilder;
+    private final DemoFlowTaskFactory flowTaskFactory;
+    private final DemoAggregationFactory aggregationFactory;
+    private final Random random = new Random();
 
     public TraceDemoDataServiceImpl(
             BasePartSpecMapper partSpecMapper,
             TraceLifecycleLogMapper logMapper,
             TraceSnapshotMapper snapshotMapper,
             TraceCodeMapper traceCodeMapper,
-            SignatureUtil signatureUtil,
+            TraceAssignBatchMapper assignBatchMapper,
+            TraceFlowTaskMapper flowTaskMapper,
+            TraceFlowTaskScanMapper flowTaskScanMapper,
+            TraceAggregationMapper aggregationMapper,
+            TraceScanIdempotencyMapper scanIdempotencyMapper,
+            TraceNodeMapper traceNodeMapper,
+            SysUserMapper sysUserMapper,
             TraceDemoDataProperties traceDemoDataProperties,
-            TraceBatchCommitter batchCommitter
+            TraceBatchCommitter batchCommitter,
+            DemoChainBuilder chainBuilder,
+            DemoFlowTaskFactory flowTaskFactory,
+            DemoAggregationFactory aggregationFactory
     ) {
         this.partSpecMapper = partSpecMapper;
         this.logMapper = logMapper;
         this.snapshotMapper = snapshotMapper;
         this.traceCodeMapper = traceCodeMapper;
-        this.signatureUtil = signatureUtil;
+        this.assignBatchMapper = assignBatchMapper;
+        this.flowTaskMapper = flowTaskMapper;
+        this.flowTaskScanMapper = flowTaskScanMapper;
+        this.aggregationMapper = aggregationMapper;
+        this.scanIdempotencyMapper = scanIdempotencyMapper;
+        this.traceNodeMapper = traceNodeMapper;
+        this.sysUserMapper = sysUserMapper;
         this.traceDemoDataProperties = traceDemoDataProperties;
         this.batchCommitter = batchCommitter;
+        this.chainBuilder = chainBuilder;
+        this.flowTaskFactory = flowTaskFactory;
+        this.aggregationFactory = aggregationFactory;
     }
 
     @Override
@@ -97,37 +131,70 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         validateGenerateCount(count, operator, operatorRole);
         log.info("Trace demo data generation started: operator={}, role={}, count={}",
                 normalizeAuditValue(operator), normalizeAuditValue(operatorRole), count);
+        long started = System.currentTimeMillis();
 
-        // Part-spec rows are small + fixed-size; keep their own short transaction.
-        List<Long> partIds = createPartSpecsTransactional();
-        LocalDateTime baseTime = LocalDateTime.now().minusDays(30);
-
-        // Stage 1: build all demo trace units in memory (no transaction). Hash + RSA signature
-        // happen here so the DB connection is never held while signing.
-        List<DemoTraceUnit> units = new ArrayList<>(count);
-        int logCount = 0;
-        for (int i = 0; i < count; i++) {
-            Long spuId = partIds.get(random.nextInt(partIds.size()));
-            String traceCode = buildTraceCode(i);
-            RegionDef startRegion = REGIONS.get(random.nextInt(REGIONS.size()));
-            LocalDateTime eventTime = baseTime.plusDays(i / 5).plusHours(8 + (i % 12));
-
-            DemoTraceUnit unit = buildLifecycleUnit(traceCode, spuId, startRegion, eventTime);
-            units.add(unit);
-            logCount += unit.logs().size();
+        // ----- Pre-flight: master data must exist -----
+        List<TraceNode> allNodes = traceNodeMapper.selectList(
+                new QueryWrapper<TraceNode>().eq("enabled", 1));
+        List<BasePartSpec> allParts = partSpecMapper.selectList(
+                new QueryWrapper<BasePartSpec>().eq("enabled", 1));
+        ensureMasterDataReady(allNodes, allParts);
+        List<TraceNode> factories  = allNodes.stream().filter(n -> "FACTORY".equals(n.getNodeType())).toList();
+        List<TraceNode> warehouses = allNodes.stream().filter(n -> "WAREHOUSE".equals(n.getNodeType())).toList();
+        List<TraceNode> logistics  = allNodes.stream().filter(n -> "LOGISTICS".equals(n.getNodeType())).toList();
+        List<TraceNode> customers  = allNodes.stream().filter(n -> "CUSTOMER".equals(n.getNodeType())).toList();
+        if (factories.isEmpty() || warehouses.isEmpty() || logistics.isEmpty() || customers.isEmpty()) {
+            throw BizException.badRequest(
+                    "demo 主数据不完整：每种节点类型（FACTORY/WAREHOUSE/LOGISTICS/CUSTOMER）都需至少 1 个，请先调用 POST /api/admin/seed-master-data");
         }
 
-        // Stage 2: chunked REQUIRES_NEW commits. Each chunk persists a slice of demo traces;
-        // a single trace's logs are never split across chunks (atomic per trace).
-        batchCommitter.commitDemoUnitsInChunks(units);
+        // Resolve demo users by role for operator + creator references.
+        List<DemoUserRef> producerUsers = lookupDemoUsersByRole("PRODUCER");
+        List<DemoUserRef> warehouseUsers = lookupDemoUsersByRole("WAREHOUSE");
+        List<DemoUserRef> logisticsUsers = lookupDemoUsersByRole("LOGISTICS");
+        if (producerUsers.isEmpty() || warehouseUsers.isEmpty() || logisticsUsers.isEmpty()) {
+            throw BizException.badRequest(
+                    "demo 主数据不完整：需要至少各 1 个 PRODUCER / WAREHOUSE / LOGISTICS demo 用户，请先调用 POST /api/admin/seed-master-data");
+        }
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("partSpecs", partIds.size());
-        result.put("traceCodes", units.size());
-        result.put("lifecycleLogs", logCount);
+        // ----- Stage 1: build everything in memory (NO transaction, NO connection held) -----
+        LocalDateTime baseTime = LocalDateTime.of(2026, 4, 1, 9, 13, 0);
+        BuildOutput out = buildAllInMemory(count, allParts, factories, warehouses, logistics, customers,
+                producerUsers, warehouseUsers, logisticsUsers, baseTime);
 
-        log.info("Trace demo data generation completed: operator={}, role={}, count={}, traceCodes={}, lifecycleLogs={}, partSpecs={}",
-                normalizeAuditValue(operator), normalizeAuditValue(operatorRole), count, units.size(), logCount, partIds.size());
+        // ----- Stage 2: chunked REQUIRES_NEW commits, per-table -----
+        batchCommitter.commitAssignBatchesInChunks(out.batches);
+        // Back-fill trace_code.batch_id from batch business key now that auto-id is populated.
+        Map<String, Long> batchNoToId = new HashMap<>();
+        for (TraceAssignBatch b : out.batches) {
+            batchNoToId.put(b.getBatchNo(), b.getId());
+        }
+        for (TraceBatchCommitter.DemoTraceWithCodeUnit unit : out.traceUnits) {
+            TraceCode code = unit.traceCode();
+            if (code.getBatchId() == null) {
+                Long resolved = batchNoToId.get(((TraceCodeWithBatchNo) code).pendingBatchNo);
+                code.setBatchId(resolved);
+            }
+        }
+        batchCommitter.commitDemoUnitsWithCodeInChunks(out.traceUnits);
+        batchCommitter.commitFlowTasksInChunks(out.flowTaskUnits);
+        batchCommitter.commitAggregationsInChunks(out.aggregations);
+
+        long durationMillis = System.currentTimeMillis() - started;
+        int lifecycleLogs = out.traceUnits.stream().mapToInt(u -> u.logs().size()).sum();
+        int flowTaskScans = out.flowTaskUnits.stream().mapToInt(u -> u.scans().size()).sum();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("batches", out.batches.size());
+        result.put("traceCodes", out.traceUnits.size());
+        result.put("lifecycleLogs", lifecycleLogs);
+        result.put("snapshots", out.traceUnits.size());
+        result.put("flowTasks", out.flowTaskUnits.size());
+        result.put("flowTaskScans", flowTaskScans);
+        result.put("aggregations", out.aggregations.size());
+        result.put("durationMillis", durationMillis);
+
+        log.info("Trace demo data generation completed: operator={}, role={}, result={}",
+                normalizeAuditValue(operator), normalizeAuditValue(operatorRole), result);
         return result;
     }
 
@@ -138,30 +205,201 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         log.warn("Trace demo data clear started: operator={}, role={}",
                 normalizeAuditValue(operator), normalizeAuditValue(operatorRole));
 
-        long logCount = logMapper.selectCount(null);
+        // FK delete order — children before parents:
+        //   trace_flow_task_scan      → fk_trace_flow_task_scan_task (CASCADE) on trace_flow_task
+        //   trace_flow_task           → no inbound FK among business tables
+        //   trace_aggregation         → no inbound FK on trace_code (parent/child are plain VARCHAR)
+        //   trace_scan_idempotency    → fk_trace_scan_idempotency_log on trace_lifecycle_log
+        //   trace_lifecycle_log       → self-ref fk_correction_of (delete handles self-ref OK)
+        //   trace_snapshot            → no inbound FK
+        //   trace_code                → fk_trace_code_batch (SET NULL) on trace_assign_batch
+        //   trace_assign_batch        → fk_trace_assign_batch_spu RESTRICT on base_part_spec
+        //                               (we DON'T touch base_part_spec, so RESTRICT never trips)
+        long flowTaskScans = flowTaskScanMapper.selectCount(null);
+        flowTaskScanMapper.delete(null);
+        long flowTasks = flowTaskMapper.selectCount(null);
+        flowTaskMapper.delete(null);
+        long aggregations = aggregationMapper.selectCount(null);
+        aggregationMapper.delete(null);
+        long idempotencyKeys = scanIdempotencyMapper.selectCount(null);
+        scanIdempotencyMapper.delete(null);
+        long logs = logMapper.selectCount(null);
         logMapper.delete(null);
-
-        long snapshotCount = snapshotMapper.selectCount(null);
+        long snapshots = snapshotMapper.selectCount(null);
         snapshotMapper.delete(null);
-
-        long traceCodeCount = traceCodeMapper.selectCount(null);
+        long traceCodes = traceCodeMapper.selectCount(null);
         traceCodeMapper.delete(null);
+        long batches = assignBatchMapper.selectCount(null);
+        assignBatchMapper.delete(null);
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("deletedLogs", logCount);
-        result.put("deletedSnapshots", snapshotCount);
-        result.put("deletedTraceCodes", traceCodeCount);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("deletedFlowTaskScans", flowTaskScans);
+        result.put("deletedFlowTasks", flowTasks);
+        result.put("deletedAggregations", aggregations);
+        result.put("deletedIdempotencyKeys", idempotencyKeys);
+        result.put("deletedLogs", logs);
+        result.put("deletedSnapshots", snapshots);
+        result.put("deletedTraceCodes", traceCodes);
+        result.put("deletedBatches", batches);
 
-        log.warn("Trace demo data clear completed: operator={}, role={}, deletedLogs={}, deletedSnapshots={}, deletedTraceCodes={}",
-                normalizeAuditValue(operator), normalizeAuditValue(operatorRole), logCount, snapshotCount, traceCodeCount);
+        log.warn("Trace demo data clear completed: operator={}, role={}, result={}",
+                normalizeAuditValue(operator), normalizeAuditValue(operatorRole), result);
         return result;
+    }
+
+    // -----------------------------------------------------------------------
+    // Stage 1 — in-memory build
+    // -----------------------------------------------------------------------
+
+    private BuildOutput buildAllInMemory(int count,
+                                         List<BasePartSpec> parts,
+                                         List<TraceNode> factories,
+                                         List<TraceNode> warehouses,
+                                         List<TraceNode> logistics,
+                                         List<TraceNode> customers,
+                                         List<DemoUserRef> producers,
+                                         List<DemoUserRef> warehouseUsers,
+                                         List<DemoUserRef> logisticsUsers,
+                                         LocalDateTime baseTime) {
+        List<TraceAssignBatch> batches = new ArrayList<>();
+        List<TraceBatchCommitter.DemoTraceWithCodeUnit> traceUnits = new ArrayList<>(count);
+        // Each in-flight trace's terminal status — used downstream to pick task scan / aggregation candidates.
+        List<DemoFlowTaskFactory.ScanCandidate> aggregatableCodes = new ArrayList<>();
+
+        int remaining = count;
+        int batchSeq = 0;
+        String runId = IdUtil.fastSimpleUUID().substring(0, 6);
+        while (remaining > 0) {
+            int bucketSize = Math.min(remaining,
+                    TRACE_CODES_PER_BATCH_MIN + random.nextInt(TRACE_CODES_PER_BATCH_MAX - TRACE_CODES_PER_BATCH_MIN + 1));
+            batchSeq++;
+            BasePartSpec spu = parts.get(random.nextInt(parts.size()));
+            DemoUserRef producer = producers.get(batchSeq % producers.size());
+            TraceNode factory = factories.get(batchSeq % factories.size());
+            LocalDateTime batchTime = baseTime.plusDays(batchSeq - 1L).plusHours((batchSeq - 1L) % 6)
+                    .truncatedTo(ChronoUnit.SECONDS);
+
+            TraceAssignBatch batch = new TraceAssignBatch();
+            batch.setBatchNo("ASSIGN-EXT-%04d-%s-%s".formatted(batchSeq, spu.getPartCode(), runId));
+            batch.setProductionOrderNo("PO-%s-%04d".formatted(batchTime.format(DATE_FMT), batchSeq));
+            batch.setSpuId(spu.getId());
+            batch.setQuantityRequested(bucketSize);
+            batch.setQuantityGenerated(bucketSize);
+            batch.setQuantityPrinted(bucketSize);
+            batch.setQuantityActivated(bucketSize);
+            batch.setManufacturerNodeId(factory.getId());
+            batch.setStatus("GENERATED");
+            batch.setOperatorId(producer.id());
+            batch.setOperatorUsername(producer.username());
+            batches.add(batch);
+
+            for (int i = 0; i < bucketSize; i++) {
+                String traceCode = "TC-EXT-%04d-%04d-%s".formatted(batchSeq, i + 1, shortUuid());
+                LocalDateTime initTime = batchTime.plusMinutes(5L + i);
+                TraceNode warehouse = warehouses.get(random.nextInt(warehouses.size()));
+                TraceNode logisticsNode = logistics.get(random.nextInt(logistics.size()));
+                TraceNode customer = customers.get(random.nextInt(customers.size()));
+                DemoUserRef warehouseOp = warehouseUsers.get(random.nextInt(warehouseUsers.size()));
+                DemoUserRef logisticsOp = logisticsUsers.get(random.nextInt(logisticsUsers.size()));
+
+                DemoChainBuilder.ChainResult chain = chainBuilder.buildChain(
+                        traceCode, spu.getId(),
+                        factory, warehouse, logisticsNode, customer,
+                        producer.username(), warehouseOp.username(), logisticsOp.username(),
+                        initTime, random);
+
+                // Find the ACTIVATE_CODE timestamp for trace_code.activated_time
+                LocalDateTime activatedTime = chain.logs().stream()
+                        .filter(l -> "ACTIVATE_CODE".equals(l.getActionType()))
+                        .map(TraceLifecycleLog::getEventTime)
+                        .findFirst().orElse(initTime);
+
+                TraceCodeWithBatchNo traceCodeRow = new TraceCodeWithBatchNo();
+                traceCodeRow.setTraceCode(traceCode);
+                traceCodeRow.pendingBatchNo = batch.getBatchNo(); // back-filled to batchId in stage 2
+                traceCodeRow.setSpuId(spu.getId());
+                traceCodeRow.setSerialNo(i + 1);
+                traceCodeRow.setQrPayload("{\"traceCode\":\"" + traceCode + "\",\"spuId\":" + spu.getId() + ",\"v\":1}");
+                traceCodeRow.setCodeStatus(mapSnapshotStatusToCodeStatus(chain.terminalStatus()));
+                traceCodeRow.setPrintCount(1);
+                traceCodeRow.setActivatedTime(activatedTime);
+                traceCodeRow.setActivatedBy(producer.id());
+                traceCodeRow.setActivatedByUsername(producer.username());
+                traceCodeRow.setCurrentSnapshotId(traceCode);
+
+                traceUnits.add(new TraceBatchCommitter.DemoTraceWithCodeUnit(
+                        chain.logs(), chain.snapshot(), traceCodeRow));
+
+                // Eligible for tasks/aggregations: trace currently sitting in inventory or in flight.
+                if ("IN_STOCK".equals(chain.terminalStatus()) || "IN_TRANSIT".equals(chain.terminalStatus())) {
+                    aggregatableCodes.add(new DemoFlowTaskFactory.ScanCandidate(traceCode));
+                }
+            }
+            remaining -= bucketSize;
+        }
+
+        // Flow tasks (60 of them, drawn from the aggregatable pool)
+        List<TraceBatchCommitter.FlowTaskWithScansUnit> flowTaskUnits = flowTaskFactory.build(
+                        aggregatableCodes, warehouses, logistics, customers,
+                        warehouseUsers, logisticsUsers,
+                        baseTime, random)
+                .stream()
+                .map(u -> new TraceBatchCommitter.FlowTaskWithScansUnit(u.task(), u.scans()))
+                .toList();
+
+        // Aggregations (24 cartons + 6 pallets)
+        List<String> aggregationCandidates = aggregatableCodes.stream()
+                .map(DemoFlowTaskFactory.ScanCandidate::traceCode)
+                .collect(Collectors.toList());
+        DemoUserRef aggregationCreator = producers.isEmpty() ? null : producers.get(0);
+        List<TraceAggregation> aggregations = aggregationFactory.build(
+                aggregationCandidates, aggregationCreator, baseTime, random);
+
+        return new BuildOutput(batches, traceUnits, flowTaskUnits, aggregations);
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    private void ensureMasterDataReady(List<TraceNode> nodes, List<BasePartSpec> parts) {
+        if (nodes.isEmpty() || parts.isEmpty()) {
+            throw BizException.badRequest(
+                    "demo 主数据未就绪：trace_node / base_part_spec 为空，请先调用 POST /api/admin/seed-master-data");
+        }
+    }
+
+    private List<DemoUserRef> lookupDemoUsersByRole(String roleCode) {
+        // Resolve role_id first, then fetch sys_user rows with that role.
+        QueryWrapper<SysUser> wrapper = new QueryWrapper<>();
+        wrapper.inSql("role_id",
+                "SELECT id FROM sys_role WHERE role_code = '" + roleCode.replace("'", "''") + "'");
+        wrapper.eq("status", 1);
+        return sysUserMapper.selectList(wrapper).stream()
+                .map(u -> new DemoUserRef(u.getId(), u.getUsername()))
+                .toList();
+    }
+
+    private static String mapSnapshotStatusToCodeStatus(String snapshotStatus) {
+        // trace_code.code_status taxonomy: GENERATED/PRINTED/ACTIVATED/IN_STOCK/IN_TRANSIT/EXCEPTION/VOIDED/SCRAPPED
+        return switch (snapshotStatus) {
+            case "INIT" -> "ACTIVATED"; // a trace that completed the chain (INIT→PRINT→ACTIVATE) is at minimum activated
+            case "IN_STOCK" -> "IN_STOCK";
+            case "IN_TRANSIT" -> "IN_TRANSIT";
+            case "TRANSFERRED" -> "IN_STOCK"; // delivered to customer, treated as in-stock on receiver side
+            case "EXCEPTION" -> "EXCEPTION";
+            default -> "ACTIVATED";
+        };
+    }
+
+    private static String shortUuid() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     }
 
     private void ensureAdminOperationEnabled(String operation, String operator, String operatorRole) {
         if (traceDemoDataProperties.isEnabled()) {
             return;
         }
-
         log.warn("Trace demo admin operation rejected because endpoint is disabled: operation={}, operator={}, role={}",
                 operation, normalizeAuditValue(operator), normalizeAuditValue(operatorRole));
         throw BizException.forbidden("当前环境已禁用示例数据管理接口");
@@ -172,7 +410,6 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         if (count >= TraceDemoDataProperties.MIN_GENERATE_COUNT && count <= maxGenerateCount) {
             return;
         }
-
         log.warn("Trace demo data generation rejected due to invalid count: operator={}, role={}, count={}, allowedRange={}..{}",
                 normalizeAuditValue(operator), normalizeAuditValue(operatorRole), count,
                 TraceDemoDataProperties.MIN_GENERATE_COUNT, maxGenerateCount);
@@ -180,217 +417,28 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
                 + " 到 " + maxGenerateCount + " 之间");
     }
 
-    private String normalizeAuditValue(String value) {
+    private static String normalizeAuditValue(String value) {
         return value == null || value.isBlank() ? "unknown" : value;
     }
 
-    private String buildTraceCode(int index) {
-        String traceCode = "TC-" + LocalDateTime.now().format(TRACE_CODE_DATE) + "-" + String.format("%04d", index + 1);
-        if (snapshotMapper.selectById(traceCode) != null) {
-            return traceCode + "-" + IdUtil.fastSimpleUUID().substring(0, 4);
-        }
-        return traceCode;
-    }
-
-    @Transactional
-    protected List<Long> createPartSpecsTransactional() {
-        List<Long> ids = new ArrayList<>();
-        Map<String, Long> existingMap = new HashMap<>();
-        long syntheticId = -1L;
-
-        for (BasePartSpec part : partSpecMapper.selectList(null)) {
-            ids.add(part.getId());
-            existingMap.put(part.getPartCode(), part.getId());
-        }
-
-        for (PartDef def : PART_DEFINITIONS) {
-            if (existingMap.containsKey(def.code())) {
-                continue;
-            }
-
-            BasePartSpec spec = new BasePartSpec();
-            spec.setPartCode(def.code());
-            spec.setPartName(def.name());
-            spec.setPartType(def.type());
-            spec.setModel(def.model());
-            spec.setManufacturer(def.manufacturer());
-            spec.setUnit("件");
-            spec.setRemark("示例数据");
-            partSpecMapper.insert(spec);
-            if (spec.getId() == null) {
-                spec.setId(syntheticId--);
-            }
-            ids.add(spec.getId());
-        }
-
-        if (ids.isEmpty()) {
-            ids.add(1L);
-        }
-        return ids;
-    }
+    // -----------------------------------------------------------------------
+    // Private types
+    // -----------------------------------------------------------------------
 
     /**
-     * Builds (in memory, no transaction) the full lifecycle log chain + tail snapshot for one
-     * demo trace. RSA signing is done here, ahead of any commit.
+     * Carries the not-yet-resolved batch business key from stage 1 to stage 2.
+     * Once stage 2 commits the batches and back-fills {@link #pendingBatchNo}
+     * → {@link com.example.trace.entity.TraceAssignBatch#getId()} via the map,
+     * {@link com.example.trace.entity.TraceCode#getBatchId()} is set.
      */
-    private DemoTraceUnit buildLifecycleUnit(String traceCode, Long spuId, RegionDef startRegion, LocalDateTime eventTime) {
-        List<TraceLifecycleLog> logs = new ArrayList<>();
-        String prevHash = GENESIS_HASH;
-        String currentNode = startRegion.nodes().get(0);
-        TraceStatus currentStatus = TraceStatus.INIT;
-        String lastHash;
-        LocalDateTime lastEventTime = eventTime;
-        RegionDef currentRegion = startRegion;
-        ActionType lastAction;
-
-        TraceLifecycleLog initLog = createLog(
-                traceCode, spuId, ActionType.INIT,
-                null, currentNode,
-                startRegion.province(), startRegion.city(),
-                eventTime, prevHash, null
-        );
-        logs.add(initLog);
-        prevHash = initLog.getCurrentHash();
-        lastHash = initLog.getCurrentHash();
-        lastAction = ActionType.INIT;
-        currentStatus = TraceStatus.deriveFromAction(currentStatus, ActionType.INIT);
-
-        int totalSteps = 2 + random.nextInt(3);
-        for (int step = 0; step < totalSteps; step++) {
-            eventTime = eventTime.plusHours(2 + random.nextInt(24));
-            ActionType action = getNextLogicalAction(lastAction, step, totalSteps);
-
-            boolean crossRegion = action == ActionType.TRANSFER || (action == ActionType.OUTBOUND && random.nextDouble() < 0.4);
-            RegionDef nextRegion = crossRegion ? pickAnotherRegion(currentRegion) : currentRegion;
-            String fromNode = currentNode;
-            String toNode = action == ActionType.EXCEPTION || action == ActionType.EXCEPTION_OPEN
-                    ? null
-                    : nextRegion.nodes().get(random.nextInt(nextRegion.nodes().size()));
-
-            TraceLifecycleLog logEntry = createLog(
-                    traceCode, spuId, action,
-                    fromNode, toNode,
-                    nextRegion.province(), nextRegion.city(),
-                    eventTime, prevHash, null
-            );
-            logs.add(logEntry);
-
-            prevHash = logEntry.getCurrentHash();
-            currentNode = toNode != null ? toNode : fromNode;
-            currentStatus = TraceStatus.deriveFromAction(currentStatus, action);
-            lastHash = logEntry.getCurrentHash();
-            lastEventTime = eventTime;
-            currentRegion = nextRegion;
-            lastAction = action;
-        }
-
-        TraceSnapshot snapshot = new TraceSnapshot();
-        snapshot.setTraceCode(traceCode);
-        snapshot.setSpuId(spuId);
-        snapshot.setCurrentStatus(currentStatus.getCode());
-        snapshot.setCurrentNode(currentNode);
-        snapshot.setCurrentOwner(getOperatorForAction(lastAction));
-        snapshot.setExceptionRestoreStatus(null);
-        snapshot.setExceptionRestoreNode(null);
-        snapshot.setExceptionRestoreOwner(null);
-        snapshot.setProvince(ProvinceUtil.toFullName(currentRegion.province()));
-        snapshot.setCity(currentRegion.city());
-        snapshot.setLastEventTime(lastEventTime);
-        snapshot.setLastHash(lastHash);
-        snapshot.setVersion(0);
-        // lastLogId is filled by TraceBatchCommitter after the final log INSERT assigns its PK.
-
-        return DemoTraceUnit.of(logs, snapshot);
+    private static class TraceCodeWithBatchNo extends TraceCode {
+        String pendingBatchNo;
     }
 
-    private RegionDef pickAnotherRegion(RegionDef currentRegion) {
-        RegionDef nextRegion = REGIONS.get(random.nextInt(REGIONS.size()));
-        if (REGIONS.size() > 1 && nextRegion.equals(currentRegion)) {
-            nextRegion = REGIONS.get((REGIONS.indexOf(currentRegion) + 1) % REGIONS.size());
-        }
-        return nextRegion;
-    }
-
-    private TraceLifecycleLog createLog(
-            String traceCode,
-            Long spuId,
-            ActionType actionType,
-            String fromNode,
-            String toNode,
-            String province,
-            String city,
-            LocalDateTime eventTime,
-            String prevHash,
-            Long correctionOf
-    ) {
-        LocalDateTime ingestTime = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
-        LocalDateTime truncatedEventTime = eventTime.truncatedTo(ChronoUnit.SECONDS);
-        String fullProvince = ProvinceUtil.toFullName(province);
-        String operator = getOperatorForAction(actionType);
-
-        String currentHash = HashUtil.calculateHash(
-                traceCode, actionType.name(), fromNode, toNode,
-                fullProvince, city, null, truncatedEventTime, ingestTime, prevHash, correctionOf, operator
-        );
-        String signature = signatureUtil.sign(SignatureUtil.buildSignatureData(
-                traceCode, actionType.name(), fromNode, toNode,
-                fullProvince, city,
-                truncatedEventTime.toString(), ingestTime.toString(),
-                prevHash, currentHash, correctionOf, operator, null
-        ));
-
-        TraceLifecycleLog logEntry = new TraceLifecycleLog();
-        logEntry.setTraceCode(traceCode);
-        logEntry.setSpuId(spuId);
-        logEntry.setActionType(actionType.name());
-        logEntry.setFromNode(fromNode);
-        logEntry.setToNode(toNode);
-        logEntry.setProvince(fullProvince);
-        logEntry.setCity(city);
-        logEntry.setRemark(null);
-        logEntry.setEventTime(truncatedEventTime);
-        logEntry.setIngestTime(ingestTime);
-        logEntry.setPrevHash(prevHash);
-        logEntry.setCurrentHash(currentHash);
-        logEntry.setCorrectionOf(correctionOf);
-        logEntry.setOperator(operator);
-        logEntry.setSignatureKeyId(signatureUtil.getKeyId());
-        logEntry.setSignatureKeyVersion(signatureUtil.getKeyVersion());
-        logEntry.setSignature(signature);
-        return logEntry;
-    }
-
-    private ActionType getNextLogicalAction(ActionType lastAction, int step, int totalSteps) {
-        boolean isLastStep = step == totalSteps - 1;
-        if (lastAction == null || lastAction == ActionType.INIT) {
-            return ActionType.INBOUND;
-        }
-
-        return switch (lastAction) {
-            case INBOUND -> random.nextDouble() < 0.08 ? ActionType.EXCEPTION_OPEN : ActionType.OUTBOUND;
-            case OUTBOUND -> ActionType.TRANSFER;
-            case TRANSFER -> ActionType.INBOUND;
-            case EXCEPTION, EXCEPTION_OPEN -> random.nextDouble() < 0.5 ? ActionType.CORRECTION : ActionType.EXCEPTION_CLOSE;
-            case EXCEPTION_CLOSE -> ActionType.INBOUND;
-            case CORRECTION -> isLastStep ? ActionType.INBOUND : ActionType.OUTBOUND;
-            default -> ActionType.INBOUND;
-        };
-    }
-
-    private String getOperatorForAction(ActionType action) {
-        if (action == null) {
-            return "system";
-        }
-        return switch (action) {
-            case INIT, PRINT_CODE, REPRINT_CODE, ACTIVATE_CODE, VOID_CODE,
-                    PACK, UNPACK, PALLETIZE, UNPALLETIZE -> "producer";
-            case INBOUND, OUTBOUND -> "warehouse";
-            case TRANSFER -> "logistics";
-            case EXCEPTION, EXCEPTION_OPEN, EXCEPTION_CLOSE, CORRECTION -> "warehouse";
-        };
-    }
-
-    private record PartDef(String code, String name, String type, String model, String manufacturer) {}
-
-    private record RegionDef(String province, String city, List<String> nodes) {}
+    private record BuildOutput(
+            List<TraceAssignBatch> batches,
+            List<TraceBatchCommitter.DemoTraceWithCodeUnit> traceUnits,
+            List<TraceBatchCommitter.FlowTaskWithScansUnit> flowTaskUnits,
+            List<TraceAggregation> aggregations
+    ) {}
 }

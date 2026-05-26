@@ -3,6 +3,7 @@ package com.example.trace.service.impl.support;
 import com.example.trace.entity.TraceFlowTask;
 import com.example.trace.entity.TraceFlowTaskScan;
 import com.example.trace.entity.TraceNode;
+import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -34,6 +35,7 @@ import java.util.Random;
  *   <li>COMPLETED tasks get {@code complete_time}; CANCELLED tasks get {@code cancel_time}</li>
  * </ul>
  */
+@Component
 public class DemoFlowTaskFactory {
 
     public static final int TOTAL_TASKS = 60;
