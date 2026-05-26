@@ -151,7 +151,16 @@ public class DemoChainBuilder {
         }
 
         // 8) 5% chance EXCEPTION_OPEN at tail
+        String restoreStatus = null;
+        String restoreNode = null;
+        String restoreOwner = null;
         if (rng.nextDouble() < 0.05) {
+            // Capture pre-exception state so EXCEPTION_CLOSE can restore it
+            // (real scan flow does the same in TraceScanTransactionService).
+            restoreStatus = terminalStatus;
+            restoreNode = terminalNode;
+            restoreOwner = terminalOwner;
+
             t = t.plusHours(2 + rng.nextInt(9));
             TraceLifecycleLog exceptionLog = make(traceCode, spuId, ActionType.EXCEPTION_OPEN,
                     terminalNode, null,
@@ -168,6 +177,9 @@ public class DemoChainBuilder {
         snapshot.setCurrentStatus(terminalStatus);
         snapshot.setCurrentNode(terminalNode);
         snapshot.setCurrentOwner(terminalOwner);
+        snapshot.setExceptionRestoreStatus(restoreStatus);
+        snapshot.setExceptionRestoreNode(restoreNode);
+        snapshot.setExceptionRestoreOwner(restoreOwner);
         snapshot.setProvince(ProvinceUtil.toFullName(terminalProvince));
         snapshot.setCity(terminalCity);
         snapshot.setLastEventTime(tail.getEventTime());
