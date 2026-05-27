@@ -660,6 +660,9 @@ onUnmounted(() => {
 
 <style scoped>
 .scan-hub {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 24px 48px;
   display: flex;
   flex-direction: column;
   gap: 24px;
