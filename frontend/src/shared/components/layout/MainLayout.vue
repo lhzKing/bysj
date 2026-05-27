@@ -127,6 +127,17 @@ const logout = async () => {
 }
 
 onMounted(() => {
+  // Token health ping: localStorage 里的 token + user 缓存只代表"曾经登录过"，不代表
+  // token 现在还有效（后端重启清 Redis 黑名单、token_version 升、JWT 过期都会让旧
+  // token 失效但 store.isLoggedIn 仍是 true）。每次进入受保护区域时静默 ping 一下
+  // /api/auth/userinfo，无效 token 会被 request.js 拦截器走 401 → unauthorizedHandler
+  // → 跳登录页。修复"扫码工位/扫码查询等 mount 时不调 API 的页面感知不到 token 失效"。
+  if (userStore.isLoggedIn) {
+    userStore.fetchUserInfo().catch(() => {
+      // 401 路径已被 request.js + unauthorizedHandler 处理；其余网络错误不阻塞布局
+    })
+  }
+
   window.addEventListener('keydown', onGlobalKeydown)
   if (!mediaQuery) {
     return
