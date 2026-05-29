@@ -156,6 +156,19 @@ public class TraceAggregationServiceImpl implements TraceAggregationService {
                 .toList();
     }
 
+    @Override
+    public List<TraceAggregationResponse> listAllActive(String relationType) {
+        String normalized = null;
+        if (StringUtils.hasText(relationType)) {
+            // Validate the enum eagerly so unknown values yield a 4xx, not silently ignored.
+            normalized = TraceAggregationRelationType.fromString(relationType).getCode();
+        }
+        return traceAggregationMapper.selectAllActive(normalized)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
     private TraceAggregation requireRelation(Long relationId) {
         if (relationId == null) {
             throw new BizException(BizCode.PARAM_ERROR, "relationId 不能为空");

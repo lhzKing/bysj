@@ -6,7 +6,8 @@ import {
   Search,
   Users,
   Shield,
-  Package
+  Package,
+  Boxes
 } from 'lucide-vue-next'
 import { PERMISSIONS, TRACE_SCAN_HUB_ACCESS } from '@/shared/constants'
 
@@ -56,6 +57,14 @@ export const layoutNavigation = [
     path: '/trace-flow-tasks',
     icon: Truck,
     permissions: PERMISSIONS.TRACE.FLOW_TASK_ACCESS
+  },
+  {
+    key: 'trace-aggregations',
+    section: 'main',
+    label: '聚合关系',
+    path: '/trace-aggregations',
+    icon: Boxes,
+    permissions: [PERMISSIONS.TRACE.VIEW]
   },
   {
     key: 'scan-trace-landing',

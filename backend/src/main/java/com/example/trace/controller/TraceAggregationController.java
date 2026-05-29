@@ -62,6 +62,14 @@ public class TraceAggregationController {
         ));
     }
 
+    @GetMapping
+    @RequirePermission("trace:view")
+    public ApiResponse<List<TraceAggregationResponse>> listAllActive(
+            @RequestParam(name = "relation_type", required = false) String relationType
+    ) {
+        return ApiResponse.success(traceAggregationService.listAllActive(relationType));
+    }
+
     @GetMapping("/children")
     @RequirePermission("trace:view")
     public ApiResponse<List<TraceAggregationResponse>> listActiveChildren(@RequestParam(name = "parent_code") String parentCode) {

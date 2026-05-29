@@ -59,6 +59,15 @@ const router = createRouter({
           }
         },
         {
+          path: 'trace-aggregations',
+          name: 'trace-aggregation-workbench',
+          component: () => import('@/features/trace/views/TraceAggregationWorkbench.vue'),
+          meta: {
+            title: '箱码 / 托盘码聚合',
+            permissions: [PERMISSIONS.TRACE.VIEW]
+          }
+        },
+        {
           path: 'traces',
           name: 'traces',
           component: () => import('@/features/trace/views/TraceList.vue'),

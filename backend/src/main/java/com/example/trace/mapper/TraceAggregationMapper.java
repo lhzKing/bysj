@@ -25,6 +25,18 @@ public interface TraceAggregationMapper extends BaseMapper<TraceAggregation> {
             @Param("childCode") String childCode
     );
 
+    @Select({
+            "<script>",
+            "SELECT * FROM trace_aggregation",
+            "WHERE active = 1",
+            "<if test=\"relationType != null and relationType != ''\">",
+            "  AND relation_type = #{relationType}",
+            "</if>",
+            "ORDER BY parent_code ASC, relation_type ASC, child_code ASC, id ASC",
+            "</script>"
+    })
+    List<TraceAggregation> selectAllActive(@Param("relationType") String relationType);
+
     @Select("""
             SELECT *
             FROM trace_aggregation

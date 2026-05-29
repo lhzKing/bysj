@@ -826,6 +826,7 @@ Access-Control-Max-Age: 3600
 
 | 方法与路径 | 权限 | 说明 |
 |---|---|---|
+| `GET /api/trace-aggregations[?relation_type=CARTON\|PALLET\|BATCH]` | `trace:view` | 列出全部 active 聚合（前端聚合工作台一次性加载，可按类型筛选） |
 | `POST /api/trace-aggregations` | `trace:task:scan` 或兼容扫码权限 | 创建箱码/托盘码绑定 |
 | `POST /api/trace-aggregations/{relation_id}/release` | `trace:task:scan` 或兼容扫码权限 | 解除聚合关系 |
 | `GET /api/trace-aggregations/children?parent_code=CARTON-001` | `trace:view` | 查询有效子码 |
@@ -1784,7 +1785,7 @@ curl http://localhost:8080/api/traces/TC-20260119-0001/verify \
 | 单品码激活 | `POST /api/trace-codes/{trace_code}/activate` |
 | 批次对账 / 批次码列表 | `GET /api/trace-batches/{batch_id}` / `codes` |
 | 流转任务 | `GET/POST /api/trace-flow-tasks`、`POST /api/trace-flow-tasks/{id}/scan|complete|cancel` |
-| 箱码/托盘码聚合 | `POST /api/trace-aggregations`、`GET /api/trace-aggregations/children|parents|history/*` |
+| 箱码/托盘码聚合 | `GET /api/trace-aggregations[?relation_type=]`、`POST /api/trace-aggregations`、`GET /api/trace-aggregations/children\|parents\|history/*` |
 | 结构化节点 | `GET/POST/PUT/DELETE /api/trace-nodes` |
 | 用户节点绑定 | `GET /api/users/me/trace-nodes`、`GET/PUT /api/users/{id}/trace-nodes` |
 | 异常解除 / 审计纠错 | `POST /api/traces/{trace_code}/exception/close`、`POST /api/traces/{trace_code}/corrections` |

@@ -262,7 +262,13 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
                                          List<DemoUserRef> logisticsUsers,
                                          LocalDateTime baseTime) {
         List<TraceAssignBatch> batches = new ArrayList<>();
-        List<TraceBatchCommitter.DemoTraceWithCodeUnit> traceUnits = new ArrayList<>(count);
+        // Stage 1a: build chains first WITHOUT freezing them into units, so the
+        // aggregation factory below can still mutate each chain (append PACK /
+        // PALLETIZE logs + bump snapshot.lastHash) before we hand them to the
+        // committer. Once a DemoTraceWithCodeUnit is constructed its logs are
+        // copied with List.copyOf and become immutable.
+        List<PendingTraceUnit> pendingUnits = new ArrayList<>(count);
+        Map<String, DemoChainBuilder.ChainResult> chainsByTrace = new LinkedHashMap<>();
         // Each in-flight trace's terminal status — used downstream to pick task scan / aggregation candidates.
         List<DemoFlowTaskFactory.ScanCandidate> aggregatableCodes = new ArrayList<>();
 
@@ -327,8 +333,8 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
                 traceCodeRow.setActivatedByUsername(producer.username());
                 traceCodeRow.setCurrentSnapshotId(traceCode);
 
-                traceUnits.add(new TraceBatchCommitter.DemoTraceWithCodeUnit(
-                        chain.logs(), chain.snapshot(), traceCodeRow));
+                pendingUnits.add(new PendingTraceUnit(chain, traceCodeRow));
+                chainsByTrace.put(traceCode, chain);
 
                 // Eligible for tasks/aggregations: trace currently sitting in inventory or in flight.
                 if ("IN_STOCK".equals(chain.terminalStatus()) || "IN_TRANSIT".equals(chain.terminalStatus())) {
@@ -347,13 +353,24 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
                 .map(u -> new TraceBatchCommitter.FlowTaskWithScansUnit(u.task(), u.scans()))
                 .toList();
 
-        // Aggregations (24 cartons + 6 pallets)
+        // Aggregations (24 cartons + 6 pallets). The factory mutates each
+        // chain in place: appends PACK / PALLETIZE logs and updates the tail
+        // hash + event time on the snapshot. We must run this BEFORE freezing
+        // chains into DemoTraceWithCodeUnit (List.copyOf inside the record).
         List<String> aggregationCandidates = aggregatableCodes.stream()
                 .map(DemoFlowTaskFactory.ScanCandidate::traceCode)
                 .collect(Collectors.toList());
         DemoUserRef aggregationCreator = producers.isEmpty() ? null : producers.get(0);
         List<TraceAggregation> aggregations = aggregationFactory.build(
-                aggregationCandidates, aggregationCreator, baseTime, random);
+                aggregationCandidates, chainsByTrace, aggregationCreator, baseTime, random);
+
+        // Stage 1b: now that PACK/PALLETIZE logs are appended, freeze chains
+        // into immutable DemoTraceWithCodeUnit records ready for commit.
+        List<TraceBatchCommitter.DemoTraceWithCodeUnit> traceUnits = new ArrayList<>(pendingUnits.size());
+        for (PendingTraceUnit pending : pendingUnits) {
+            traceUnits.add(new TraceBatchCommitter.DemoTraceWithCodeUnit(
+                    pending.chain.logs(), pending.chain.snapshot(), pending.traceCode));
+        }
 
         return new BuildOutput(batches, traceUnits, flowTaskUnits, aggregations);
     }
@@ -434,6 +451,18 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
     private static class TraceCodeWithBatchNo extends TraceCode {
         String pendingBatchNo;
     }
+
+    /**
+     * Intermediate stage-1 carrier holding a chain and its pending trace_code
+     * row before the chain logs are frozen into a
+     * {@link TraceBatchCommitter.DemoTraceWithCodeUnit}. Lets {@code
+     * DemoAggregationFactory} append PACK / PALLETIZE entries to the same
+     * underlying ArrayList that the committer will see.
+     */
+    private record PendingTraceUnit(
+            DemoChainBuilder.ChainResult chain,
+            TraceCodeWithBatchNo traceCode
+    ) {}
 
     private record BuildOutput(
             List<TraceAssignBatch> batches,

@@ -76,7 +76,7 @@ class TraceDemoDataServiceImplTest {
         TraceLogFactory logFactory = new TraceLogFactory(signatureUtil);
         DemoChainBuilder chainBuilder = new DemoChainBuilder(logFactory);
         DemoFlowTaskFactory flowTaskFactory = new DemoFlowTaskFactory();
-        DemoAggregationFactory aggregationFactory = new DemoAggregationFactory();
+        DemoAggregationFactory aggregationFactory = new DemoAggregationFactory(logFactory);
         service = new TraceDemoDataServiceImpl(
                 partSpecMapper, logMapper, snapshotMapper, traceCodeMapper,
                 assignBatchMapper, flowTaskMapper, flowTaskScanMapper, aggregationMapper,

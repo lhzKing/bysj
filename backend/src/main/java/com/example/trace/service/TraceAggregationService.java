@@ -28,4 +28,6 @@ public interface TraceAggregationService {
     List<TraceAggregationResponse> listHistoryByParent(String parentCode);
 
     List<TraceAggregationResponse> listHistoryByChild(String childCode);
+
+    List<TraceAggregationResponse> listAllActive(String relationType);
 }
