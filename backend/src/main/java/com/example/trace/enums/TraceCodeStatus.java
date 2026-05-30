@@ -28,6 +28,9 @@ public enum TraceCodeStatus {
     /** Activated item is currently in transit. */
     IN_TRANSIT,
 
+    /** Physical item has completed final handover/delivery and must not flow again. */
+    TRANSFERRED,
+
     /** Code/item is in an exception-hold state. */
     EXCEPTION,
 
@@ -60,15 +63,15 @@ public enum TraceCodeStatus {
     /**
      * Whether a code in this status may enter normal lifecycle movements
      * (inbound, outbound, transfer). GENERATED/PRINTED are intentionally
-     * blocked until B12 activation; VOIDED/SCRAPPED/EXCEPTION are terminal or
-     * frozen for normal movements.
+     * blocked until B12 activation; TRANSFERRED/VOIDED/SCRAPPED/EXCEPTION are
+     * terminal or frozen for normal movements.
      */
     public boolean allowsLifecycleMovement() {
         return this == ACTIVATED || this == IN_STOCK || this == IN_TRANSIT;
     }
 
     public boolean isTerminal() {
-        return this == VOIDED || this == SCRAPPED;
+        return this == TRANSFERRED || this == VOIDED || this == SCRAPPED;
     }
 
     /**
@@ -83,7 +86,8 @@ public enum TraceCodeStatus {
         return switch (traceStatus) {
             case INIT -> ACTIVATED;
             case IN_STOCK -> IN_STOCK;
-            case IN_TRANSIT, TRANSFERRED -> IN_TRANSIT;
+            case IN_TRANSIT -> IN_TRANSIT;
+            case TRANSFERRED -> TRANSFERRED;
             case EXCEPTION -> EXCEPTION;
         };
     }

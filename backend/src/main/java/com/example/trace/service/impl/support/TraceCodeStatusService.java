@@ -209,6 +209,7 @@ public class TraceCodeStatusService {
         return actionType == ActionType.INBOUND
                 || actionType == ActionType.OUTBOUND
                 || actionType == ActionType.TRANSFER
+                || actionType == ActionType.DELIVER
                 || actionType == ActionType.EXCEPTION
                 || actionType == ActionType.EXCEPTION_OPEN
                 || actionType == ActionType.EXCEPTION_CLOSE;

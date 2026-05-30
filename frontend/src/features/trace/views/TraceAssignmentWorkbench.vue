@@ -88,7 +88,7 @@ const STATUS_TEXT = {
   ACTIVATED: '已激活',
   IN_STOCK: '已入库',
   IN_TRANSIT: '运输中',
-  TRANSFERRED: '已转移',
+  TRANSFERRED: '已交付',
   EXCEPTION: '异常',
   VOIDED: '已作废',
   SCRAPPED: '已报废'
@@ -583,16 +583,16 @@ function pickNumber(value, fallback) {
 }
 
 function isActivatedStatus(status) {
-  return ['ACTIVATED', 'IN_STOCK', 'IN_TRANSIT', 'EXCEPTION'].includes(status)
+  return ['ACTIVATED', 'IN_STOCK', 'IN_TRANSIT', 'EXCEPTION', 'TRANSFERRED'].includes(status)
 }
 function formatStatus(status) {
   return STATUS_TEXT[status] || status || '未知'
 }
 
 function statusTone(status) {
-  if (status === 'VOIDED' || status === 'SCRAPPED') return 'mute'
+  if (status === 'VOIDED' || status === 'SCRAPPED' || status === 'TRANSFERRED') return 'mute'
   if (status === 'EXCEPTION') return 'error'
-  if (status === 'IN_TRANSIT' || status === 'TRANSFERRED') return 'warn'
+  if (status === 'IN_TRANSIT') return 'warn'
   if (isActivatedStatus(status)) return 'success'
   if (status === 'PRINTED') return 'primary'
   return 'mute'

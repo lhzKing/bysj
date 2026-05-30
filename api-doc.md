@@ -1673,7 +1673,13 @@ traceCode={traceCode}|actionType={actionType}|fromNode={fromNode}|toNode={toNode
 
 ### 8.1 生成示例数据
 
-生成可通过 Hash 链和 RSA 签名验证的完整示例数据。
+生成可通过 Hash 链和 RSA 签名验证的完整示例数据。生成逻辑同时遵循当前生命周期状态机：
+
+```text
+码状态：GENERATED -> PRINTED -> ACTIVATED
+商品状态：INIT -> INBOUND -> IN_STOCK -> OUTBOUND -> IN_TRANSIT -> TRANSFER*(仍为 IN_TRANSIT) -> DELIVER -> TRANSFERRED
+说明：TRANSFER 仅表示运输中转/位置更新，不代表最终交付；只有 DELIVER 会进入 TRANSFERRED 终态，终态不再允许入库。
+```
 
 - **POST** `/api/admin/generate-sample-data`
 - **Headers**: `Authorization: Bearer <token>`
@@ -1690,9 +1696,55 @@ traceCode={traceCode}|actionType={actionType}|fromNode={fromNode}|toNode={toNode
     "status": 200,
     "message": "success",
     "data": {
-      "partSpecs": 19,
+      "batches": 25,
       "traceCodes": 500,
-      "lifecycleLogs": 1742
+      "lifecycleLogs": 2860,
+      "snapshots": 500,
+      "flowTasks": 60,
+      "flowTaskScans": 600,
+      "aggregations": 330,
+      "durationMillis": 1234,
+      "lifecycleValidation": "OK",
+      "lifecycleValidationErrors": [],
+      "lifecycleModel": "码状态 GENERATED -> PRINTED -> ACTIVATED；商品状态 INIT -> INBOUND -> IN_STOCK -> OUTBOUND -> IN_TRANSIT -> TRANSFER*(仍为 IN_TRANSIT) -> INBOUND 循环 或 DELIVER -> TRANSFERRED(终态)",
+      "coreLifecyclePrefix": ["INIT", "PRINT_CODE", "ACTIVATE_CODE", "INBOUND"],
+      "actionCounts": {
+        "INIT": 500,
+        "PRINT_CODE": 500,
+        "ACTIVATE_CODE": 500,
+        "INBOUND": 500,
+        "OUTBOUND": 350,
+        "TRANSFER": 210,
+        "DELIVER": 190,
+        "PACK": 300,
+        "PALLETIZE": 180
+      },
+      "snapshotStatusCounts": {
+        "IN_STOCK": 150,
+        "IN_TRANSIT": 160,
+        "TRANSFERRED": 190
+      },
+      "codeStatusCounts": {
+        "IN_STOCK": 150,
+        "IN_TRANSIT": 160,
+        "TRANSFERRED": 190
+      },
+      "terminalSummary": {
+        "totalChains": 500,
+        "finishedGoodsInboundBeforeOutboundChains": 500,
+        "inStockChains": 150,
+        "inTransitChains": 160,
+        "deliveredTerminalChains": 190,
+        "exceptionChains": 0,
+        "transferredTerminalBlockedFromFurtherInbound": true,
+        "transferMeansTransitOnly": true,
+        "deliverMeansFinalTransferred": true
+      },
+      "sampleLifecyclePaths": [
+        "INIT -> PRINT_CODE -> ACTIVATE_CODE -> INBOUND",
+        "INIT -> PRINT_CODE -> ACTIVATE_CODE -> INBOUND -> OUTBOUND -> TRANSFER",
+        "INIT -> PRINT_CODE -> ACTIVATE_CODE -> INBOUND -> OUTBOUND -> TRANSFER -> DELIVER"
+      ]
     }
   }
   ```
@@ -1702,19 +1754,21 @@ traceCode={traceCode}|actionType={actionType}|fromNode={fromNode}|toNode={toNode
 | 数据类型 | 说明 |
 |----------|------|
 | 零部件规格 | 19 种（阀门 6 种、轴承 4 种、电机 3 种、传感器 3 种、管件 3 种） |
-| 溯源快照 | 每条溯源码一个快照，包含当前状态 |
-| 生命周期日志 | 每条溯源码 3-5 条日志（INIT + 随机流转操作） |
-| 地理分布 | 覆盖 31 个省市区域，模拟真实供应链 |
+| 溯源快照 | 每条溯源码一个快照，包含当前状态；`TRANSFERRED` 只由 `DELIVER` 产生 |
+| 生命周期日志 | 每条溯源码至少包含 `INIT -> PRINT_CODE -> ACTIVATE_CODE -> INBOUND`，后续随机 `OUTBOUND / TRANSFER / DELIVER / EXCEPTION_OPEN`；`TRANSFER` 保持 `IN_TRANSIT`，`DELIVER` 才进入终态 |
+| 聚合关系 | 仅从仍在 `IN_STOCK` 的单品中挑选装箱/上托盘，避免已运输或已交付商品再被装箱 |
+| 地理分布 | 覆盖多个省市区域，模拟真实供应链 |
 
 **数据特点**：
 - ✅ 完整的 Hash 链（每条日志的 `prev_hash` 指向上一条的 `current_hash`）
 - ✅ 有效的 RSA 数字签名（使用系统私钥签名）
 - ✅ 可通过 `/api/traces/{traceCode}/verify` 接口验证
-- ✅ 状态包括：已入库、已出库、运输中、异常等
+- ✅ 状态包括：在库、运输中、已交付、异常等
+- ✅ `lifecycleValidation=OK` 表示生成前已校验：不会出现 `ACTIVATE_CODE -> OUTBOUND`、不会出现 `TRANSFERRED` 后再次入库、不会把 `TRANSFER` 当最终交付
 
 ### 8.2 清空溯源数据
 
-清除所有溯源相关数据（trace_lifecycle_log 和 trace_snapshot 表）。
+清除所有溯源业务数据，删除顺序按外键依赖从子表到父表执行：`trace_flow_task_scan -> trace_flow_task -> trace_aggregation -> trace_scan_idempotency -> trace_lifecycle_log -> trace_snapshot -> trace_code -> trace_assign_batch`。主数据（`trace_node` / `base_part_spec` / 用户 / 角色）不受影响。
 
 - **DELETE** `/api/admin/clear-trace-data`
 - **Headers**: `Authorization: Bearer <token>`
@@ -1731,13 +1785,19 @@ traceCode={traceCode}|actionType={actionType}|fromNode={fromNode}|toNode={toNode
     "status": 200,
     "message": "success",
     "data": {
-      "deletedLogs": 1742,
-      "deletedSnapshots": 500
+      "deletedFlowTaskScans": 700,
+      "deletedFlowTasks": 60,
+      "deletedAggregations": 330,
+      "deletedIdempotencyKeys": 0,
+      "deletedLogs": 2860,
+      "deletedSnapshots": 500,
+      "deletedTraceCodes": 500,
+      "deletedBatches": 25
     }
   }
   ```
 
-> ⚠️ **危险操作**：此操作不可恢复，会删除所有溯源日志和快照数据！零部件规格（base_part_spec）不受影响。
+> ⚠️ **危险操作**：此操作不可恢复，会删除所有溯源业务数据（日志、快照、码状态、任务、聚合关系、赋码批次等）！主数据（base_part_spec / trace_node / 用户角色）不受影响。
 
 ### 8.3 使用示例
 
@@ -1748,17 +1808,47 @@ TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
   -d '{"username": "superadmin", "password": "superadmin123456"}' \
   | jq -r '.data.token')
 
-# 2. 清空旧数据（可选）
+# 2. 确保主数据存在（可重复调用，已存在会跳过）
+curl -X POST "http://localhost:8080/api/admin/seed-master-data" \
+  -H "Authorization: Bearer $TOKEN"
+
+# 3. 清空旧溯源业务数据
 curl -X DELETE "http://localhost:8080/api/admin/clear-trace-data?confirm=DELETE_TRACE_DATA" \
   -H "Authorization: Bearer $TOKEN"
 
-# 3. 生成 500 条示例数据
+# 4. 重新生成 500 条符合生命周期的示例数据
 curl -X POST "http://localhost:8080/api/admin/generate-sample-data?count=500" \
   -H "Authorization: Bearer $TOKEN"
 
-# 4. 验证生成的数据
-curl http://localhost:8080/api/traces/TC-20260119-0001/verify \
+# 5. 查看返回 data.lifecycleValidation，应为 OK；也可取一个返回/列表里的 traceCode 调 verify
+curl http://localhost:8080/api/traces/<traceCode>/verify \
   -H "Authorization: Bearer $TOKEN"
+```
+
+生命周期快速 SQL 自检：
+
+```sql
+SELECT current_status, COUNT(*) FROM trace_snapshot GROUP BY current_status;
+SELECT code_status, COUNT(*) FROM trace_code GROUP BY code_status;
+SELECT action_type, COUNT(*) FROM trace_lifecycle_log GROUP BY action_type;
+
+-- 已交付快照必须存在 DELIVER 日志，返回 0 行才正常
+SELECT s.trace_code
+FROM trace_snapshot s
+LEFT JOIN trace_lifecycle_log l
+  ON l.trace_code = s.trace_code AND l.action_type = 'DELIVER'
+WHERE s.current_status = 'TRANSFERRED'
+GROUP BY s.trace_code
+HAVING COUNT(l.id) = 0;
+
+-- DELIVER 之后不应再有 INBOUND，返回 0 行才正常
+SELECT d.trace_code
+FROM trace_lifecycle_log d
+JOIN trace_lifecycle_log i
+  ON i.trace_code = d.trace_code
+ AND i.action_type = 'INBOUND'
+ AND i.event_time > d.event_time
+WHERE d.action_type = 'DELIVER';
 ```
 
 ---

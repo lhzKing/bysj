@@ -20,9 +20,11 @@ class TraceTransitionPolicyTest {
         assertThat(policy.resolveNextStatus(TraceStatus.IN_STOCK, ActionType.OUTBOUND, null))
                 .isEqualTo(TraceStatus.IN_TRANSIT);
         assertThat(policy.resolveNextStatus(TraceStatus.IN_TRANSIT, ActionType.TRANSFER, null))
+                .as("TRANSFER 只记录运输途中的中转/位置更新，不结束生命周期")
+                .isEqualTo(TraceStatus.IN_TRANSIT);
+        assertThat(policy.resolveNextStatus(TraceStatus.IN_TRANSIT, ActionType.DELIVER, null))
+                .as("DELIVER 才表示最终签收/交付")
                 .isEqualTo(TraceStatus.TRANSFERRED);
-        assertThat(policy.resolveNextStatus(TraceStatus.TRANSFERRED, ActionType.INBOUND, null))
-                .isEqualTo(TraceStatus.IN_STOCK);
     }
 
     @Test
@@ -35,6 +37,20 @@ class TraceTransitionPolicyTest {
                     assertThat(exception.getMessage()).contains("currentStatus=INIT");
                     assertThat(exception.getMessage()).contains("actionType=OUTBOUND");
                 });
+    }
+
+    @Test
+    void resolveNextStatus_shouldTreatTransferredAsTerminalForNormalMovements() {
+        assertThatThrownBy(() -> policy.resolveNextStatus(TraceStatus.TRANSFERRED, ActionType.INBOUND, null))
+                .isInstanceOf(BizException.class)
+                .satisfies(error -> {
+                    BizException exception = (BizException) error;
+                    assertThat(exception.getCode()).isEqualTo(BizCode.INVALID_ACTION_TYPE);
+                    assertThat(exception.getMessage()).contains("currentStatus=TRANSFERRED");
+                    assertThat(exception.getMessage()).contains("actionType=INBOUND");
+                });
+        assertThat(policy.canTransit(TraceStatus.TRANSFERRED, ActionType.INBOUND)).isFalse();
+        assertThat(policy.allowedActions(TraceStatus.TRANSFERRED)).isEmpty();
     }
 
     @Test
@@ -92,7 +108,7 @@ class TraceTransitionPolicyTest {
     @Test
     void allowedActions_shouldExposeStateSpecificNormalActions() {
         assertThat(policy.allowedActions(TraceStatus.IN_TRANSIT))
-                .containsExactly(ActionType.INBOUND, ActionType.TRANSFER, ActionType.EXCEPTION_OPEN);
+                .containsExactly(ActionType.INBOUND, ActionType.TRANSFER, ActionType.DELIVER, ActionType.EXCEPTION_OPEN);
         assertThat(policy.allowedActions(TraceStatus.EXCEPTION)).containsExactly(ActionType.EXCEPTION_CLOSE);
         assertThat(policy.allowedActions(TraceStatus.IN_STOCK))
                 .containsExactly(ActionType.OUTBOUND, ActionType.EXCEPTION_OPEN)

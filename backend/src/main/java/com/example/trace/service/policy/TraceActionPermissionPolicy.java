@@ -75,7 +75,7 @@ public class TraceActionPermissionPolicy {
             case PACK, UNPACK, PALLETIZE, UNPALLETIZE -> TRACE_TASK_SCAN;
             case INBOUND -> TRACE_INBOUND;
             case OUTBOUND -> TRACE_OUTBOUND;
-            case TRANSFER -> TRACE_TRANSFER;
+            case TRANSFER, DELIVER -> TRACE_TRANSFER;
             case EXCEPTION, EXCEPTION_OPEN, EXCEPTION_CLOSE, CORRECTION -> TRACE_EXCEPTION_HANDLE;
             default -> null;
         };

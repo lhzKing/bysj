@@ -664,6 +664,24 @@ class TraceFlowTaskServiceImplTest {
     }
 
     @Test
+    void scanTask_shouldRejectReceiveWhenTraceIsAlreadyTransferredTerminal() {
+        TraceFlowTask task = task(9L, TraceFlowTaskStatus.CREATED);
+        task.setTaskType(TraceFlowTaskType.RECEIVE.getCode());
+        when(traceFlowTaskMapper.selectById(9L)).thenReturn(task);
+        when(traceNodeMapper.selectById(1L)).thenReturn(node(1L, "FACTORY-BJ", "北京工厂", true));
+        when(traceNodeMapper.selectById(2L)).thenReturn(node(2L, "WAREHOUSE-SH", "上海仓库", true));
+        when(traceSnapshotMapper.selectById("TRACE-DONE"))
+                .thenReturn(snapshot("TRACE-DONE", "TRANSFERRED", "上海仓库"));
+
+        assertThatThrownBy(() -> service.scanTask(9L, scanRequest("TRACE-DONE"), 7L, "receiver-a"))
+                .isInstanceOf(BizException.class)
+                .satisfies(error -> {
+                    assertThat(((BizException) error).getCode()).isEqualTo(BizCode.INVALID_ACTION_TYPE);
+                    assertThat(error.getMessage()).contains("currentStatus=TRANSFERRED");
+                });
+    }
+
+    @Test
     void scanTask_shouldRejectReceiveWhenTraceIsNotAtTargetNode() {
         TraceFlowTask task = task(9L, TraceFlowTaskStatus.PROCESSING);
         task.setActualQuantity(1);

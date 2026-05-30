@@ -11,7 +11,7 @@ import { REGIONS } from '@/shared/data/regions'
 import { createEvent, getTraceCandidateFlowTasks, scanTraceFlowTask } from '@/features/trace/api'
 
 /**
- * ScanFlowDialog —— 入库 / 出库 / 流转三态共用的扫码登记对话框（Linear-light）。
+ * ScanFlowDialog —— 入库 / 出库 / 中转流转 / 最终交付共用的扫码登记对话框（Linear-light）。
  *
  * 视觉契约：
  *   - 外壳走 BaseDialog（rgba(15,23,42,0.45) 蒙层 + 12px 圆角 + 1px hairline + 移动端全屏 + 粘性吸底 footer）
@@ -19,7 +19,7 @@ import { createEvent, getTraceCandidateFlowTasks, scanTraceFlowTask } from '@/fe
  *   - 顶部 hero 卡用 var(--primary-soft) + 1px var(--primary)/15% 描边 + 12 caption 引导文案，承载 traceCode mono chip
  *
  * 接口契约（api-doc.md 2.5）：
- *   - POST /api/traces/{traceCode}/events，actionType ∈ {INBOUND, OUTBOUND, TRANSFER}
+ *   - POST /api/traces/{traceCode}/events，actionType ∈ {INBOUND, OUTBOUND, TRANSFER, DELIVER}
  *   - 由 ScanHub 透传 idempotencyKey（crypto.randomUUID()）；本组件透传到 createEvent payload
  *   - 运单驱动模式：选定 candidate task 后改走 POST /api/trace-flow-tasks/{taskId}/scan，
  *     由后端按 task source/target + 当前 snapshot 派生 fromNode/toNode/province/city，
@@ -33,7 +33,7 @@ const props = defineProps({
   actionType: {
     type: String,
     required: true,
-    validator: (v) => ['', 'inbound', 'outbound', 'transfer'].includes(v)
+    validator: (v) => ['', 'inbound', 'outbound', 'transfer', 'deliver'].includes(v)
   },
   idempotencyKey: { type: String, default: '' }
 })
@@ -45,17 +45,20 @@ const submitting = ref(false)
 const titleMap = {
   inbound: '入库登记',
   outbound: '出库登记',
-  transfer: '物流流转'
+  transfer: '中转流转',
+  deliver: '最终交付'
 }
 const operationMap = {
   inbound: '入库',
   outbound: '出库',
-  transfer: '流转'
+  transfer: '中转',
+  deliver: '交付'
 }
 const apiActionMap = {
   inbound: 'INBOUND',
   outbound: 'OUTBOUND',
-  transfer: 'TRANSFER'
+  transfer: 'TRANSFER',
+  deliver: 'DELIVER'
 }
 
 const dialogTitle = computed(() => titleMap[props.actionType] || '扫码登记')
@@ -84,7 +87,7 @@ const selectedTaskId = ref('')
 const expectedActionType = computed(() => apiActionMap[props.actionType] || '')
 
 /**
- * 仅展示与用户当前选定动作（INBOUND/OUTBOUND/TRANSFER）类型一致的候选任务。
+ * 仅展示与用户当前选定动作（INBOUND/OUTBOUND/TRANSFER/DELIVER）类型一致的候选任务。
  * 后端按 task type + snapshot status 派生 compatibleActionType，前端按这个字段过滤。
  */
 const filteredCandidateTasks = computed(() => {

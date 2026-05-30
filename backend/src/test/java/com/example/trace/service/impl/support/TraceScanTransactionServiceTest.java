@@ -8,6 +8,7 @@ import com.example.trace.entity.TraceLifecycleLog;
 import com.example.trace.entity.TraceScanIdempotency;
 import com.example.trace.entity.TraceSnapshot;
 import com.example.trace.enums.ActionType;
+import com.example.trace.enums.TraceStatus;
 import com.example.trace.mapper.TraceLifecycleLogMapper;
 import com.example.trace.mapper.TraceScanIdempotencyMapper;
 import com.example.trace.mapper.TraceSnapshotMapper;
@@ -351,6 +352,58 @@ class TraceScanTransactionServiceTest {
         assertThat(updatedSnapshot.getCurrentNode()).isEqualTo("warehouse-B");
         assertThat(updatedSnapshot.getCurrentOwner()).isEqualTo("warehouse-B");
         assertThat(updatedSnapshot.getLastLogId()).isEqualTo(789L);
+    }
+
+
+    @Test
+    void execute_shouldMoveInTransitTraceToTransferredOnlyForDeliver() {
+        TraceLogFactory logFactory = new TraceLogFactory(signatureUtil);
+        TraceScanTransactionService service = new TraceScanTransactionService(
+                traceSnapshotMapper,
+                traceLifecycleLogMapper,
+                traceScanIdempotencyMapper,
+                logFactory,
+                traceTransitionPolicy,
+                traceCodeStatusService
+        );
+
+        ScanTraceRequest request = new ScanTraceRequest();
+        request.setTraceCode("trace-1");
+        request.setActionType(ActionType.DELIVER);
+        request.setFromNode("customer-A");
+        request.setToNode("customer-A");
+        request.setRemark("客户签收");
+
+        TraceSnapshot snapshot = new TraceSnapshot();
+        snapshot.setTraceCode("trace-1");
+        snapshot.setSpuId(1L);
+        snapshot.setCurrentStatus("IN_TRANSIT");
+        snapshot.setCurrentNode("customer-A");
+        snapshot.setCurrentOwner("customer-A");
+        snapshot.setLastHash("hash-0");
+        snapshot.setVersion(0);
+        when(traceSnapshotMapper.selectById("trace-1")).thenReturn(snapshot);
+        when(signatureUtil.getKeyId()).thenReturn("default");
+        when(signatureUtil.getKeyVersion()).thenReturn(1);
+        when(signatureUtil.sign(any())).thenReturn("signed-scan");
+        doAnswer(invocation -> {
+            TraceLifecycleLog log = invocation.getArgument(0);
+            log.setId(790L);
+            return 1;
+        }).when(traceLifecycleLogMapper).insert(any(TraceLifecycleLog.class));
+        when(traceSnapshotMapper.updateById(any(TraceSnapshot.class))).thenReturn(1);
+
+        boolean created = service.executeAndReturnCreated(request, "scanner");
+
+        assertThat(created).isTrue();
+        ArgumentCaptor<TraceLifecycleLog> logCaptor = ArgumentCaptor.forClass(TraceLifecycleLog.class);
+        verify(traceLifecycleLogMapper).insert(logCaptor.capture());
+        assertThat(logCaptor.getValue().getActionType()).isEqualTo(ActionType.DELIVER.getCode());
+
+        ArgumentCaptor<TraceSnapshot> snapshotCaptor = ArgumentCaptor.forClass(TraceSnapshot.class);
+        verify(traceSnapshotMapper).updateById(snapshotCaptor.capture());
+        assertThat(snapshotCaptor.getValue().getCurrentStatus()).isEqualTo("TRANSFERRED");
+        verify(traceCodeStatusService).syncAfterLifecycleTransition("trace-1", TraceStatus.TRANSFERRED);
     }
 
     @Test
@@ -908,8 +961,8 @@ class TraceScanTransactionServiceTest {
         verify(traceSnapshotMapper).updateById(snapshotCaptor.capture());
         TraceSnapshot updatedSnapshot = snapshotCaptor.getValue();
         assertThat(updatedSnapshot.getCurrentStatus()).isEqualTo("IN_STOCK");
-        assertThat(updatedSnapshot.getCurrentNode()).isEqualTo("warehouse-B");
-        assertThat(updatedSnapshot.getCurrentOwner()).isEqualTo("warehouse-B");
+        assertThat(updatedSnapshot.getCurrentNode()).isEqualTo("warehouse-A");
+        assertThat(updatedSnapshot.getCurrentOwner()).isEqualTo("warehouse-A");
         assertThat(updatedSnapshot.getLastLogId()).isEqualTo(901L);
         verify(traceCodeStatusService, never()).syncAfterLifecycleTransition(any(), any());
     }

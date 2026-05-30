@@ -195,6 +195,23 @@ class TraceCodeStatusServiceTest {
     }
 
     @Test
+    void syncAfterLifecycleTransition_shouldMarkTransferredCodeAsTerminal() {
+        TraceCode code = code("TRACE-DONE", TraceCodeStatus.IN_TRANSIT);
+        when(traceCodeMapper.selectById("TRACE-DONE")).thenReturn(code, code);
+
+        service.syncAfterLifecycleTransition("TRACE-DONE", TraceStatus.TRANSFERRED);
+
+        ArgumentCaptor<TraceCode> codeCaptor = ArgumentCaptor.forClass(TraceCode.class);
+        verify(traceCodeMapper).updateById(codeCaptor.capture());
+        assertThat(codeCaptor.getValue().getCodeStatus()).isEqualTo(TraceCodeStatus.TRANSFERRED.name());
+
+        assertThatThrownBy(() -> service.ensureLifecycleMovementAllowed("TRACE-DONE", ActionType.INBOUND))
+                .isInstanceOf(BizException.class)
+                .satisfies(error -> assertThat(((BizException) error).getCode())
+                        .isEqualTo(BizCode.INVALID_ACTION_TYPE));
+    }
+
+    @Test
     void markVoided_shouldRejectAlreadyActivatedCode() {
         when(traceCodeMapper.selectById("TRACE-ACTIVE"))
                 .thenReturn(code("TRACE-ACTIVE", TraceCodeStatus.ACTIVATED));

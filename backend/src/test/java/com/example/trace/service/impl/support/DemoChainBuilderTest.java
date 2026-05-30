@@ -58,12 +58,12 @@ class DemoChainBuilderTest {
         );
 
         List<TraceLifecycleLog> logs = result.logs();
-        assertThat(logs.size()).isBetween(5, 8);
+        assertThat(logs.size()).isBetween(4, 8);
         assertThat(logs.get(0).getActionType()).isEqualTo("INIT");
         assertThat(logs.get(1).getActionType()).isEqualTo("PRINT_CODE");
         assertThat(logs.get(2).getActionType()).isEqualTo("ACTIVATE_CODE");
-        assertThat(logs.get(3).getActionType()).isEqualTo("OUTBOUND");
-        assertThat(logs.get(4).getActionType()).isEqualTo("INBOUND");
+        assertThat(logs.get(3).getActionType()).isEqualTo("INBOUND");
+        assertThat(logs.stream().filter(l -> "OUTBOUND".equals(l.getActionType())).count()).isLessThanOrEqualTo(1L);
     }
 
     @Test
@@ -147,6 +147,30 @@ class DemoChainBuilderTest {
         assertThat(snap.getVersion()).isZero();
         assertThat(snap.getLastLogId()).isNull(); // back-filled by committer after PK assignment
         assertThat(snap.getCurrentStatus()).isIn("IN_STOCK", "IN_TRANSIT", "TRANSFERRED", "EXCEPTION");
+    }
+
+
+    @Test
+    void buildChain_shouldUseDeliverOnlyForFinalDelivery() {
+        DemoChainBuilder.ChainResult result = builder.buildChain(
+                "TC-TEST-DELIVER", 100L,
+                node(1L, "FACTORY-A", "FACTORY", "北京", "北京市"),
+                node(2L, "WAREHOUSE-A", "WAREHOUSE", "江苏", "苏州市"),
+                node(3L, "LOGISTICS-A", "LOGISTICS", "上海", "上海市"),
+                node(4L, "CUSTOMER-A", "CUSTOMER", "湖北", "武汉市"),
+                "producer", "warehouse", "logistics",
+                LocalDateTime.of(2026, 4, 1, 9, 13, 0),
+                new Random(4096L)
+        );
+
+        List<String> actions = result.logs().stream()
+                .map(TraceLifecycleLog::getActionType)
+                .toList();
+        if ("TRANSFERRED".equals(result.snapshot().getCurrentStatus())) {
+            assertThat(actions).contains("DELIVER");
+            assertThat(actions.get(actions.size() - 1)).isIn("DELIVER", "EXCEPTION_OPEN");
+        }
+        assertThat(actions).doesNotContainSequence("ACTIVATE_CODE", "OUTBOUND");
     }
 
     private static TraceNode node(Long id, String name, String type, String province, String city) {

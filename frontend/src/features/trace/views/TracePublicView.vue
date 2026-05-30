@@ -39,7 +39,7 @@ const statusLabel = (status) => {
     INIT: '已初始化',
     IN_STOCK: '在库',
     IN_TRANSIT: '运输中',
-    TRANSFERRED: '已交接',
+    TRANSFERRED: '已交付',
     EXCEPTION: '异常'
   }
   return map[status] || status || '-'

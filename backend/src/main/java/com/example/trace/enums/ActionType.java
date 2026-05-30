@@ -3,6 +3,9 @@ package com.example.trace.enums;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
+import java.util.Arrays;
+import java.util.stream.Collectors;
+
 /**
  * 溯源动作类型枚举
  * 替代硬编码字符串，提供编译期类型安全和校验。
@@ -23,7 +26,8 @@ public enum ActionType {
     UNPALLETIZE("UNPALLETIZE", "托盘解绑", "单品或箱码从托盘码解除"),
     INBOUND("INBOUND", "入库", "货物进入仓库/节点"),
     OUTBOUND("OUTBOUND", "出库", "货物离开仓库/节点"),
-    TRANSFER("TRANSFER", "流转", "节点间转移"),
+    TRANSFER("TRANSFER", "中转流转", "运输途中节点间转移或中转扫描，不代表最终交付"),
+    DELIVER("DELIVER", "最终交付", "货物最终签收/交付用户，结束常规生命周期"),
     EXCEPTION("EXCEPTION", "异常冻结", "兼容旧异常上报动作，等价于 EXCEPTION_OPEN"),
     EXCEPTION_OPEN("EXCEPTION_OPEN", "异常开启", "开启异常冻结，暂停常规入库/出库/流转"),
     EXCEPTION_CLOSE("EXCEPTION_CLOSE", "异常关闭", "解除异常冻结并恢复到冻结前状态"),
@@ -72,7 +76,7 @@ public enum ActionType {
         }
 
         throw new IllegalArgumentException(
-            String.format("非法的 ActionType: '%s'，允许的值: INIT, PRINT_CODE, REPRINT_CODE, ACTIVATE_CODE, VOID_CODE, PACK, UNPACK, PALLETIZE, UNPALLETIZE, INBOUND, OUTBOUND, TRANSFER, EXCEPTION, EXCEPTION_OPEN, EXCEPTION_CLOSE, CORRECTION", value)
+            String.format("非法的 ActionType: '%s'，允许的值: %s", value, allowedCodes())
         );
     }
 
@@ -95,5 +99,11 @@ public enum ActionType {
     @Override
     public String toString() {
         return code;
+    }
+
+    private static String allowedCodes() {
+        return Arrays.stream(values())
+                .map(ActionType::getCode)
+                .collect(Collectors.joining(", "));
     }
 }

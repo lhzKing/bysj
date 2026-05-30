@@ -71,6 +71,16 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
     private static final int TRACE_CODES_PER_BATCH_MIN = 15;
     private static final int TRACE_CODES_PER_BATCH_MAX = 25;
 
+    private static final int SAMPLE_LIFECYCLE_PATH_LIMIT = 3;
+    private static final List<String> DEMO_CORE_ACTION_PREFIX = List.of(
+            "INIT", "PRINT_CODE", "ACTIVATE_CODE", "INBOUND"
+    );
+    private static final List<String> DEMO_ACTION_COUNT_ORDER = List.of(
+            "INIT", "PRINT_CODE", "ACTIVATE_CODE", "INBOUND",
+            "OUTBOUND", "TRANSFER", "DELIVER",
+            "PACK", "PALLETIZE", "EXCEPTION_OPEN"
+    );
+
     private final BasePartSpecMapper partSpecMapper;
     private final TraceLifecycleLogMapper logMapper;
     private final TraceSnapshotMapper snapshotMapper;
@@ -192,6 +202,15 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         result.put("flowTaskScans", flowTaskScans);
         result.put("aggregations", out.aggregations.size());
         result.put("durationMillis", durationMillis);
+        result.put("lifecycleValidation", out.lifecycleStats.validationStatus());
+        result.put("lifecycleValidationErrors", out.lifecycleStats.validationErrors());
+        result.put("lifecycleModel", lifecycleModelDescription());
+        result.put("coreLifecyclePrefix", DEMO_CORE_ACTION_PREFIX);
+        result.put("actionCounts", out.lifecycleStats.orderedActionCounts());
+        result.put("snapshotStatusCounts", out.lifecycleStats.orderedSnapshotStatusCounts());
+        result.put("codeStatusCounts", out.lifecycleStats.orderedCodeStatusCounts());
+        result.put("terminalSummary", out.lifecycleStats.terminalSummary());
+        result.put("sampleLifecyclePaths", out.lifecycleStats.sampleLifecyclePaths());
 
         log.info("Trace demo data generation completed: operator={}, role={}, result={}",
                 normalizeAuditValue(operator), normalizeAuditValue(operatorRole), result);
@@ -269,8 +288,12 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         // copied with List.copyOf and become immutable.
         List<PendingTraceUnit> pendingUnits = new ArrayList<>(count);
         Map<String, DemoChainBuilder.ChainResult> chainsByTrace = new LinkedHashMap<>();
-        // Each in-flight trace's terminal status — used downstream to pick task scan / aggregation candidates.
-        List<DemoFlowTaskFactory.ScanCandidate> aggregatableCodes = new ArrayList<>();
+        // Each in-flight trace's terminal status — used downstream to pick task scan candidates.
+        List<DemoFlowTaskFactory.ScanCandidate> flowTaskScanCandidates = new ArrayList<>();
+        // Aggregation (PACK/PALLETIZE) must happen while goods are still in stock;
+        // do not append packing logs to IN_TRANSIT or TRANSFERRED demo chains.
+        List<String> aggregationCandidateCodes = new ArrayList<>();
+        DemoLifecycleStats lifecycleStats = new DemoLifecycleStats();
 
         int remaining = count;
         int batchSeq = 0;
@@ -333,20 +356,29 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
                 traceCodeRow.setActivatedByUsername(producer.username());
                 traceCodeRow.setCurrentSnapshotId(traceCode);
 
+                validateGeneratedLifecycle(traceCodeRow, chain);
+                lifecycleStats.acceptTrace(traceCodeRow, chain);
+
                 pendingUnits.add(new PendingTraceUnit(chain, traceCodeRow));
                 chainsByTrace.put(traceCode, chain);
 
-                // Eligible for tasks/aggregations: trace currently sitting in inventory or in flight.
+                // Flow-task scans can demonstrate either stock-out or receive-in-transit.
                 if ("IN_STOCK".equals(chain.terminalStatus()) || "IN_TRANSIT".equals(chain.terminalStatus())) {
-                    aggregatableCodes.add(new DemoFlowTaskFactory.ScanCandidate(traceCode));
+                    flowTaskScanCandidates.add(new DemoFlowTaskFactory.ScanCandidate(traceCode));
+                }
+                // PACK/PALLETIZE must occur before outbound/while still in stock, matching the real aggregation service.
+                if ("IN_STOCK".equals(chain.terminalStatus())) {
+                    aggregationCandidateCodes.add(traceCode);
                 }
             }
             remaining -= bucketSize;
         }
 
-        // Flow tasks (60 of them, drawn from the aggregatable pool)
+        // Flow tasks (60 of them, drawn from the task-scan candidate pool).
+        // Very small demo counts may by chance leave no code in IN_STOCK/IN_TRANSIT;
+        // in that case the factory still creates task headers but no scan rows.
         List<TraceBatchCommitter.FlowTaskWithScansUnit> flowTaskUnits = flowTaskFactory.build(
-                        aggregatableCodes, warehouses, logistics, customers,
+                        flowTaskScanCandidates, warehouses, logistics, customers,
                         warehouseUsers, logisticsUsers,
                         baseTime, random)
                 .stream()
@@ -357,12 +389,10 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         // chain in place: appends PACK / PALLETIZE logs and updates the tail
         // hash + event time on the snapshot. We must run this BEFORE freezing
         // chains into DemoTraceWithCodeUnit (List.copyOf inside the record).
-        List<String> aggregationCandidates = aggregatableCodes.stream()
-                .map(DemoFlowTaskFactory.ScanCandidate::traceCode)
-                .collect(Collectors.toList());
         DemoUserRef aggregationCreator = producers.isEmpty() ? null : producers.get(0);
         List<TraceAggregation> aggregations = aggregationFactory.build(
-                aggregationCandidates, chainsByTrace, aggregationCreator, baseTime, random);
+                aggregationCandidateCodes, chainsByTrace, aggregationCreator, baseTime, random);
+        lifecycleStats.refreshPostAggregation(pendingUnits);
 
         // Stage 1b: now that PACK/PALLETIZE logs are appended, freeze chains
         // into immutable DemoTraceWithCodeUnit records ready for commit.
@@ -372,7 +402,7 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
                     pending.chain.logs(), pending.chain.snapshot(), pending.traceCode));
         }
 
-        return new BuildOutput(batches, traceUnits, flowTaskUnits, aggregations);
+        return new BuildOutput(batches, traceUnits, flowTaskUnits, aggregations, lifecycleStats);
     }
 
     // -----------------------------------------------------------------------
@@ -398,15 +428,87 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
     }
 
     private static String mapSnapshotStatusToCodeStatus(String snapshotStatus) {
-        // trace_code.code_status taxonomy: GENERATED/PRINTED/ACTIVATED/IN_STOCK/IN_TRANSIT/EXCEPTION/VOIDED/SCRAPPED
+        // trace_code.code_status taxonomy: GENERATED/PRINTED/ACTIVATED/IN_STOCK/IN_TRANSIT/TRANSFERRED/EXCEPTION/VOIDED/SCRAPPED
         return switch (snapshotStatus) {
             case "INIT" -> "ACTIVATED"; // a trace that completed the chain (INIT→PRINT→ACTIVATE) is at minimum activated
             case "IN_STOCK" -> "IN_STOCK";
             case "IN_TRANSIT" -> "IN_TRANSIT";
-            case "TRANSFERRED" -> "IN_STOCK"; // delivered to customer, treated as in-stock on receiver side
+            case "TRANSFERRED" -> "TRANSFERRED"; // delivered to customer; terminal, cannot be received again
             case "EXCEPTION" -> "EXCEPTION";
             default -> "ACTIVATED";
         };
+    }
+
+    private static void validateGeneratedLifecycle(TraceCode traceCodeRow, DemoChainBuilder.ChainResult chain) {
+        List<String> actions = chain.logs().stream()
+                .map(TraceLifecycleLog::getActionType)
+                .toList();
+        String traceCode = traceCodeRow.getTraceCode();
+
+        requireCondition(actions.size() >= DEMO_CORE_ACTION_PREFIX.size(),
+                traceCode + ": 生命周期日志少于核心链路长度");
+        requireCondition(actions.subList(0, DEMO_CORE_ACTION_PREFIX.size()).equals(DEMO_CORE_ACTION_PREFIX),
+                traceCode + ": 示例链路必须从 INIT -> PRINT_CODE -> ACTIVATE_CODE -> INBOUND 开始，actual=" + actions);
+
+        int inboundIndex = actions.indexOf("INBOUND");
+        int outboundIndex = actions.indexOf("OUTBOUND");
+        int transferIndex = actions.indexOf("TRANSFER");
+        int deliverIndex = actions.indexOf("DELIVER");
+        int exceptionIndex = actions.indexOf("EXCEPTION_OPEN");
+
+        requireCondition(inboundIndex == 3,
+                traceCode + ": ACTIVATE_CODE 后必须先成品入库，不能直接出库");
+        requireCondition(outboundIndex < 0 || outboundIndex > inboundIndex,
+                traceCode + ": OUTBOUND 必须发生在首次 INBOUND 之后");
+        requireCondition(transferIndex < 0 || (outboundIndex >= 0 && transferIndex > outboundIndex),
+                traceCode + ": TRANSFER 只能发生在 OUTBOUND 进入运输中之后");
+        requireCondition(deliverIndex < 0 || (outboundIndex >= 0 && deliverIndex > outboundIndex),
+                traceCode + ": DELIVER 只能发生在 OUTBOUND 进入运输中之后");
+        requireCondition(transferIndex < 0 || deliverIndex < 0 || transferIndex < deliverIndex,
+                traceCode + ": TRANSFER 不能发生在最终交付 DELIVER 之后");
+        requireCondition(exceptionIndex < 0 || exceptionIndex == actions.size() - 1,
+                traceCode + ": EXCEPTION_OPEN 只能作为示例链尾冻结状态");
+
+        if ("TRANSFERRED".equals(chain.terminalStatus())) {
+            requireCondition(deliverIndex >= 0,
+                    traceCode + ": snapshot=TRANSFERRED 必须由 DELIVER 产生");
+            requireCondition(deliverIndex == actions.size() - 1,
+                    traceCode + ": DELIVER 进入 TRANSFERRED 后必须是终态，不能再追加入库/异常");
+            requireCondition("TRANSFERRED".equals(traceCodeRow.getCodeStatus()),
+                    traceCode + ": 已交付快照必须同步 trace_code.code_status=TRANSFERRED");
+        }
+        if ("TRANSFERRED".equals(traceCodeRow.getCodeStatus())) {
+            requireCondition(deliverIndex >= 0,
+                    traceCode + ": trace_code.code_status=TRANSFERRED 必须存在 DELIVER 日志");
+        }
+        if ("IN_TRANSIT".equals(chain.terminalStatus())) {
+            requireCondition(outboundIndex >= 0,
+                    traceCode + ": IN_TRANSIT 必须由 OUTBOUND 产生");
+            requireCondition(deliverIndex < 0,
+                    traceCode + ": IN_TRANSIT 链路不能已存在 DELIVER");
+        }
+        if ("IN_STOCK".equals(chain.terminalStatus())) {
+            requireCondition(deliverIndex < 0,
+                    traceCode + ": IN_STOCK 链路不能已存在 DELIVER");
+        }
+        if ("EXCEPTION".equals(chain.terminalStatus())) {
+            requireCondition(exceptionIndex == actions.size() - 1,
+                    traceCode + ": EXCEPTION 快照必须由链尾 EXCEPTION_OPEN 产生");
+            requireCondition(chain.snapshot().getExceptionRestoreStatus() != null,
+                    traceCode + ": EXCEPTION 快照必须记录冻结前可恢复状态");
+            requireCondition(!"EXCEPTION".equals(chain.snapshot().getExceptionRestoreStatus()),
+                    traceCode + ": EXCEPTION restoreStatus 不能仍为 EXCEPTION");
+        }
+    }
+
+    private static void requireCondition(boolean condition, String message) {
+        if (!condition) {
+            throw BizException.serverError("generate-sample-data 生命周期校验失败：" + message);
+        }
+    }
+
+    private static String lifecycleModelDescription() {
+        return "码状态 GENERATED -> PRINTED -> ACTIVATED；商品状态 INIT -> INBOUND -> IN_STOCK -> OUTBOUND -> IN_TRANSIT -> TRANSFER*(仍为 IN_TRANSIT) -> INBOUND 循环 或 DELIVER -> TRANSFERRED(终态)";
     }
 
     private static String shortUuid() {
@@ -464,10 +566,188 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
             TraceCodeWithBatchNo traceCode
     ) {}
 
+    /**
+     * Lifecycle statistics surfaced by generate-sample-data so callers can see
+     * that the API generated data against the intended state model, not just
+     * opaque row counts.
+     */
+    private static class DemoLifecycleStats {
+
+        private final Map<String, Integer> actionCounts = new LinkedHashMap<>();
+        private final Map<String, Integer> snapshotStatusCounts = new LinkedHashMap<>();
+        private final Map<String, Integer> codeStatusCounts = new LinkedHashMap<>();
+        private final List<String> sampleLifecyclePaths = new ArrayList<>(SAMPLE_LIFECYCLE_PATH_LIMIT);
+        private final List<String> validationErrors = new ArrayList<>();
+        private int totalChains;
+        private int finishedGoodsInboundBeforeOutboundChains;
+        private int inStockChains;
+        private int inTransitChains;
+        private int deliveredTerminalChains;
+        private int exceptionChains;
+
+        void acceptTrace(TraceCode traceCode, DemoChainBuilder.ChainResult chain) {
+            totalChains++;
+            chain.logs().forEach(logEntry -> increment(actionCounts, logEntry.getActionType()));
+            increment(snapshotStatusCounts, chain.snapshot().getCurrentStatus());
+            increment(codeStatusCounts, traceCode.getCodeStatus());
+            if (sampleLifecyclePaths.size() < SAMPLE_LIFECYCLE_PATH_LIMIT) {
+                sampleLifecyclePaths.add(chain.logs().stream()
+                        .map(TraceLifecycleLog::getActionType)
+                        .collect(Collectors.joining(" -> ")));
+            }
+
+            switch (chain.snapshot().getCurrentStatus()) {
+                case "IN_STOCK" -> inStockChains++;
+                case "IN_TRANSIT" -> inTransitChains++;
+                case "TRANSFERRED" -> deliveredTerminalChains++;
+                case "EXCEPTION" -> exceptionChains++;
+                default -> {
+                    // INIT should not be terminal in generated demo data because
+                    // every code is printed, activated and stocked-in. Preserve
+                    // the count in snapshotStatusCounts; validation catches it.
+                }
+            }
+
+            List<String> actions = chain.logs().stream()
+                    .map(TraceLifecycleLog::getActionType)
+                    .toList();
+            int firstInbound = actions.indexOf("INBOUND");
+            int firstOutbound = actions.indexOf("OUTBOUND");
+            if (firstInbound >= 0 && (firstOutbound < 0 || firstInbound < firstOutbound)) {
+                finishedGoodsInboundBeforeOutboundChains++;
+            }
+            collectValidationErrors(traceCode, chain, actions);
+        }
+
+        /**
+         * PACK/PALLETIZE are appended after base trace rows are created. Refresh
+         * only the mutable log-derived fields; terminal status and code status
+         * are intentionally unchanged by aggregation actions.
+         */
+        void refreshPostAggregation(List<PendingTraceUnit> pendingUnits) {
+            actionCounts.clear();
+            sampleLifecyclePaths.clear();
+            for (PendingTraceUnit pending : pendingUnits) {
+                pending.chain().logs().forEach(logEntry -> increment(actionCounts, logEntry.getActionType()));
+                if (sampleLifecyclePaths.size() < SAMPLE_LIFECYCLE_PATH_LIMIT) {
+                    sampleLifecyclePaths.add(pending.chain().logs().stream()
+                            .map(TraceLifecycleLog::getActionType)
+                            .collect(Collectors.joining(" -> ")));
+                }
+            }
+        }
+
+        Map<String, Integer> orderedActionCounts() {
+            return orderedCounts(actionCounts, DEMO_ACTION_COUNT_ORDER);
+        }
+
+        Map<String, Integer> orderedSnapshotStatusCounts() {
+            return orderedCounts(snapshotStatusCounts, List.of(
+                    "INIT", "IN_STOCK", "IN_TRANSIT", "TRANSFERRED", "EXCEPTION"
+            ));
+        }
+
+        Map<String, Integer> orderedCodeStatusCounts() {
+            return orderedCounts(codeStatusCounts, List.of(
+                    "GENERATED", "PRINTED", "ACTIVATED", "IN_STOCK",
+                    "IN_TRANSIT", "TRANSFERRED", "EXCEPTION", "VOIDED", "SCRAPPED"
+            ));
+        }
+
+        Map<String, Object> terminalSummary() {
+            Map<String, Object> summary = new LinkedHashMap<>();
+            summary.put("totalChains", totalChains);
+            summary.put("finishedGoodsInboundBeforeOutboundChains", finishedGoodsInboundBeforeOutboundChains);
+            summary.put("inStockChains", inStockChains);
+            summary.put("inTransitChains", inTransitChains);
+            summary.put("deliveredTerminalChains", deliveredTerminalChains);
+            summary.put("exceptionChains", exceptionChains);
+            summary.put("transferredTerminalBlockedFromFurtherInbound", true);
+            summary.put("transferMeansTransitOnly", true);
+            summary.put("deliverMeansFinalTransferred", true);
+            return summary;
+        }
+
+        String validationStatus() {
+            return validationErrors.isEmpty() ? "OK" : "FAILED";
+        }
+
+        List<String> validationErrors() {
+            return List.copyOf(validationErrors);
+        }
+
+        List<String> sampleLifecyclePaths() {
+            return List.copyOf(sampleLifecyclePaths);
+        }
+
+        private void collectValidationErrors(
+                TraceCode traceCode,
+                DemoChainBuilder.ChainResult chain,
+                List<String> actions
+        ) {
+            String traceCodeValue = traceCode.getTraceCode();
+            addIf(actions.size() < DEMO_CORE_ACTION_PREFIX.size()
+                            || !actions.subList(0, DEMO_CORE_ACTION_PREFIX.size()).equals(DEMO_CORE_ACTION_PREFIX),
+                    traceCodeValue + ": missing core lifecycle prefix");
+
+            int firstInbound = actions.indexOf("INBOUND");
+            int firstOutbound = actions.indexOf("OUTBOUND");
+            int transfer = actions.indexOf("TRANSFER");
+            int deliver = actions.indexOf("DELIVER");
+            int exceptionOpen = actions.indexOf("EXCEPTION_OPEN");
+
+            addIf(firstInbound != 3, traceCodeValue + ": first INBOUND must immediately follow ACTIVATE_CODE");
+            addIf(firstOutbound >= 0 && firstOutbound < firstInbound,
+                    traceCodeValue + ": OUTBOUND before finished-goods INBOUND");
+            addIf(transfer >= 0 && (firstOutbound < 0 || transfer < firstOutbound),
+                    traceCodeValue + ": TRANSFER before OUTBOUND");
+            addIf(deliver >= 0 && (firstOutbound < 0 || deliver < firstOutbound),
+                    traceCodeValue + ": DELIVER before OUTBOUND");
+            addIf(transfer >= 0 && deliver >= 0 && transfer > deliver,
+                    traceCodeValue + ": TRANSFER after DELIVER");
+            addIf(exceptionOpen >= 0 && exceptionOpen != actions.size() - 1,
+                    traceCodeValue + ": EXCEPTION_OPEN is not tail action");
+            addIf("TRANSFERRED".equals(chain.snapshot().getCurrentStatus()) && deliver < 0,
+                    traceCodeValue + ": TRANSFERRED snapshot without DELIVER");
+            addIf("TRANSFERRED".equals(chain.snapshot().getCurrentStatus()) && deliver >= 0 && deliver != actions.size() - 1,
+                    traceCodeValue + ": DELIVER/TRANSFERRED is not terminal tail action");
+            addIf("TRANSFERRED".equals(traceCode.getCodeStatus()) && deliver < 0,
+                    traceCodeValue + ": TRANSFERRED code status without DELIVER");
+        }
+
+        private void addIf(boolean invalid, String message) {
+            if (invalid) {
+                validationErrors.add(message);
+            }
+        }
+
+        private static void increment(Map<String, Integer> target, String key) {
+            if (key == null || key.isBlank()) {
+                key = "UNKNOWN";
+            }
+            target.merge(key, 1, Integer::sum);
+        }
+
+        private static Map<String, Integer> orderedCounts(Map<String, Integer> source, List<String> preferredOrder) {
+            Map<String, Integer> ordered = new LinkedHashMap<>();
+            for (String key : preferredOrder) {
+                if (source.containsKey(key)) {
+                    ordered.put(key, source.get(key));
+                }
+            }
+            source.entrySet().stream()
+                    .filter(entry -> !ordered.containsKey(entry.getKey()))
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> ordered.put(entry.getKey(), entry.getValue()));
+            return ordered;
+        }
+    }
+
     private record BuildOutput(
             List<TraceAssignBatch> batches,
             List<TraceBatchCommitter.DemoTraceWithCodeUnit> traceUnits,
             List<TraceBatchCommitter.FlowTaskWithScansUnit> flowTaskUnits,
-            List<TraceAggregation> aggregations
+            List<TraceAggregation> aggregations,
+            DemoLifecycleStats lifecycleStats
     ) {}
 }

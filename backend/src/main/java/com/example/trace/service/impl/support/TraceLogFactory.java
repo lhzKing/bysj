@@ -32,6 +32,11 @@ public class TraceLogFactory {
             Long correctionOf,
             String operator
     ) {
+        /*
+         * 先算 currentHash：
+         * currentHash = SHA256(本条业务字段 + prevHash)
+         * 其中 prevHash 来自快照表 lastHash，因此每条新日志都会接到上一条日志后面。
+         */
         String currentHash = HashUtil.calculateHash(
                 traceCode,
                 actionType.getCode(),
@@ -47,6 +52,11 @@ public class TraceLogFactory {
                 operator
         );
 
+        /*
+         * 再构造签名 payload。
+         * 签名 payload 包含 currentHash，所以 RSA 签名不仅保护本条字段，
+         * 也保护“本条接在上一条后面”的链式关系。
+         */
         String signatureData = SignatureUtil.buildSignatureData(
                 traceCode,
                 actionType.getCode(),
@@ -78,6 +88,7 @@ public class TraceLogFactory {
         traceLog.setCurrentHash(currentHash);
         traceLog.setCorrectionOf(correctionOf);
         traceLog.setOperator(operator);
+        // 保存 keyId/keyVersion，后续密钥轮换后仍能知道这条日志应该用哪一版公钥验签。
         traceLog.setSignatureKeyId(signatureUtil.getKeyId());
         traceLog.setSignatureKeyVersion(signatureUtil.getKeyVersion());
         traceLog.setSignature(signatureUtil.sign(signatureData));

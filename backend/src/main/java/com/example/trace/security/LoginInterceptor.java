@@ -15,7 +15,11 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import java.io.IOException;
 
 /**
- * 登录拦截器 - JWT 验证
+ * 登录拦截器 - JWT 验证。
+ *
+ * <p>它只负责“这个请求是不是已登录、token 是否仍然有效”，不负责具体接口权限。
+ * 后续的 PermissionInterceptor / @RequirePermission 才负责“这个角色能不能访问这个接口”。</p>
+ *
  * Authorization: Bearer <jwt-token>
  */
 @Component
@@ -67,7 +71,10 @@ public class LoginInterceptor implements HandlerInterceptor {
             return sendUnauthorized(response, "Token 无效或已过期，请重新登录");
         }
 
-        // 检查 Token 是否在黑名单中（已登出）。Redis 异常必须 fail-closed，不能继续放行。
+        /*
+         * 黑名单用于“精确吊销某一个 token”（例如用户主动退出登录）。
+         * Redis 异常必须 fail-closed：宁可临时返回 503，也不能在无法确认吊销状态时放行。
+         */
         try {
             if (tokenStore.isBlacklisted(token)) {
                 log.debug("Token is blacklisted (logged out)");
@@ -98,7 +105,11 @@ public class LoginInterceptor implements HandlerInterceptor {
             return sendUnauthorized(response, "账号已被禁用，请联系管理员");
         }
         
-        // Token 版本校验：如果用户的 tokenVersion 大于 Token 中的版本，说明 Token 已过时
+        /*
+         * tokenVersion 用于“批量吊销某个用户的所有旧 token”。
+         * 例如改密码、改角色时只要把数据库中的 tokenVersion +1，
+         * 所有携带旧版本号的 JWT 都会在这里失效。
+         */
         Integer userTokenVersion = user.getTokenVersion();
         if (tokenVersion == null || tokenVersion < userTokenVersion) {
             log.warn("Token version mismatch: token={}, user={}", tokenVersion, userTokenVersion);

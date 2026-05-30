@@ -31,6 +31,11 @@ public class SignatureUtil {
 
     private static final Logger log = LoggerFactory.getLogger(SignatureUtil.class);
 
+    /*
+     * 答辩时容易混淆的一点：
+     * 这里的 SHA256withRSA 是“溯源日志签名”，属于非对称签名；
+     * 登录 JWT 使用的是另一套 HS256/HMAC 机制，两者密钥、用途、验签对象都不同。
+     */
     private static final String ALGORITHM = "RSA";
     private static final String SIGNATURE_ALGORITHM = "SHA256withRSA";
     private static final int KEY_SIZE = 2048;
@@ -72,6 +77,7 @@ public class SignatureUtil {
         boolean hasPublicKeyPath = normalizedPublicKeyPath != null;
 
         if (hasPrivateKeyPath || hasPublicKeyPath) {
+            // 生产环境要求公私钥都由外部文件提供，避免私钥进入代码仓库或数据库。
             if (!hasPrivateKeyPath || !hasPublicKeyPath) {
                 throw new IllegalStateException("Both TRACE_SIGNATURE_PRIVATE_KEY_PATH and TRACE_SIGNATURE_PUBLIC_KEY_PATH must be configured together");
             }
@@ -81,6 +87,7 @@ public class SignatureUtil {
             loadKeyPairFromFiles(normalizedPrivateKeyPath, normalizedPublicKeyPath);
             log.info("Loaded RSA key pair from external files");
         } else if (autoGenerate) {
+            // 仅供开发/测试：内存临时密钥重启即变化，历史签名无法长期稳定验证。
             generateKeyPair();
             log.warn("Generated temporary in-memory RSA key pair for dev/test; production must configure fixed external key files");
         } else {
@@ -142,6 +149,7 @@ public class SignatureUtil {
         }
 
         try {
+            // 私钥只用于“签名生成”；签名结果以 Base64 存入生命周期日志表。
             Signature signature = Signature.getInstance(SIGNATURE_ALGORITHM);
             signature.initSign(privateKey);
             signature.update(data.getBytes(StandardCharsets.UTF_8));
@@ -161,6 +169,7 @@ public class SignatureUtil {
         }
 
         try {
+            // 公钥只用于“验签”，可以公开给第三方；拿到公钥也无法反推出私钥。
             Signature signature = Signature.getInstance(SIGNATURE_ALGORITHM);
             signature.initVerify(publicKey);
             signature.update(data.getBytes(StandardCharsets.UTF_8));
@@ -206,6 +215,7 @@ public class SignatureUtil {
 
     public static boolean verifyWithPublicKey(String data, String signatureBase64, String publicKeyBase64) {
         try {
+            // 公开验真/离线验真入口：调用方只需要 payload、签名和公钥即可独立验证。
             byte[] publicKeyBytes = Base64.getDecoder().decode(publicKeyBase64);
             X509EncodedKeySpec keySpec = new X509EncodedKeySpec(publicKeyBytes);
             PublicKey pubKey = KeyFactory.getInstance(ALGORITHM).generatePublic(keySpec);
@@ -338,6 +348,12 @@ public class SignatureUtil {
             String remark,
             boolean includeOperator
     ) {
+        /*
+         * 签名 payload 与哈希 payload 的关键差异：
+         * 1. 签名使用 key=value 形式，字段含义更明确；
+         * 2. 签名包含 currentHash，相当于把“本条内容 + 链式指纹”一起盖章；
+         * 3. 哈希不能包含 currentHash，否则会自引用。
+         */
         StringBuilder sb = new StringBuilder();
         sb.append("traceCode=").append(safe(traceCode)).append("|");
         sb.append("actionType=").append(safe(actionType)).append("|");

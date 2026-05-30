@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 public class TraceScanRetryExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(TraceScanRetryExecutor.class);
+    // 同码并发扫码通常是短时间冲突，最多重试 3 次，避免用户请求无限等待。
     private static final int MAX_RETRY_COUNT = 3;
 
     private final TraceScanExecutor traceScanExecutor;
@@ -27,6 +28,13 @@ public class TraceScanRetryExecutor {
         int retryCount = 0;
         while (true) {
             try {
+                /*
+                 * 关键设计：重试循环放在“无事务”的外层。
+                 *
+                 * 真正的数据库写入在 TraceScanTransactionService 的 REQUIRES_NEW 事务里完成。
+                 * 如果把 while 循环写进同一个事务，在可重复读隔离级别下重试仍可能读到旧快照，
+                 * 导致永远拿不到别人提交后的新 version。
+                 */
                 return traceScanExecutor.executeAndReturnCreated(request, operator);
             } catch (TraceOptimisticLockException e) {
                 retryCount++;
@@ -36,6 +44,7 @@ public class TraceScanRetryExecutor {
                 }
                 log.warn("乐观锁冲突，第{}次重试，traceCode: {}", retryCount, request.getTraceCode());
                 try {
+                    // 线性退避：第 1/2/3 次分别等待 50/100/150ms，给并发事务提交留出时间。
                     Thread.sleep(50L * retryCount);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();

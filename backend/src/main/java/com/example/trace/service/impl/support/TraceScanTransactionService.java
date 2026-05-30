@@ -83,6 +83,15 @@ public class TraceScanTransactionService implements TraceScanExecutor {
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean executeAndReturnCreated(ScanTraceRequest request, String operator) {
+        /*
+         * 单次扫码的最小事务边界。
+         *
+         * 外层 TraceScanRetryExecutor 负责无事务重试；这里每进来一次都开启全新的事务：
+         * 1. 重新读取快照表 trace_snapshot 的 version；
+         * 2. 追加生命周期日志 trace_lifecycle_log；
+         * 3. 更新快照表当前状态和 lastHash；
+         * 4. 由 MyBatis-Plus 乐观锁在 updateById 时检测 version 冲突。
+         */
         normalizeAndValidateLocationFields(request);
         LocalDateTime eventTime = DateTimeUtil.parseOrNow(request.getEventTime())
                 .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
@@ -99,6 +108,7 @@ public class TraceScanTransactionService implements TraceScanExecutor {
 
         IdempotencyDecision idempotencyDecision = acquireIdempotency(traceCode, actionType, request.getIdempotencyKey());
         if (idempotencyDecision.duplicateSucceeded()) {
+            // 同一个 idempotencyKey 已经成功处理过：直接返回 false，避免重复追加生命周期日志。
             return false;
         }
         validateCorrection(traceCode, actionType, request.getCorrectionOf());
@@ -133,9 +143,14 @@ public class TraceScanTransactionService implements TraceScanExecutor {
                 request.getCorrectionOf(),
                 operator
         );
+        /*
+         * 先插入审计日志，再更新快照。
+         * 如果后面的快照乐观锁更新失败，当前事务会整体回滚，本次日志不会留下“孤儿记录”。
+         */
         traceLifecycleLogMapper.insert(traceLog);
 
         if (isExceptionOpen(actionType)) {
+            // 开启异常冻结时，记录冻结前的状态和节点；解除异常时用它恢复现场。
             snapshot.setExceptionRestoreStatus(currentStatus.getCode());
             snapshot.setExceptionRestoreNode(snapshot.getCurrentNode());
             snapshot.setExceptionRestoreOwner(snapshot.getCurrentOwner());
@@ -145,6 +160,7 @@ public class TraceScanTransactionService implements TraceScanExecutor {
 
         if (!isExceptionOpen(actionType)
                 && actionType != ActionType.EXCEPTION_CLOSE
+                && actionType != ActionType.CORRECTION
                 && routeNodes.toNode() != null
                 && !routeNodes.toNode().isBlank()) {
             snapshot.setCurrentNode(routeNodes.toNode());
@@ -167,6 +183,12 @@ public class TraceScanTransactionService implements TraceScanExecutor {
         snapshot.setLastLogId(traceLog.getId());
         snapshot.setLastHash(traceLog.getCurrentHash());
 
+        /*
+         * 乐观锁核心点：
+         * TraceSnapshot.version 标了 @Version，MyBatis-Plus 会生成
+         * WHERE trace_code = ? AND version = ? 的更新条件。
+         * 如果并发事务已经先提交，当前 UPDATE 影响行数为 0，抛给外层重试器处理。
+         */
         int updated = traceSnapshotMapper.updateById(snapshot);
         if (updated == 0) {
             throw new TraceOptimisticLockException("乐观锁冲突，traceCode: " + traceCode);
@@ -193,6 +215,10 @@ public class TraceScanTransactionService implements TraceScanExecutor {
         record.setStatus(TraceScanIdempotency.STATUS_PROCESSING);
 
         try {
+            /*
+             * 幂等表通常有 traceCode + actionType + idempotencyKey 的唯一约束。
+             * 第一次插入成功代表拿到本次请求的处理权；重复提交会走 DuplicateKeyException。
+             */
             traceScanIdempotencyMapper.insert(record);
             return IdempotencyDecision.acquired(record);
         } catch (DuplicateKeyException e) {
@@ -222,6 +248,11 @@ public class TraceScanTransactionService implements TraceScanExecutor {
     }
 
     private ResolvedRouteNodes resolveRouteNodes(TraceSnapshot snapshot, ScanTraceRequest request) {
+        /*
+         * fromNode 的默认值来自快照当前节点。
+         * 普通流转不允许前端随意传一个和当前节点不一致的 fromNode，
+         * 否则会造成日志路线和快照状态不一致；CORRECTION 是审计纠错，允许指向原始事件。
+         */
         String snapshotCurrentNode = TraceLocationFieldConstraints.normalizeNode(
                 "currentNode",
                 snapshot.getCurrentNode()
@@ -267,6 +298,10 @@ public class TraceScanTransactionService implements TraceScanExecutor {
         if (traceUserNodeBindingService == null) {
             return routeNodes;
         }
+        /*
+         * 五维权限中的“用户-节点绑定”在这里落地：
+         * 既校验当前用户是否能在该节点执行动作，也能在用户只绑定一个节点时补齐 from/to 节点。
+         */
         TraceUserNodeBindingService.RouteResolution resolution =
                 traceUserNodeBindingService.authorizeAndResolveRoute(
                         request.getOperatorUserId(),
@@ -306,6 +341,11 @@ public class TraceScanTransactionService implements TraceScanExecutor {
     }
 
     private void validateCorrection(String traceCode, ActionType actionType, Long correctionOf) {
+        /*
+         * 红冲蓝补/审计纠错规则：
+         * 不直接修改原日志，而是新增一条 CORRECTION 日志并用 correctionOf 指向原始日志。
+         * 这样原始证据保留，纠错动作本身也进入哈希链和签名保护。
+         */
         if (correctionOf != null && actionType != ActionType.CORRECTION) {
             throw new BizException(BizCode.PARAM_ERROR,
                     "只有 CORRECTION 类型允许指定 correctionOf 参数");
@@ -317,6 +357,7 @@ public class TraceScanTransactionService implements TraceScanExecutor {
                         "被修正的日志不存在: " + correctionOf);
             }
             if (!originalLog.getTraceCode().equals(traceCode)) {
+                // 防止拿 A 溯源码的纠错记录去“覆盖”B 溯源码的日志。
                 throw new BizException(BizCode.PARAM_ERROR,
                         "跨链修正攻击检测：不能修正其他溯源码的日志");
             }

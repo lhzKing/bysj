@@ -12,14 +12,14 @@ import { REGIONS, getRegionByNode } from '@/shared/data/regions'
  *   - focus 转 var(--primary-focus) 边 + 3px lavender 15% 光晕
  *   - 错误必填 *：var(--error)；不再用 rose-500 / indigo-500 旧色阶
  *
- * 接口：modelValue（form data 对象，由父持有 reactive）+ actionType=inbound|outbound|transfer 决定 label / placeholder / 流转特殊 hint。
+ * 接口：modelValue（form data 对象，由父持有 reactive）+ actionType=inbound|outbound|transfer|deliver 决定 label / placeholder / 流转特殊 hint。
  */
 const props = defineProps({
   modelValue: { type: Object, required: true },
   actionType: {
     type: String,
     required: true,
-    validator: (v) => ['inbound', 'outbound', 'transfer'].includes(v)
+    validator: (v) => ['inbound', 'outbound', 'transfer', 'deliver'].includes(v)
   }
 })
 
@@ -35,7 +35,8 @@ const formData = computed({
 const labelsMap = {
   inbound: { fromNode: '来源节点', toNode: '目标仓库', province: '省份', city: '城市', eventTime: '入库时间' },
   outbound: { fromNode: '来源仓库', toNode: '目标节点', province: '省份', city: '城市', eventTime: '出库时间' },
-  transfer: { fromNode: '起点', toNode: '终点', province: '当前位置-省份', city: '当前位置-城市', eventTime: '流转时间' }
+  transfer: { fromNode: '起点', toNode: '终点', province: '当前位置-省份', city: '当前位置-城市', eventTime: '流转时间' },
+  deliver: { fromNode: '交付节点', toNode: '签收节点', province: '签收省份', city: '签收城市', eventTime: '交付时间' }
 }
 
 const placeholdersMap = {
@@ -53,6 +54,11 @@ const placeholdersMap = {
     fromNode: '请输入起点，如"北京物流中心"、"顺丰速运-上海站"',
     toNode: '请输入终点，如"广州物流中心"、"中通-杭州转运站"',
     remark: '请输入备注信息（选填），如"途经南京中转"、"运输状态良好"'
+  },
+  deliver: {
+    fromNode: '请输入交付/签收现场，如"客户签收点"',
+    toNode: '请输入最终签收方，如"客户A"；可与交付节点相同',
+    remark: '请输入交付备注（选填），如"客户本人签收"'
   }
 }
 
@@ -149,6 +155,9 @@ watch(
 
     <p v-if="actionType === 'transfer'" class="flow-form__hint">
       填写货物当前所在位置（通常是起点或中转站位置）
+    </p>
+    <p v-else-if="actionType === 'deliver'" class="flow-form__hint">
+      最终交付会把商品置为已交付终态，之后不能再次入库/出库/流转。
     </p>
 
     <div class="flow-form__field">

@@ -88,7 +88,7 @@ public class GlobalExceptionHandler {
             if (causeMsg != null) {
                 // 检查是否是枚举解析错误
                 if (causeMsg.contains("ActionType") || causeMsg.contains("非法的 ActionType")) {
-                    message = "非法的 ActionType 值，允许的值: INIT, PRINT_CODE, REPRINT_CODE, ACTIVATE_CODE, VOID_CODE, PACK, UNPACK, PALLETIZE, UNPALLETIZE, INBOUND, OUTBOUND, TRANSFER, EXCEPTION, EXCEPTION_OPEN, EXCEPTION_CLOSE, CORRECTION";
+                    message = "非法的 ActionType 值，允许的值: INIT, PRINT_CODE, REPRINT_CODE, ACTIVATE_CODE, VOID_CODE, PACK, UNPACK, PALLETIZE, UNPALLETIZE, INBOUND, OUTBOUND, TRANSFER, DELIVER, EXCEPTION, EXCEPTION_OPEN, EXCEPTION_CLOSE, CORRECTION";
                 } else if (causeMsg.contains("Cannot deserialize")) {
                     // 提取枚举相关的错误信息
                     int fromIndex = causeMsg.indexOf("from String");

@@ -153,7 +153,7 @@ public class TraceUserNodeBindingServiceImpl implements TraceUserNodeBindingServ
 
         return switch (actionType) {
             case INBOUND -> authorizeInbound(userId, nodes, fromNode, toNode);
-            case OUTBOUND, TRANSFER, EXCEPTION, EXCEPTION_OPEN, EXCEPTION_CLOSE ->
+            case OUTBOUND, TRANSFER, DELIVER, EXCEPTION, EXCEPTION_OPEN, EXCEPTION_CLOSE ->
                     authorizeSourceNode(userId, nodes, actionType, fromNode, toNode);
             default -> new RouteResolution(fromNode, toNode, null);
         };
@@ -270,6 +270,7 @@ public class TraceUserNodeBindingServiceImpl implements TraceUserNodeBindingServ
         return actionType == ActionType.INBOUND
                 || actionType == ActionType.OUTBOUND
                 || actionType == ActionType.TRANSFER
+                || actionType == ActionType.DELIVER
                 || actionType == ActionType.EXCEPTION
                 || actionType == ActionType.EXCEPTION_OPEN
                 || actionType == ActionType.EXCEPTION_CLOSE;

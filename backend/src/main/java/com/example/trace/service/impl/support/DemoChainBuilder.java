@@ -16,13 +16,18 @@ import java.util.Random;
 /**
  * Builds a plausible lifecycle log chain for a single demo trace code.
  *
- * <p>The default chain is 5 steps:
- * {@code INIT → PRINT_CODE → ACTIVATE_CODE → OUTBOUND → INBOUND}.
- * Two probabilistic branches extend the chain:</p>
+ * <p>The core chain is:</p>
+ * <pre>
+ * INIT → PRINT_CODE → ACTIVATE_CODE → INBOUND
+ * </pre>
+ *
+ * <p>That {@code INBOUND} is the finished-goods stock-in after activation. Demo
+ * rows may then continue with a realistic logistics loop:</p>
  * <ul>
- *   <li>60% chance: append {@code TRANSFER} (warehouse → logistics)</li>
- *   <li>after that, 55% chance: append another {@code TRANSFER} (logistics → customer)</li>
- *   <li>5% chance overall: append {@code EXCEPTION_OPEN} at the tail</li>
+ *   <li>{@code OUTBOUND}: warehouse leaves stock and enters {@code IN_TRANSIT}</li>
+ *   <li>{@code TRANSFER}: in-transit handoff / transit-location update, still {@code IN_TRANSIT}</li>
+ *   <li>{@code DELIVER}: final customer sign-off, terminal {@code TRANSFERRED}</li>
+ *   <li>{@code EXCEPTION_OPEN}: optional exception hold at the tail before final delivery</li>
  * </ul>
  *
  * <p>Hash + RSA signature are produced through {@link TraceLogFactory}, the same
@@ -49,13 +54,13 @@ public class DemoChainBuilder {
      *
      * @param traceCode      single-item trace code
      * @param spuId          SPU id
-     * @param factory        producing factory node (used for INIT/PRINT/ACTIVATE/OUTBOUND)
-     * @param warehouse      warehouse node receiving INBOUND
-     * @param logisticsNode  optional logistics hub used by TRANSFER branch
-     * @param customer       optional customer node used by final TRANSFER branch
+     * @param factory        producing factory node (used for INIT/PRINT/ACTIVATE)
+     * @param warehouse      finished-goods warehouse node (used for INBOUND/OUTBOUND)
+     * @param logisticsNode  optional logistics hub used by OUTBOUND/TRANSFER branch
+     * @param customer       optional customer node used by TRANSFER/DELIVER branch
      * @param producerOp     producer username (used as operator on producer actions)
-     * @param warehouseOp    warehouse username (used on INBOUND)
-     * @param logisticsOp    logistics username (used on TRANSFER)
+     * @param warehouseOp    warehouse username (used on INBOUND/OUTBOUND)
+     * @param logisticsOp    logistics username (used on TRANSFER/DELIVER)
      * @param startTime      INIT event time
      * @param rng            shared {@link Random} for reproducibility
      */
@@ -94,21 +99,12 @@ public class DemoChainBuilder {
         logs.add(activateLog);
         prevHash = activateLog.getCurrentHash();
 
-        // 4) OUTBOUND factory → warehouse
-        t = t.plusHours(2 + rng.nextInt(13));
-        TraceLifecycleLog outboundLog = make(traceCode, spuId, ActionType.OUTBOUND,
-                factory.getNodeName(), warehouse.getNodeName(),
-                factory.getProvince(), factory.getCity(),
-                "发往" + warehouse.getNodeName(), t, prevHash, producerOp);
-        logs.add(outboundLog);
-        prevHash = outboundLog.getCurrentHash();
-
-        // 5) INBOUND @ warehouse
-        t = t.plusHours(6 + rng.nextInt(37));
+        // 4) INBOUND @ warehouse: finished goods enter stock before the first outbound.
+        t = t.plusHours(1 + rng.nextInt(6));
         TraceLifecycleLog inboundLog = make(traceCode, spuId, ActionType.INBOUND,
                 factory.getNodeName(), warehouse.getNodeName(),
                 warehouse.getProvince(), warehouse.getCity(),
-                "到仓签收", t, prevHash, warehouseOp);
+                "成品入库", t, prevHash, warehouseOp);
         logs.add(inboundLog);
         prevHash = inboundLog.getCurrentHash();
 
@@ -116,45 +112,80 @@ public class DemoChainBuilder {
         String terminalNode = warehouse.getNodeName();
         String terminalProvince = warehouse.getProvince();
         String terminalCity = warehouse.getCity();
-        String terminalOwner = warehouseOp;
+        String terminalOwner = warehouse.getNodeName();
 
-        // 6) 60% chance TRANSFER warehouse → logistics
-        if (logisticsNode != null && rng.nextDouble() < 0.6) {
-            t = t.plusHours(12 + rng.nextInt(49));
-            TraceLifecycleLog transferLog = make(traceCode, spuId, ActionType.TRANSFER,
-                    warehouse.getNodeName(), logisticsNode.getNodeName(),
-                    logisticsNode.getProvince(), logisticsNode.getCity(),
-                    "调拨至" + logisticsNode.getNodeName(), t, prevHash, logisticsOp);
-            logs.add(transferLog);
-            prevHash = transferLog.getCurrentHash();
-            terminalStatus = "IN_TRANSIT";
-            terminalNode = logisticsNode.getNodeName();
-            terminalProvince = logisticsNode.getProvince();
-            terminalCity = logisticsNode.getCity();
-            terminalOwner = logisticsOp;
+        // 5) 70% chance OUTBOUND warehouse → logistics/customer, entering transit.
+        if (rng.nextDouble() < 0.7) {
+            TraceNode outboundTarget = logisticsNode != null ? logisticsNode : customer;
+            if (outboundTarget != null) {
+                t = t.plusHours(2 + rng.nextInt(13));
+                TraceLifecycleLog outboundLog = make(traceCode, spuId, ActionType.OUTBOUND,
+                        warehouse.getNodeName(), outboundTarget.getNodeName(),
+                        warehouse.getProvince(), warehouse.getCity(),
+                        "出库发往" + outboundTarget.getNodeName(), t, prevHash, warehouseOp);
+                logs.add(outboundLog);
+                prevHash = outboundLog.getCurrentHash();
+                terminalStatus = "IN_TRANSIT";
+                terminalNode = outboundTarget.getNodeName();
+                terminalProvince = outboundTarget.getProvince();
+                terminalCity = outboundTarget.getCity();
+                terminalOwner = outboundTarget.getNodeName();
 
-            // 7) 55% chance TRANSFER logistics → customer (final delivery)
-            if (customer != null && rng.nextDouble() < 0.55) {
-                t = t.plusHours(6 + rng.nextInt(25));
-                TraceLifecycleLog deliveryLog = make(traceCode, spuId, ActionType.TRANSFER,
-                        logisticsNode.getNodeName(), customer.getNodeName(),
-                        customer.getProvince(), customer.getCity(),
-                        "交付客户" + customer.getNodeName(), t, prevHash, logisticsOp);
-                logs.add(deliveryLog);
-                prevHash = deliveryLog.getCurrentHash();
-                terminalStatus = "TRANSFERRED";
-                terminalNode = customer.getNodeName();
-                terminalProvince = customer.getProvince();
-                terminalCity = customer.getCity();
-                // owner stays logistics (last hand-off operator)
+                // 6) 60% chance TRANSFER current transit target → logistics/customer (still IN_TRANSIT).
+                // If the current outbound target is already the customer, route the transfer
+                // through logisticsNode when possible to avoid a same-node handoff in demo data.
+                if (customer != null && rng.nextDouble() < 0.6) {
+                    TraceNode transferTarget = customer;
+                    if (logisticsNode != null && terminalNode.equals(customer.getNodeName())
+                            && !logisticsNode.getNodeName().equals(terminalNode)) {
+                        transferTarget = logisticsNode;
+                    }
+                    t = t.plusHours(6 + rng.nextInt(25));
+                    TraceLifecycleLog transferLog = make(traceCode, spuId, ActionType.TRANSFER,
+                            terminalNode, transferTarget.getNodeName(),
+                            transferTarget.getProvince(), transferTarget.getCity(),
+                            "运输中转至" + transferTarget.getNodeName(), t, prevHash, logisticsOp);
+                    logs.add(transferLog);
+                    prevHash = transferLog.getCurrentHash();
+                    terminalStatus = "IN_TRANSIT";
+                    terminalNode = transferTarget.getNodeName();
+                    terminalProvince = transferTarget.getProvince();
+                    terminalCity = transferTarget.getCity();
+                    terminalOwner = transferTarget.getNodeName();
+                }
+
+                // 7) 55% chance final DELIVER at current transit target.
+                if (customer != null && rng.nextDouble() < 0.55) {
+                    String deliveryNode = terminalNode;
+                    String deliveryProvince = terminalProvince;
+                    String deliveryCity = terminalCity;
+                    if (!customer.getNodeName().equals(terminalNode)) {
+                        deliveryNode = customer.getNodeName();
+                        deliveryProvince = customer.getProvince();
+                        deliveryCity = customer.getCity();
+                    }
+                    t = t.plusHours(2 + rng.nextInt(9));
+                    TraceLifecycleLog deliveryLog = make(traceCode, spuId, ActionType.DELIVER,
+                            terminalNode, deliveryNode,
+                            deliveryProvince, deliveryCity,
+                            "最终签收/交付客户" + deliveryNode, t, prevHash, logisticsOp);
+                    logs.add(deliveryLog);
+                    prevHash = deliveryLog.getCurrentHash();
+                    terminalStatus = "TRANSFERRED";
+                    terminalNode = deliveryNode;
+                    terminalProvince = deliveryProvince;
+                    terminalCity = deliveryCity;
+                    terminalOwner = deliveryNode;
+                }
             }
         }
 
-        // 8) 5% chance EXCEPTION_OPEN at tail
+        // 8) 5% chance EXCEPTION_OPEN at tail for non-terminal goods.
+        // TRANSFERRED is final delivery and must not be reopened into normal flow/exception flow.
         String restoreStatus = null;
         String restoreNode = null;
         String restoreOwner = null;
-        if (rng.nextDouble() < 0.05) {
+        if (!"TRANSFERRED".equals(terminalStatus) && rng.nextDouble() < 0.05) {
             // Capture pre-exception state so EXCEPTION_CLOSE can restore it
             // (real scan flow does the same in TraceScanTransactionService).
             restoreStatus = terminalStatus;

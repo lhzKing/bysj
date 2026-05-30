@@ -20,7 +20,6 @@ import { PERMISSIONS, TRACE_SCAN_HUB_ACCESS } from '@/shared/constants'
  *  - label:       sidebar nav label (also rendered in mobile drawer)
  *  - path:        router path used by RouterLink / push
  *  - icon:        lucide-vue-next component rendered as 14×14 stroke icon
- *  - kbd:         optional keyboard hint shown right-aligned in the row
  *  - permissions: list of permission codes; user with ANY of these can see the entry
  */
 export const layoutNavigation = [
@@ -30,7 +29,6 @@ export const layoutNavigation = [
     label: '仪表盘',
     path: '/',
     icon: LayoutDashboard,
-    kbd: 'G D',
     permissions: [PERMISSIONS.DASHBOARD.VIEW]
   },
   {
@@ -39,7 +37,6 @@ export const layoutNavigation = [
     label: '扫码工位',
     path: '/scan',
     icon: ScanLine,
-    kbd: 'G S',
     permissions: TRACE_SCAN_HUB_ACCESS
   },
   {
@@ -80,7 +77,6 @@ export const layoutNavigation = [
     label: '追溯查询',
     path: '/traces',
     icon: Search,
-    kbd: 'G T',
     permissions: PERMISSIONS.TRACE.LIST_ACCESS
   },
   {

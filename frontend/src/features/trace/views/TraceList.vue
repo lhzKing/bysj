@@ -31,7 +31,7 @@ const STATUS_OPTIONS = [
   { value: 'INIT', label: '已初始化', tone: 'mute' },
   { value: 'IN_STOCK', label: '在库', tone: 'success' },
   { value: 'IN_TRANSIT', label: '流转中', tone: 'warn' },
-  { value: 'TRANSFERRED', label: '已交接', tone: 'mute' },
+  { value: 'TRANSFERRED', label: '已交付', tone: 'mute' },
   { value: 'EXCEPTION', label: '异常', tone: 'error' }
 ]
 
@@ -345,7 +345,8 @@ const lastActionLabel = (action) => {
     VOID_CODE: '作废',
     INBOUND: '入库',
     OUTBOUND: '出库',
-    TRANSFER: '交接',
+    TRANSFER: '中转',
+    DELIVER: '交付',
     PACK: '装箱',
     UNPACK: '拆箱',
     PALLETIZE: '上托',

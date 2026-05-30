@@ -82,13 +82,15 @@ const hasAnyPermission = (required = []) => required.some((perm) => permissions.
 const actionTypeToDialog = {
   INBOUND: 'inbound',
   OUTBOUND: 'outbound',
-  TRANSFER: 'transfer'
+  TRANSFER: 'transfer',
+  DELIVER: 'deliver'
 }
 
 const labelMap = {
   INBOUND: '入库登记',
   OUTBOUND: '出库登记',
-  TRANSFER: '物流流转',
+  TRANSFER: '中转流转',
+  DELIVER: '最终交付',
   EXCEPTION: '异常上报',
   EXCEPTION_OPEN: '异常上报',
   EXCEPTION_CLOSE: '解除冻结',
@@ -99,6 +101,7 @@ const iconMap = {
   INBOUND: PackagePlus,
   OUTBOUND: PackageOpen,
   TRANSFER: Truck,
+  DELIVER: ScanLine,
   EXCEPTION: ShieldAlert,
   EXCEPTION_OPEN: ShieldAlert,
   EXCEPTION_CLOSE: ShieldAlert,
@@ -147,14 +150,14 @@ const noActionGuidance = computed(() => {
     return {
       kind: 'role-or-node',
       hint: `当前账号 ${username || '此用户'} 在「${status || '当前状态'}」下没有可在该节点执行的扫码动作（角色权限或节点绑定限制）。`,
-      tip: '不同业务角色负责不同动作：入库 / 出库由 warehouse、物流流转由 logistics、生产赋码由 producer。请按业务职责切换演示账号后重试。'
+      tip: '不同业务角色负责不同动作：入库 / 出库由 warehouse、中转流转 / 最终交付由 logistics、生产赋码由 producer。请按业务职责切换演示账号后重试。'
     }
   }
   if (reason.includes('角色没有') || reason.includes('扫码动作权限')) {
     return {
       kind: 'role',
       hint: `当前角色在「${status || '此状态'}」下没有任何扫码动作权限。`,
-      tip: '入库 / 出库需 warehouse 账号；物流流转需 logistics 账号；生产赋码需 producer 账号。'
+      tip: '入库 / 出库需 warehouse 账号；中转流转 / 最终交付需 logistics 账号；生产赋码需 producer 账号。'
     }
   }
   if (reason.includes('无常规可执行动作') || reason.includes('状态')) {
@@ -582,7 +585,7 @@ onUnmounted(() => {
               </button>
             </div>
             <p class="scan-hub__panel-foot">
-              动作由 <span class="mono">/available-actions</span> 数据驱动，前端不再硬编码入库 / 出库 / 流转 / 异常。
+              动作由 <span class="mono">/available-actions</span> 数据驱动，前端不再硬编码入库 / 出库 / 中转 / 交付 / 异常。
             </p>
           </template>
 

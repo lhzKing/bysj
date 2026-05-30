@@ -12,7 +12,7 @@ public enum TraceStatus {
     INIT("INIT", "已初始化", "刚完成生产赋码"),
     IN_STOCK("IN_STOCK", "在库", "货物在仓库中"),
     IN_TRANSIT("IN_TRANSIT", "运输中", "货物正在运输"),
-    TRANSFERRED("TRANSFERRED", "已交接", "货物已完成交接"),
+    TRANSFERRED("TRANSFERRED", "已交付", "货物已完成最终交付"),
     EXCEPTION("EXCEPTION", "异常", "货物状态异常");
 
     private final String code;
@@ -79,7 +79,8 @@ public enum TraceStatus {
                     PACK, UNPACK, PALLETIZE, UNPALLETIZE -> currentStatus;
             case OUTBOUND -> IN_TRANSIT;
             case INBOUND -> IN_STOCK;
-            case TRANSFER -> TRANSFERRED;
+            case TRANSFER -> IN_TRANSIT;
+            case DELIVER -> TRANSFERRED;
             case EXCEPTION, EXCEPTION_OPEN -> EXCEPTION;
             case EXCEPTION_CLOSE -> currentStatus;
             case CORRECTION -> currentStatus; // 修正不改变状态

@@ -39,12 +39,13 @@ class TraceCodeSchemaContractTest {
         String src = Files.readString(MIGRATE_V11);
 
         assertThat(src).contains("CREATE TABLE IF NOT EXISTS trace_code");
-        assertThat(src).contains("GENERATED/PRINTED/ACTIVATED/IN_STOCK/IN_TRANSIT/EXCEPTION/VOIDED/SCRAPPED");
+        assertThat(src).contains("GENERATED/PRINTED/ACTIVATED/IN_STOCK/IN_TRANSIT/TRANSFERRED/EXCEPTION/VOIDED/SCRAPPED");
         assertThat(src).contains("INSERT INTO trace_code");
         assertThat(src).contains("FROM trace_snapshot s");
         assertThat(src).contains("LEFT JOIN trace_code c ON c.trace_code = s.trace_code");
         assertThat(src).contains("WHEN s.current_status = 'IN_STOCK' THEN 'IN_STOCK'");
-        assertThat(src).contains("WHEN s.current_status IN ('IN_TRANSIT', 'TRANSFERRED') THEN 'IN_TRANSIT'");
+        assertThat(src).contains("WHEN s.current_status = 'IN_TRANSIT' THEN 'IN_TRANSIT'");
+        assertThat(src).contains("WHEN s.current_status = 'TRANSFERRED' THEN 'TRANSFERRED'");
         assertThat(src).contains("WHEN s.current_status = 'EXCEPTION' THEN 'EXCEPTION'");
         assertThat(src).contains("ELSE 'ACTIVATED'");
     }

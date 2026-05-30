@@ -75,7 +75,7 @@ class TraceAvailableActionServiceTest {
     }
 
     @Test
-    void availableActions_shouldReturnTransferForLogisticsAtInTransitStatus() {
+    void availableActions_shouldReturnTransferAndDeliverForLogisticsAtInTransitStatus() {
         when(traceSnapshotMapper.selectById("TRACE-MOVE"))
                 .thenReturn(snapshot("TRACE-MOVE", TraceStatus.IN_TRANSIT, "in-transit"));
         when(traceCodeStatusService.movementEligibility("TRACE-MOVE"))
@@ -88,7 +88,17 @@ class TraceAvailableActionServiceTest {
         assertThat(response.getRecommendedAction()).isEqualTo(ActionType.TRANSFER);
         assertThat(response.getAvailableActions())
                 .extracting(TraceAvailableActionsResponse.AvailableAction::getActionType)
-                .containsExactly(ActionType.TRANSFER);
+                .containsExactly(ActionType.TRANSFER, ActionType.DELIVER);
+        assertThat(response.getAvailableActions())
+                .filteredOn(action -> action.getActionType() == ActionType.TRANSFER)
+                .singleElement()
+                .extracting(TraceAvailableActionsResponse.AvailableAction::getNextStatus)
+                .isEqualTo(TraceStatus.IN_TRANSIT);
+        assertThat(response.getAvailableActions())
+                .filteredOn(action -> action.getActionType() == ActionType.DELIVER)
+                .singleElement()
+                .extracting(TraceAvailableActionsResponse.AvailableAction::getNextStatus)
+                .isEqualTo(TraceStatus.TRANSFERRED);
     }
 
     @Test
@@ -107,6 +117,23 @@ class TraceAvailableActionServiceTest {
                 .extracting(TraceAvailableActionsResponse.AvailableAction::getActionType)
                 .containsExactly(ActionType.INBOUND);
         assertThat(response.getAvailableActions().get(0).getLabel()).isEqualTo("确认接收/入库");
+    }
+
+    @Test
+    void availableActions_shouldHideInboundWhenTraceIsTransferredTerminal() {
+        when(traceSnapshotMapper.selectById("TRACE-DONE"))
+                .thenReturn(snapshot("TRACE-DONE", TraceStatus.TRANSFERRED, "客户签收点"));
+        when(traceCodeStatusService.movementEligibility("TRACE-DONE"))
+                .thenReturn(TraceCodeStatusService.MovementEligibility.blocked(
+                        TraceCodeStatus.TRANSFERRED,
+                        "单品码状态为 TRANSFERRED，已完成交付，不能再次入库"
+                ));
+
+        TraceAvailableActionsResponse response = service.availableActions("TRACE-DONE", 4L);
+
+        assertThat(response.getRecommendedAction()).isNull();
+        assertThat(response.getAvailableActions()).isEmpty();
+        assertThat(response.getNoActionReason()).contains("TRANSFERRED").contains("不能再次入库");
     }
 
     @Test

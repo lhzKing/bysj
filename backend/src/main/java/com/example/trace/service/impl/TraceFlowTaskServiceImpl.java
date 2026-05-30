@@ -180,7 +180,7 @@ public class TraceFlowTaskServiceImpl implements TraceFlowTaskService {
                     operationNode = sourceNode;
                     prefillFromNode = sourceNode.getNodeName();
                     prefillToNode = targetNode.getNodeName();
-                } else if ((currentStatus == TraceStatus.IN_TRANSIT || currentStatus == TraceStatus.TRANSFERRED)
+                } else if (currentStatus == TraceStatus.IN_TRANSIT
                         && matchesNode(targetNode, currentNode)
                         && (task.getActualQuantity() == null ? 0 : task.getActualQuantity()) > 0) {
                     compatibleActionType = ActionType.INBOUND;
@@ -192,7 +192,7 @@ public class TraceFlowTaskServiceImpl implements TraceFlowTaskService {
                 }
             }
             case INBOUND, RECEIVE -> {
-                if ((currentStatus == TraceStatus.IN_TRANSIT || currentStatus == TraceStatus.TRANSFERRED)
+                if (currentStatus == TraceStatus.IN_TRANSIT
                         && matchesNode(targetNode, currentNode)) {
                     compatibleActionType = ActionType.INBOUND;
                     operationNode = targetNode;
@@ -949,7 +949,7 @@ public class TraceFlowTaskServiceImpl implements TraceFlowTaskService {
                     true
             );
         }
-        if (currentStatus == TraceStatus.IN_TRANSIT || currentStatus == TraceStatus.TRANSFERRED) {
+        if (currentStatus == TraceStatus.IN_TRANSIT) {
             if ((task.getActualQuantity() == null ? 0 : task.getActualQuantity()) <= 0) {
                 throw new BizException(BizCode.BAD_REQUEST,
                         "出库任务尚未记录任何出库扫码，不能直接接收: taskId=" + task.getId());
@@ -968,7 +968,7 @@ public class TraceFlowTaskServiceImpl implements TraceFlowTaskService {
             TraceStatus currentStatus,
             boolean countsTowardsActualQuantity
     ) {
-        if (currentStatus != TraceStatus.IN_TRANSIT && currentStatus != TraceStatus.TRANSFERRED) {
+        if (currentStatus != TraceStatus.IN_TRANSIT) {
             throw new BizException(BizCode.INVALID_ACTION_TYPE,
                     "只有运输中物品允许目标节点接收: traceCode="
                             + traceCode + ", currentStatus=" + currentStatus.getCode());
