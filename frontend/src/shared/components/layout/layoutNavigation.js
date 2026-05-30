@@ -64,7 +64,7 @@ export const layoutNavigation = [
     label: '聚合关系',
     path: '/trace-aggregations',
     icon: Boxes,
-    permissions: [PERMISSIONS.TRACE.VIEW]
+    permissions: PERMISSIONS.TRACE.AGGREGATION_ACCESS
   },
   {
     key: 'scan-trace-landing',

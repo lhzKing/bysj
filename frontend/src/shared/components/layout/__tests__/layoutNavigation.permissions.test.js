@@ -89,4 +89,26 @@ describe('scan permission navigation model', () => {
     expect(hasAny(['trace:view', 'dashboard:view'], tracesNav.permissions)).toBe(false)
   })
 
+  it('gates 箱码/托盘码聚合 workbench by aggregation business permissions, not bare trace:view', () => {
+    // 关键安全门：纯只读用户（仅有 trace:view，如 USER 角色）不能进/看「聚合关系」工作台，
+    // 否则会暴露全量箱码/托盘码父子聚合关系。门槛必须等于后端 bind/release 端点的写权限集。
+    const aggNav = layoutNavigation.find((item) => item.key === 'trace-aggregations')
+    const aggRoute = router.getRoutes().find((route) => route.name === 'trace-aggregation-workbench')
+
+    expect(aggNav).toBeTruthy()
+    expect(aggRoute).toBeTruthy()
+    expect(aggNav.permissions).toEqual(PERMISSIONS.TRACE.AGGREGATION_ACCESS)
+    expect(aggRoute.meta.permissions).toEqual(PERMISSIONS.TRACE.AGGREGATION_ACCESS)
+    expect(aggNav.permissions).not.toContain(PERMISSIONS.TRACE.VIEW)
+
+    const hasAny = (granted, required) => required.some((p) => granted.includes(p))
+    // 业务角色（按迁移后真实权限）至少命中一个：
+    expect(hasAny(['trace:create'], aggNav.permissions)).toBe(true)                       // PRODUCER
+    expect(hasAny(['trace:outbound', 'trace:task:scan'], aggNav.permissions)).toBe(true)  // WAREHOUSE
+    expect(hasAny(['trace:transfer', 'trace:task:scan'], aggNav.permissions)).toBe(true)  // LOGISTICS
+    expect(hasAny(['trace:scan'], aggNav.permissions)).toBe(true)                         // ADMIN / SUPER_ADMIN
+    // USER（仅 trace:view + dashboard:view）必须命中不了
+    expect(hasAny(['trace:view', 'dashboard:view'], aggNav.permissions)).toBe(false)
+  })
+
 })

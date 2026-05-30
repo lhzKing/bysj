@@ -64,7 +64,8 @@ const router = createRouter({
           component: () => import('@/features/trace/views/TraceAggregationWorkbench.vue'),
           meta: {
             title: '箱码 / 托盘码聚合',
-            permissions: [PERMISSIONS.TRACE.VIEW]
+            // 仅能做装箱/装托的业务角色可进；纯只读 USER（仅 trace:view）被挡
+            permissions: PERMISSIONS.TRACE.AGGREGATION_ACCESS
           }
         },
         {

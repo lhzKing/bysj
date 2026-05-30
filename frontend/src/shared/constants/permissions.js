@@ -43,6 +43,16 @@ export const TRACE_FLOW_TASK_ACCESS = [
   TRACE_OUTBOUND,
   TRACE_TRANSFER
 ]
+// 谁能进「箱码/托盘码聚合」工作台：能执行装箱/装托绑定的业务角色。
+// 与后端 TraceAggregationController bind/release 的 @RequirePermission 集合完全对齐。
+// 纯只读用户（仅 trace:view，如 USER 角色）拿不到，菜单与路由都不可见。
+export const TRACE_AGGREGATION_ACCESS = [
+  TRACE_TASK_SCAN,
+  TRACE_CREATE,
+  TRACE_SCAN,
+  TRACE_OUTBOUND,
+  TRACE_TRANSFER
+]
 export const TRACE_SCAN_HUB_ACCESS = [
   TRACE_CREATE,
   TRACE_BATCH_CREATE,
@@ -98,6 +108,7 @@ export const PERMISSIONS = {
     AUDIT_VIEW: TRACE_AUDIT_VIEW,
     ASSIGNMENT_ACCESS: TRACE_ASSIGNMENT_ACCESS,
     FLOW_TASK_ACCESS: TRACE_FLOW_TASK_ACCESS,
+    AGGREGATION_ACCESS: TRACE_AGGREGATION_ACCESS,
     SCAN_HUB_ACCESS: TRACE_SCAN_HUB_ACCESS,
     LIST_ACCESS: TRACE_LIST_ACCESS
   }

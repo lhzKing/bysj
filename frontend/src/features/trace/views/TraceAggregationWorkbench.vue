@@ -49,13 +49,7 @@ const toast = useToast()
 const { confirm } = useConfirm()
 const userStore = useUserStore()
 
-const BIND_PERMISSIONS = [
-  PERMISSIONS.TRACE.TASK_SCAN,
-  PERMISSIONS.TRACE.CREATE,
-  PERMISSIONS.TRACE.SCAN,
-  PERMISSIONS.TRACE.OUTBOUND,
-  PERMISSIONS.TRACE.TRANSFER
-]
+const BIND_PERMISSIONS = PERMISSIONS.TRACE.AGGREGATION_ACCESS
 const canBind = computed(() => userStore.hasAnyPermission(BIND_PERMISSIONS))
 
 const aggregations = ref([])
