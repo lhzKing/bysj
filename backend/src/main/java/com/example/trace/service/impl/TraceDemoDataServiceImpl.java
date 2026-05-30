@@ -34,6 +34,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
@@ -72,6 +73,21 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
     private static final int TRACE_CODES_PER_BATCH_MAX = 25;
 
     private static final int SAMPLE_LIFECYCLE_PATH_LIMIT = 3;
+
+    /**
+     * Dashboard defaults to range=30d. Keep generated demo lifecycle events in
+     * that recent window instead of pinning them to a historical fixed date,
+     * while leaving enough tail room for multi-hop logistics chains and
+     * aggregation logs to complete without drifting into the future.
+     */
+    private static final int DASHBOARD_RECENT_RANGE_DAYS = 30;
+    private static final int DEMO_PRODUCTION_SPAN_DAYS = 23;
+    private static final int DEMO_LATEST_BATCH_GUARD_DAYS = 4;
+    private static final int DEMO_FLOW_TASK_BASE_DAYS_BACK = 12;
+    private static final int DEMO_AGGREGATION_BASE_DAYS_BACK = 18;
+    private static final int DEMO_AGGREGATION_END_GUARD_HOURS = 6;
+    private static final int DEMO_TIMELINE_HOUR = 8;
+    private static final int DEMO_TIMELINE_MINUTE = 13;
     private static final List<String> DEMO_CORE_ACTION_PREFIX = List.of(
             "INIT", "PRINT_CODE", "ACTIVATE_CODE", "INBOUND"
     );
@@ -168,9 +184,11 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         }
 
         // ----- Stage 1: build everything in memory (NO transaction, NO connection held) -----
-        LocalDateTime baseTime = LocalDateTime.of(2026, 4, 1, 9, 13, 0);
+        // Use a dynamic recent timeline so the default dashboard range=30d has
+        // meaningful map/trend/KPI data after every regeneration.
+        LocalDateTime timelineNow = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         BuildOutput out = buildAllInMemory(count, allParts, factories, warehouses, logistics, customers,
-                producerUsers, warehouseUsers, logisticsUsers, baseTime);
+                producerUsers, warehouseUsers, logisticsUsers, timelineNow);
 
         // ----- Stage 2: chunked REQUIRES_NEW commits, per-table -----
         batchCommitter.commitAssignBatchesInChunks(out.batches);
@@ -211,6 +229,7 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         result.put("codeStatusCounts", out.lifecycleStats.orderedCodeStatusCounts());
         result.put("terminalSummary", out.lifecycleStats.terminalSummary());
         result.put("sampleLifecyclePaths", out.lifecycleStats.sampleLifecyclePaths());
+        result.put("demoTimeWindow", out.timeline.toResponseMap());
 
         log.info("Trace demo data generation completed: operator={}, role={}, result={}",
                 normalizeAuditValue(operator), normalizeAuditValue(operatorRole), result);
@@ -281,7 +300,10 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
                                          List<DemoUserRef> producers,
                                          List<DemoUserRef> warehouseUsers,
                                          List<DemoUserRef> logisticsUsers,
-                                         LocalDateTime baseTime) {
+                                         LocalDateTime timelineNow) {
+        List<Integer> plannedBucketSizes = planBatchSizes(count);
+        DemoTimeline timeline = recentDemoTimeline(plannedBucketSizes.size(), timelineNow);
+
         List<TraceAssignBatch> batches = new ArrayList<>();
         // Stage 1a: build chains first WITHOUT freezing them into units, so the
         // aggregation factory below can still mutate each chain (append PACK /
@@ -297,18 +319,14 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         List<String> aggregationCandidateCodes = new ArrayList<>();
         DemoLifecycleStats lifecycleStats = new DemoLifecycleStats();
 
-        int remaining = count;
         int batchSeq = 0;
         String runId = IdUtil.fastSimpleUUID().substring(0, 6);
-        while (remaining > 0) {
-            int bucketSize = Math.min(remaining,
-                    TRACE_CODES_PER_BATCH_MIN + random.nextInt(TRACE_CODES_PER_BATCH_MAX - TRACE_CODES_PER_BATCH_MIN + 1));
+        for (int bucketSize : plannedBucketSizes) {
             batchSeq++;
             BasePartSpec spu = parts.get(random.nextInt(parts.size()));
             DemoUserRef producer = producers.get(batchSeq % producers.size());
             TraceNode factory = factories.get(batchSeq % factories.size());
-            LocalDateTime batchTime = baseTime.plusDays(batchSeq - 1L).plusHours((batchSeq - 1L) % 6)
-                    .truncatedTo(ChronoUnit.SECONDS);
+            LocalDateTime batchTime = timeline.batchTime(batchSeq);
 
             TraceAssignBatch batch = new TraceAssignBatch();
             batch.setBatchNo("ASSIGN-EXT-%04d-%s-%s".formatted(batchSeq, spu.getPartCode(), runId));
@@ -373,7 +391,6 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
                     aggregationCandidateCodes.add(traceCode);
                 }
             }
-            remaining -= bucketSize;
         }
 
         // Flow tasks (60 of them, drawn from the task-scan candidate pool).
@@ -382,7 +399,7 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         List<TraceBatchCommitter.FlowTaskWithScansUnit> flowTaskUnits = flowTaskFactory.build(
                         flowTaskScanCandidates, warehouses, logistics, customers,
                         warehouseUsers, logisticsUsers,
-                        baseTime, random)
+                        timeline.flowTaskBaseTime, random)
                 .stream()
                 .map(u -> new TraceBatchCommitter.FlowTaskWithScansUnit(u.task(), u.scans()))
                 .toList();
@@ -393,7 +410,7 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         // chains into DemoTraceWithCodeUnit (List.copyOf inside the record).
         DemoUserRef aggregationCreator = producers.isEmpty() ? null : producers.get(0);
         List<TraceAggregation> aggregations = aggregationFactory.build(
-                aggregationCandidateCodes, chainsByTrace, aggregationCreator, baseTime, random);
+                aggregationCandidateCodes, chainsByTrace, aggregationCreator, timeline.aggregationBaseTime, random);
         lifecycleStats.refreshPostAggregation(pendingUnits);
 
         // Stage 1b: now that PACK/PALLETIZE logs are appended, freeze chains
@@ -404,12 +421,52 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
                     pending.chain.logs(), pending.chain.snapshot(), pending.traceCode));
         }
 
-        return new BuildOutput(batches, traceUnits, flowTaskUnits, aggregations, lifecycleStats);
+        return new BuildOutput(batches, traceUnits, flowTaskUnits, aggregations, lifecycleStats, timeline);
     }
 
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    private List<Integer> planBatchSizes(int count) {
+        List<Integer> bucketSizes = new ArrayList<>();
+        int remaining = count;
+        while (remaining > 0) {
+            int bucketSize = Math.min(remaining, TRACE_CODES_PER_BATCH_MIN
+                    + random.nextInt(TRACE_CODES_PER_BATCH_MAX - TRACE_CODES_PER_BATCH_MIN + 1));
+            bucketSizes.add(bucketSize);
+            remaining -= bucketSize;
+        }
+        return bucketSizes;
+    }
+
+    static DemoTimeline recentDemoTimeline(int batchCount, LocalDateTime now) {
+        LocalDateTime safeNow = (now == null ? LocalDateTime.now() : now).truncatedTo(ChronoUnit.SECONDS);
+        LocalDateTime latestBatchTime = safeNow
+                .minusDays(DEMO_LATEST_BATCH_GUARD_DAYS)
+                .withHour(DEMO_TIMELINE_HOUR)
+                .withMinute(DEMO_TIMELINE_MINUTE)
+                .withSecond(0)
+                .withNano(0);
+        LocalDateTime firstBatchTime = latestBatchTime.minusDays(DEMO_PRODUCTION_SPAN_DAYS);
+        LocalDateTime flowTaskBaseTime = safeNow
+                .minusDays(DEMO_FLOW_TASK_BASE_DAYS_BACK)
+                .withHour(DEMO_TIMELINE_HOUR)
+                .withMinute(DEMO_TIMELINE_MINUTE)
+                .withSecond(0)
+                .withNano(0);
+        // DemoAggregationFactory adds +15d for PACK and +18d(+1..6h) for PALLETIZE.
+        // Anchor it so the last palletizing timestamp is exactly at this method's
+        // "now" and the others are the preceding hours; this avoids future data
+        // while giving the default dashboard a realistic same-day tail.
+        LocalDateTime aggregationBaseTime = safeNow
+                .minusDays(DEMO_AGGREGATION_BASE_DAYS_BACK)
+                .minusHours(DEMO_AGGREGATION_END_GUARD_HOURS)
+                .withSecond(0)
+                .withNano(0);
+        return new DemoTimeline(Math.max(1, batchCount), firstBatchTime, latestBatchTime,
+                flowTaskBaseTime, aggregationBaseTime);
+    }
 
     private void ensureMasterDataReady(List<TraceNode> nodes, List<BasePartSpec> parts) {
         if (nodes.isEmpty() || parts.isEmpty()) {
@@ -745,11 +802,46 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         }
     }
 
+    record DemoTimeline(
+            int batchCount,
+            LocalDateTime firstBatchTime,
+            LocalDateTime latestBatchTime,
+            LocalDateTime flowTaskBaseTime,
+            LocalDateTime aggregationBaseTime
+    ) {
+        LocalDateTime batchTime(int batchSeq) {
+            int safeSeq = Math.min(Math.max(1, batchSeq), batchCount);
+            if (batchCount <= 1) {
+                return latestBatchTime.truncatedTo(ChronoUnit.SECONDS);
+            }
+            long spanSeconds = Duration.between(firstBatchTime, latestBatchTime).getSeconds();
+            long offsetSeconds = spanSeconds * (safeSeq - 1L) / (batchCount - 1L);
+            // Add a small intra-day stagger, bounded below the multi-day guard.
+            return firstBatchTime
+                    .plusSeconds(offsetSeconds)
+                    .plusMinutes(((safeSeq - 1L) % 6L) * 17L)
+                    .truncatedTo(ChronoUnit.SECONDS);
+        }
+
+        Map<String, Object> toResponseMap() {
+            Map<String, Object> window = new LinkedHashMap<>();
+            window.put("recentWindow", true);
+            window.put("dashboardRangeDays", DASHBOARD_RECENT_RANGE_DAYS);
+            window.put("batchCount", batchCount);
+            window.put("firstBatchTime", firstBatchTime.toString());
+            window.put("latestBatchTime", latestBatchTime.toString());
+            window.put("flowTaskBaseTime", flowTaskBaseTime.toString());
+            window.put("aggregationBaseTime", aggregationBaseTime.toString());
+            return window;
+        }
+    }
+
     private record BuildOutput(
             List<TraceAssignBatch> batches,
             List<TraceBatchCommitter.DemoTraceWithCodeUnit> traceUnits,
             List<TraceBatchCommitter.FlowTaskWithScansUnit> flowTaskUnits,
             List<TraceAggregation> aggregations,
-            DemoLifecycleStats lifecycleStats
+            DemoLifecycleStats lifecycleStats,
+            DemoTimeline timeline
     ) {}
 }

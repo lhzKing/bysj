@@ -1673,7 +1673,7 @@ traceCode={traceCode}|actionType={actionType}|fromNode={fromNode}|toNode={toNode
 
 ### 8.1 生成示例数据
 
-生成可通过 Hash 链和 RSA 签名验证的完整示例数据。生成逻辑同时遵循当前生命周期状态机：
+生成可通过 Hash 链和 RSA 签名验证的完整示例数据。生命周期日志使用动态近期时间线生成，默认落在仪表盘 `range=30d` 可查询窗口内，避免重新生成后地图/趋势/KPI 为空。生成逻辑同时遵循当前生命周期状态机：
 
 ```text
 码状态：GENERATED -> PRINTED -> ACTIVATED
@@ -1744,7 +1744,16 @@ traceCode={traceCode}|actionType={actionType}|fromNode={fromNode}|toNode={toNode
         "INIT -> PRINT_CODE -> ACTIVATE_CODE -> INBOUND",
         "INIT -> PRINT_CODE -> ACTIVATE_CODE -> INBOUND -> OUTBOUND -> TRANSFER",
         "INIT -> PRINT_CODE -> ACTIVATE_CODE -> INBOUND -> OUTBOUND -> TRANSFER -> DELIVER"
-      ]
+      ],
+      "demoTimeWindow": {
+        "recentWindow": true,
+        "dashboardRangeDays": 30,
+        "batchCount": 25,
+        "firstBatchTime": "2026-05-04T08:13:00",
+        "latestBatchTime": "2026-05-27T08:13:00",
+        "flowTaskBaseTime": "2026-05-19T08:13:00",
+        "aggregationBaseTime": "2026-05-13T00:30:00"
+      }
     }
   }
   ```
@@ -1756,6 +1765,7 @@ traceCode={traceCode}|actionType={actionType}|fromNode={fromNode}|toNode={toNode
 | 零部件规格 | 19 种（阀门 6 种、轴承 4 种、电机 3 种、传感器 3 种、管件 3 种） |
 | 溯源快照 | 每条溯源码一个快照，包含当前状态；`TRANSFERRED` 只由 `DELIVER` 产生 |
 | 生命周期日志 | 每条溯源码至少包含 `INIT -> PRINT_CODE -> ACTIVATE_CODE -> INBOUND`，后续随机 `OUTBOUND / TRANSFER / DELIVER / EXCEPTION_OPEN`；`TRANSFER` 保持 `IN_TRANSIT`，`DELIVER` 才进入终态 |
+| 时间窗口 | 以调用时服务器时间动态回推，主生命周期、流转任务、装箱/上托盘日志都在最近 30 天内；默认 500 条会给仪表盘地图、趋势、KPI 提供可见数据 |
 | 聚合关系 | 仅从仍在 `IN_STOCK` 的单品中挑选装箱/上托盘，避免已运输或已交付商品再被装箱 |
 | 地理分布 | 覆盖多个省市区域，模拟真实供应链 |
 
@@ -1820,8 +1830,16 @@ curl -X DELETE "http://localhost:8080/api/admin/clear-trace-data?confirm=DELETE_
 curl -X POST "http://localhost:8080/api/admin/generate-sample-data?count=500" \
   -H "Authorization: Bearer $TOKEN"
 
-# 5. 查看返回 data.lifecycleValidation，应为 OK；也可取一个返回/列表里的 traceCode 调 verify
+# 5. 查看返回 data.lifecycleValidation，应为 OK；data.demoTimeWindow.recentWindow 应为 true；也可取一个返回/列表里的 traceCode 调 verify
 curl http://localhost:8080/api/traces/<traceCode>/verify \
+  -H "Authorization: Bearer $TOKEN"
+
+# 6. 仪表盘 30 天窗口应有数据
+curl "http://localhost:8080/api/dashboard/kpi?range=30d" \
+  -H "Authorization: Bearer $TOKEN"
+curl "http://localhost:8080/api/dashboard/trend?range=30d" \
+  -H "Authorization: Bearer $TOKEN"
+curl "http://localhost:8080/api/dashboard/map?range=30d" \
   -H "Authorization: Bearer $TOKEN"
 ```
 

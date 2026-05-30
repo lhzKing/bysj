@@ -36,6 +36,7 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -176,7 +177,8 @@ class TraceDemoDataServiceImplTest {
                 .containsEntry("snapshots", 30)
                 .containsEntry("lifecycleValidation", "OK")
                 .containsKeys("lifecycleModel", "coreLifecyclePrefix", "actionCounts",
-                        "snapshotStatusCounts", "codeStatusCounts", "terminalSummary", "sampleLifecyclePaths");
+                        "snapshotStatusCounts", "codeStatusCounts", "terminalSummary", "sampleLifecyclePaths",
+                        "demoTimeWindow");
 
         @SuppressWarnings("unchecked")
         Map<String, Integer> actionCounts = (Map<String, Integer>) result.get("actionCounts");
@@ -213,6 +215,36 @@ class TraceDemoDataServiceImplTest {
                 ));
         assertThat(actionsByTrace).hasSize(30);
         actionsByTrace.forEach((traceCode, actions) -> assertLifecycleCompliant(traceCode, actions));
+
+        LocalDateTime nowAfterGeneration = LocalDateTime.now();
+        assertThat(logCaptor.getAllValues())
+                .allSatisfy(log -> assertThat(log.getEventTime())
+                        .as(log.getTraceCode() + " " + log.getActionType())
+                        .isAfterOrEqualTo(nowAfterGeneration.minusDays(31))
+                        .isBeforeOrEqualTo(nowAfterGeneration.plusMinutes(1)));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> demoTimeWindow = (Map<String, Object>) result.get("demoTimeWindow");
+        assertThat(demoTimeWindow)
+                .containsEntry("recentWindow", true)
+                .containsEntry("dashboardRangeDays", 30);
+    }
+
+    @Test
+    void recentDemoTimeline_spreadsBatchesInsideThirtyDayDashboardWindow() {
+        LocalDateTime now = LocalDateTime.of(2026, 5, 31, 6, 30, 45);
+
+        TraceDemoDataServiceImpl.DemoTimeline timeline = TraceDemoDataServiceImpl.recentDemoTimeline(25, now);
+
+        assertThat(timeline.firstBatchTime()).isAfterOrEqualTo(now.minusDays(30));
+        assertThat(timeline.latestBatchTime()).isBeforeOrEqualTo(now.minusDays(3));
+        assertThat(timeline.batchTime(1)).isEqualTo(timeline.firstBatchTime());
+        assertThat(timeline.batchTime(25)).isAfterOrEqualTo(timeline.latestBatchTime());
+        assertThat(timeline.batchTime(25)).isBeforeOrEqualTo(now.minusDays(3).plusHours(1));
+        assertThat(timeline.flowTaskBaseTime()).isAfter(now.minusDays(30));
+        assertThat(timeline.aggregationBaseTime()).isAfter(now.minusDays(30));
+        assertThat(timeline.aggregationBaseTime().plusDays(18).plusHours(6))
+                .isEqualTo(now.withSecond(0).withNano(0));
     }
 
     @Test
