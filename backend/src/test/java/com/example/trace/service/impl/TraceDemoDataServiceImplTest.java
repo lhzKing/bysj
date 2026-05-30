@@ -100,6 +100,7 @@ class TraceDemoDataServiceImplTest {
         when(aggregationMapper.selectCount(null)).thenReturn(330L);
         when(scanIdempotencyMapper.selectCount(null)).thenReturn(1L);
         when(logMapper.selectCount(null)).thenReturn(3500L);
+        when(logMapper.clearCorrectionReferences()).thenReturn(12);
         when(snapshotMapper.selectCount(null)).thenReturn(600L);
         when(traceCodeMapper.selectCount(null)).thenReturn(600L);
         when(assignBatchMapper.selectCount(null)).thenReturn(30L);
@@ -113,6 +114,7 @@ class TraceDemoDataServiceImplTest {
         inOrder.verify(flowTaskMapper).delete(null);
         inOrder.verify(aggregationMapper).delete(null);
         inOrder.verify(scanIdempotencyMapper).delete(null);
+        inOrder.verify(logMapper).clearCorrectionReferences();
         inOrder.verify(logMapper).delete(null);
         inOrder.verify(snapshotMapper).delete(null);
         inOrder.verify(traceCodeMapper).delete(null);
@@ -123,6 +125,7 @@ class TraceDemoDataServiceImplTest {
                 .containsEntry("deletedFlowTasks", 60L)
                 .containsEntry("deletedAggregations", 330L)
                 .containsEntry("deletedIdempotencyKeys", 1L)
+                .containsEntry("clearedCorrectionReferences", 12)
                 .containsEntry("deletedLogs", 3500L)
                 .containsEntry("deletedSnapshots", 600L)
                 .containsEntry("deletedTraceCodes", 600L)

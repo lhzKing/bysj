@@ -229,7 +229,7 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         //   trace_flow_task           → no inbound FK among business tables
         //   trace_aggregation         → no inbound FK on trace_code (parent/child are plain VARCHAR)
         //   trace_scan_idempotency    → fk_trace_scan_idempotency_log on trace_lifecycle_log
-        //   trace_lifecycle_log       → self-ref fk_correction_of (delete handles self-ref OK)
+        //   trace_lifecycle_log       → self-ref fk_correction_of; clear correction_of first, then delete
         //   trace_snapshot            → no inbound FK
         //   trace_code                → fk_trace_code_batch (SET NULL) on trace_assign_batch
         //   trace_assign_batch        → fk_trace_assign_batch_spu RESTRICT on base_part_spec
@@ -243,6 +243,7 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         long idempotencyKeys = scanIdempotencyMapper.selectCount(null);
         scanIdempotencyMapper.delete(null);
         long logs = logMapper.selectCount(null);
+        int clearedCorrectionReferences = logMapper.clearCorrectionReferences();
         logMapper.delete(null);
         long snapshots = snapshotMapper.selectCount(null);
         snapshotMapper.delete(null);
@@ -256,6 +257,7 @@ public class TraceDemoDataServiceImpl implements TraceDemoDataService {
         result.put("deletedFlowTasks", flowTasks);
         result.put("deletedAggregations", aggregations);
         result.put("deletedIdempotencyKeys", idempotencyKeys);
+        result.put("clearedCorrectionReferences", clearedCorrectionReferences);
         result.put("deletedLogs", logs);
         result.put("deletedSnapshots", snapshots);
         result.put("deletedTraceCodes", traceCodes);
