@@ -1,5 +1,7 @@
 package com.example.trace.service;
 
+import com.example.trace.dto.TraceAggregationBatchBindRequest;
+import com.example.trace.dto.TraceAggregationBatchBindResponse;
 import com.example.trace.dto.TraceAggregationBindRequest;
 import com.example.trace.dto.TraceAggregationReleaseRequest;
 import com.example.trace.dto.TraceAggregationResponse;
@@ -10,6 +12,15 @@ public interface TraceAggregationService {
 
     TraceAggregationResponse bindChild(
             TraceAggregationBindRequest request,
+            Long operatorUserId,
+            String operatorUsername
+    );
+
+    /**
+     * 批量绑定：一个父码 + 多个子码，逐个独立事务提交，失败跳过不影响其他子码。
+     */
+    TraceAggregationBatchBindResponse bindChildrenBatch(
+            TraceAggregationBatchBindRequest request,
             Long operatorUserId,
             String operatorUsername
     );

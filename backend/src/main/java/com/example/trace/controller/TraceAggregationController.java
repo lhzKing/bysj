@@ -2,6 +2,8 @@ package com.example.trace.controller;
 
 import com.example.trace.annotation.RequirePermission;
 import com.example.trace.common.ApiResponse;
+import com.example.trace.dto.TraceAggregationBatchBindRequest;
+import com.example.trace.dto.TraceAggregationBatchBindResponse;
 import com.example.trace.dto.TraceAggregationBindRequest;
 import com.example.trace.dto.TraceAggregationReleaseRequest;
 import com.example.trace.dto.TraceAggregationResponse;
@@ -45,6 +47,22 @@ public class TraceAggregationController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.created(response, "聚合关系创建成功"));
+    }
+
+    @PostMapping("/batch")
+    @RequirePermission({"trace:task:scan", "trace:create", "trace:scan", "trace:outbound", "trace:transfer"})
+    public ApiResponse<TraceAggregationBatchBindResponse> bindChildrenBatch(
+            @Valid @RequestBody TraceAggregationBatchBindRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        // 批量绑定按「跳过失败继续」语义，部分失败仍是正常结果（数据里给逐项 success/failure），
+        // 故统一返回 200 + 汇总，由前端按 success_count / failure_count 提示，而非用 HTTP 状态表达。
+        TraceAggregationBatchBindResponse response = traceAggregationService.bindChildrenBatch(
+                request,
+                (Long) httpRequest.getAttribute(ATTR_USER_ID),
+                operator(httpRequest)
+        );
+        return ApiResponse.success(response, "批量绑定完成");
     }
 
     @PostMapping("/{relationId}/release")

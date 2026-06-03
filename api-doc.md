@@ -827,7 +827,8 @@ Access-Control-Max-Age: 3600
 | 方法与路径 | 权限 | 说明 |
 |---|---|---|
 | `GET /api/trace-aggregations[?relation_type=CARTON\|PALLET\|BATCH]` | `trace:view` | 列出全部 active 聚合（前端聚合工作台一次性加载，可按类型筛选） |
-| `POST /api/trace-aggregations` | `trace:task:scan` 或兼容扫码权限 | 创建箱码/托盘码绑定 |
+| `POST /api/trace-aggregations` | `trace:task:scan` 或兼容扫码权限 | 创建箱码/托盘码绑定（单子码） |
+| `POST /api/trace-aggregations/batch` | `trace:task:scan` 或兼容扫码权限 | 批量绑定：一个父码 + 多个子码，逐个独立事务、失败跳过继续 |
 | `POST /api/trace-aggregations/{relation_id}/release` | `trace:task:scan` 或兼容扫码权限 | 解除聚合关系 |
 | `GET /api/trace-aggregations/children?parent_code=CARTON-001` | `trace:view` | 查询有效子码 |
 | `GET /api/trace-aggregations/parents?child_code=TRC-001` | `trace:view` | 查询有效父码 |
@@ -841,6 +842,36 @@ Access-Control-Max-Age: 3600
     "child_code": "TRC-20260507-000001",
     "relation_type": "CARTON",
     "remark": "装箱"
+  }
+  ```
+- **批量绑定 Request**（`POST /api/trace-aggregations/batch`，子码自动去重；单条上限 500）
+  ```json
+  {
+    "parent_code": "CARTON-001",
+    "child_codes": ["TRC-20260507-000001", "TRC-20260507-000002"],
+    "relation_type": "CARTON",
+    "remark": "整箱装箱"
+  }
+  ```
+- **批量绑定 Response**（始终 HTTP 200；部分失败属正常结果，逐项给出原因）
+  ```json
+  {
+    "code": 0,
+    "status": 200,
+    "message": "批量绑定完成",
+    "data": {
+      "parent_code": "CARTON-001",
+      "relation_type": "CARTON",
+      "total_requested": 2,
+      "success_count": 1,
+      "failure_count": 1,
+      "succeeded": [
+        { "id": 9001, "parent_code": "CARTON-001", "child_code": "TRC-20260507-000001", "relation_type": "CARTON", "active": true }
+      ],
+      "failed": [
+        { "child_code": "TRC-20260507-000002", "code": 10007, "message": "单品码已存在启用的父级聚合关系: childCode=TRC-20260507-000002" }
+      ]
+    }
   }
   ```
 - **解除 Request**
@@ -1893,7 +1924,7 @@ WHERE d.action_type = 'DELIVER';
 | 单品码激活 | `POST /api/trace-codes/{trace_code}/activate` |
 | 批次对账 / 批次码列表 | `GET /api/trace-batches/{batch_id}` / `codes` |
 | 流转任务 | `GET/POST /api/trace-flow-tasks`、`POST /api/trace-flow-tasks/{id}/scan|complete|cancel` |
-| 箱码/托盘码聚合 | `GET /api/trace-aggregations[?relation_type=]`、`POST /api/trace-aggregations`、`GET /api/trace-aggregations/children\|parents\|history/*` |
+| 箱码/托盘码聚合 | `GET /api/trace-aggregations[?relation_type=]`、`POST /api/trace-aggregations`、`POST /api/trace-aggregations/batch`、`GET /api/trace-aggregations/children\|parents\|history/*` |
 | 结构化节点 | `GET/POST/PUT/DELETE /api/trace-nodes` |
 | 用户节点绑定 | `GET /api/users/me/trace-nodes`、`GET/PUT /api/users/{id}/trace-nodes` |
 | 异常解除 / 审计纠错 | `POST /api/traces/{trace_code}/exception/close`、`POST /api/traces/{trace_code}/corrections` |

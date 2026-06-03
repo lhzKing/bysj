@@ -8,6 +8,7 @@ import {
   Package,
   PackageMinus,
   PackagePlus,
+  Plus,
   RefreshCw,
   Search
 } from 'lucide-vue-next'
@@ -58,6 +59,8 @@ const loadError = ref('')
 const releasingId = ref(null)
 const dialogOpen = ref(false)
 const dialogRelationType = ref('CARTON')
+// 非空 → 弹窗进入「添加成员」模式（父码 + 类型锁定）；新建装箱/装托时清空。
+const dialogPresetParent = ref('')
 
 const activeRelationFilter = ref('ALL')
 const parentKeyword = ref('')
@@ -143,7 +146,19 @@ function handleFilterChange(value) {
 }
 
 function openBindDialog(relationType) {
+  dialogPresetParent.value = ''
   dialogRelationType.value = relationType
+  dialogOpen.value = true
+}
+
+/**
+ * 向某个已有箱 / 托盘追加成员：预填并锁定父码 + 类型，复用同一个批量绑定弹窗。
+ * 「移除成员」走每行的「解除」，二者合起来就是对已建聚合的增/减能力。
+ */
+function openAddMember(group) {
+  if (!group?.parentCode) return
+  dialogPresetParent.value = group.parentCode
+  dialogRelationType.value = group.relationType
   dialogOpen.value = true
 }
 
@@ -329,6 +344,17 @@ function relationTone(value) {
             </div>
             <div class="agg-workbench__group-meta">
               <span>共 {{ group.rows.length }} 个子码</span>
+              <BaseButton
+                v-if="canBind"
+                variant="text"
+                size="sm"
+                :disabled="loading"
+                :data-test="`aggregation-add-member-${group.parentCode}`"
+                @click="openAddMember(group)"
+              >
+                <template #icon><Plus :size="13" /></template>
+                添加成员
+              </BaseButton>
             </div>
           </header>
 
@@ -392,6 +418,7 @@ function relationTone(value) {
     <AggregationBindDialog
       v-model="dialogOpen"
       :default-relation-type="dialogRelationType"
+      :preset-parent-code="dialogPresetParent"
       @success="handleBindSuccess"
     />
   </div>
@@ -567,6 +594,9 @@ function relationTone(value) {
   word-break: break-all;
 }
 .agg-workbench__group-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 12px;
   color: var(--ink-subtle);
   white-space: nowrap;

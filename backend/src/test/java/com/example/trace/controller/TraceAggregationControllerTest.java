@@ -1,6 +1,8 @@
 package com.example.trace.controller;
 
 import com.example.trace.common.ApiResponse;
+import com.example.trace.dto.TraceAggregationBatchBindRequest;
+import com.example.trace.dto.TraceAggregationBatchBindResponse;
 import com.example.trace.dto.TraceAggregationBindRequest;
 import com.example.trace.dto.TraceAggregationReleaseRequest;
 import com.example.trace.dto.TraceAggregationResponse;
@@ -42,6 +44,29 @@ class TraceAggregationControllerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getData()).isSameAs(expected);
         verify(traceAggregationService).bindChild(request, 7L, "operator-a");
+    }
+
+    @Test
+    void bindChildrenBatch_shouldDelegateToServiceAndReturnSummary() {
+        TraceAggregationBatchBindRequest request = new TraceAggregationBatchBindRequest();
+        request.setParentCode("CARTON-001");
+        request.setRelationType(TraceAggregationRelationType.CARTON);
+        request.setChildCodes(List.of("TRACE-001", "TRACE-002"));
+        TraceAggregationBatchBindResponse expected = TraceAggregationBatchBindResponse.builder()
+                .parentCode("CARTON-001")
+                .relationType(TraceAggregationRelationType.CARTON)
+                .totalRequested(2)
+                .successCount(2)
+                .failureCount(0)
+                .build();
+        MockHttpServletRequest httpRequest = request();
+        when(traceAggregationService.bindChildrenBatch(request, 7L, "operator-a")).thenReturn(expected);
+
+        ApiResponse<TraceAggregationBatchBindResponse> response = controller.bindChildrenBatch(request, httpRequest);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getData()).isSameAs(expected);
+        verify(traceAggregationService).bindChildrenBatch(request, 7L, "operator-a");
     }
 
     @Test

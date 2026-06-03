@@ -2,6 +2,8 @@ package com.example.trace.service.impl;
 
 import com.example.trace.common.BizCode;
 import com.example.trace.common.BizException;
+import com.example.trace.dto.TraceAggregationBatchBindRequest;
+import com.example.trace.dto.TraceAggregationBatchBindResponse;
 import com.example.trace.dto.TraceAggregationBindRequest;
 import com.example.trace.dto.TraceAggregationReleaseRequest;
 import com.example.trace.dto.TraceAggregationResponse;
@@ -22,12 +24,16 @@ import com.example.trace.util.HashUtil;
 import com.example.trace.service.TraceAggregationService;
 import com.example.trace.validation.TraceLocationFieldConstraints;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -46,6 +52,15 @@ public class TraceAggregationServiceImpl implements TraceAggregationService {
     private final TraceSnapshotMapper traceSnapshotMapper;
     private final TraceLifecycleLogMapper traceLifecycleLogMapper;
     private final TraceLogFactory traceLogFactory;
+
+    /**
+     * 自身代理引用，仅供 {@link #bindChildrenBatch} 在循环中跨方法触发 {@code @Transactional} 边界。
+     * 直接 {@code this.bindChild(...)} 会绕过 Spring AOP 代理，单个子码就失去事务原子性
+     * （relation 行已插入但 PACK 日志写一半即可能留孤儿）。用 {@code @Lazy} 注入代理避免构造期自引用循环。
+     */
+    @Autowired
+    @Lazy
+    private TraceAggregationService self;
 
     @Override
     @Transactional
@@ -90,6 +105,65 @@ public class TraceAggregationServiceImpl implements TraceAggregationService {
                 normalizeUsername(operatorUsername)
         );
         return toResponse(relation);
+    }
+
+    /**
+     * 批量绑定：一个父码 + 多个子码。
+     *
+     * 关键事务设计（与扫码重试同源，见 CLAUDE.md「扫码流转」）：
+     *   - 本方法**不得**标 {@code @Transactional}。每个子码通过 {@code self.bindChild(...)}
+     *     走独立事务边界（外层无事务时，bindChild 的 REQUIRED 即开启全新事务）。
+     *   - 单个子码失败抛 {@link BizException}，仅回滚该子码自身事务；外层捕获后记录原因并
+     *     继续处理后续子码——即用户确认的「跳过失败继续」。
+     *   - 若外层误加事务，则内层会 JOIN 同一事务、首个失败把整批标记 rollback-only，
+     *     跳过失败继续将失效——故此处显式禁止加事务注解。
+     */
+    @Override
+    public TraceAggregationBatchBindResponse bindChildrenBatch(
+            TraceAggregationBatchBindRequest request,
+            Long operatorUserId,
+            String operatorUsername
+    ) {
+        if (request == null) {
+            throw new BizException(BizCode.PARAM_ERROR, "批量聚合绑定参数不能为空");
+        }
+        TraceAggregationRelationType relationType = requireRelationType(request.getRelationType());
+        String parentCode = normalizeAggregationCode("parentCode", request.getParentCode());
+        String remark = normalizeRemark(request.getRemark());
+        List<String> childCodes = normalizeChildCodes(request.getChildCodes());
+        if (childCodes.isEmpty()) {
+            throw new BizException(BizCode.PARAM_ERROR, "childCodes 不能为空");
+        }
+
+        List<TraceAggregationResponse> succeeded = new ArrayList<>();
+        List<TraceAggregationBatchBindResponse.FailedChild> failed = new ArrayList<>();
+        for (String childCode : childCodes) {
+            TraceAggregationBindRequest single = new TraceAggregationBindRequest();
+            single.setParentCode(parentCode);
+            single.setChildCode(childCode);
+            single.setRelationType(relationType);
+            single.setRemark(remark);
+            try {
+                succeeded.add(self.bindChild(single, operatorUserId, operatorUsername));
+            } catch (BizException e) {
+                failed.add(TraceAggregationBatchBindResponse.FailedChild.builder()
+                        .childCode(childCode)
+                        .code(e.getCode())
+                        .message(e.getMessage())
+                        .build());
+            }
+        }
+
+        return TraceAggregationBatchBindResponse.builder()
+                .parentCode(parentCode)
+                .relationType(relationType)
+                .relationTypeLabel(relationType.getLabel())
+                .totalRequested(childCodes.size())
+                .successCount(succeeded.size())
+                .failureCount(failed.size())
+                .succeeded(succeeded)
+                .failed(failed)
+                .build();
     }
 
     @Override
@@ -387,6 +461,24 @@ public class TraceAggregationServiceImpl implements TraceAggregationService {
             throw new BizException(BizCode.PARAM_ERROR, fieldName + " contains unsupported characters");
         }
         return normalized;
+    }
+
+    /**
+     * 归一化 + 去重批量子码：trim + 大写（与 {@link #normalizeAggregationCode} 同口径，确保去重一致），
+     * 丢弃空白项并保留首次出现顺序。单个子码的字符 / 长度 / 业务校验留给 bindChild 逐个执行——
+     * 非法子码会成为该项的失败记录，而非让整批返回 400。
+     */
+    private List<String> normalizeChildCodes(List<String> rawChildCodes) {
+        if (rawChildCodes == null || rawChildCodes.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> deduped = new LinkedHashSet<>();
+        for (String raw : rawChildCodes) {
+            if (StringUtils.hasText(raw)) {
+                deduped.add(raw.trim().toUpperCase(Locale.ROOT));
+            }
+        }
+        return new ArrayList<>(deduped);
     }
 
     private String normalizeUsername(String operatorUsername) {

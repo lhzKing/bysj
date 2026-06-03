@@ -5,7 +5,8 @@ import request from '@/core/api/request'
  *
  * 6 个端点对齐 backend/.../controller/TraceAggregationController：
  *   GET    /api/trace-aggregations[?relation_type=]    list all active（工作台一次性拉全部）
- *   POST   /api/trace-aggregations                     bind（装箱/装托）
+ *   POST   /api/trace-aggregations                     bind（装箱/装托，单子码）
+ *   POST   /api/trace-aggregations/batch               batch bind（一个父码 + 多个子码，跳过失败继续）
  *   POST   /api/trace-aggregations/{relationId}/release  release
  *   GET    /api/trace-aggregations/children?parent_code=...
  *   GET    /api/trace-aggregations/parents?child_code=...
@@ -31,6 +32,16 @@ export function listActiveAggregations(params = {}) {
  */
 export function bindAggregation(data) {
   return request.post('/trace-aggregations', data)
+}
+
+/**
+ * Batch-bind multiple child codes to one parent carton/pallet.
+ * 后端按「跳过失败继续」逐个独立事务提交，返回 { successCount, failureCount, succeeded[], failed[] }。
+ * @param {{ parentCode: string, childCodes: string[], relationType: 'CARTON'|'PALLET', remark?: string }} data
+ * @returns {Promise<{ parentCode: string, relationType: string, totalRequested: number, successCount: number, failureCount: number, succeeded: Array, failed: Array<{ childCode: string, code: number, message: string }> }>}
+ */
+export function bindAggregationBatch(data) {
+  return request.post('/trace-aggregations/batch', data)
 }
 
 /**

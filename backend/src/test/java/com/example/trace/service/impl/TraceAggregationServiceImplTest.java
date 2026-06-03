@@ -2,6 +2,8 @@ package com.example.trace.service.impl;
 
 import com.example.trace.common.BizCode;
 import com.example.trace.common.BizException;
+import com.example.trace.dto.TraceAggregationBatchBindRequest;
+import com.example.trace.dto.TraceAggregationBatchBindResponse;
 import com.example.trace.dto.TraceAggregationBindRequest;
 import com.example.trace.dto.TraceAggregationReleaseRequest;
 import com.example.trace.dto.TraceAggregationResponse;
@@ -23,7 +25,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,6 +64,8 @@ class TraceAggregationServiceImplTest {
                 traceLifecycleLogMapper,
                 traceLogFactory
         );
+        // 生产环境 self 是 Spring 注入的代理；单测里直接指回本实例即可走通 bindChildrenBatch 的循环编排。
+        ReflectionTestUtils.setField(service, "self", service);
         Mockito.lenient().when(traceSnapshotMapper.updateById(any(TraceSnapshot.class))).thenReturn(1);
     }
 
@@ -269,6 +276,113 @@ class TraceAggregationServiceImplTest {
         assertThat(responses).hasSize(1);
         assertThat(responses.get(0).getParentCode()).isEqualTo("CARTON-001");
         assertThat(responses.get(0).getChildCode()).isEqualTo("TRACE-001");
+    }
+
+    @Test
+    void bindChildrenBatch_shouldBindEveryChildWhenAllValid() {
+        stubCartonChildBindable("TRACE-001");
+        stubCartonChildBindable("TRACE-002");
+        stubCreateLogForAnyChild();
+        stubInsertAssignsId();
+
+        TraceAggregationBatchBindResponse response = service.bindChildrenBatch(
+                batchRequest("carton-001", TraceAggregationRelationType.CARTON, " trace-001 ", "trace-002"),
+                7L, "operator-a");
+
+        assertThat(response.getTotalRequested()).isEqualTo(2);
+        assertThat(response.getSuccessCount()).isEqualTo(2);
+        assertThat(response.getFailureCount()).isZero();
+        assertThat(response.getSucceeded()).hasSize(2);
+        assertThat(response.getFailed()).isEmpty();
+        assertThat(response.getParentCode()).isEqualTo("CARTON-001");
+        assertThat(response.getRelationType()).isEqualTo(TraceAggregationRelationType.CARTON);
+        verify(traceAggregationMapper, times(2)).insert(any(TraceAggregation.class));
+    }
+
+    @Test
+    void bindChildrenBatch_shouldSkipFailedChildAndContinue() {
+        // TRACE-001 可绑定；TRACE-002 已在别的箱里 → CONFLICT，但不能阻断 TRACE-001 的提交（跳过失败继续）。
+        stubCartonChildBindable("TRACE-001");
+        when(traceAggregationMapper.selectActiveRelation("CARTON-001", "TRACE-002")).thenReturn(null);
+        when(traceAggregationMapper.selectActiveParentsByChild("TRACE-002"))
+                .thenReturn(List.of(relation(1L, "CARTON-002", "TRACE-002", TraceAggregationRelationType.CARTON, true)));
+        stubCreateLogForAnyChild();
+        stubInsertAssignsId();
+
+        TraceAggregationBatchBindResponse response = service.bindChildrenBatch(
+                batchRequest("carton-001", TraceAggregationRelationType.CARTON, "trace-001", "trace-002"),
+                7L, "operator-a");
+
+        assertThat(response.getSuccessCount()).isEqualTo(1);
+        assertThat(response.getFailureCount()).isEqualTo(1);
+        assertThat(response.getSucceeded()).hasSize(1);
+        assertThat(response.getFailed()).hasSize(1);
+        assertThat(response.getFailed().get(0).getChildCode()).isEqualTo("TRACE-002");
+        assertThat(response.getFailed().get(0).getCode()).isEqualTo(BizCode.CONFLICT);
+        // 只有 TRACE-001 真正写入，失败子码不留任何记录。
+        verify(traceAggregationMapper, times(1)).insert(any(TraceAggregation.class));
+    }
+
+    @Test
+    void bindChildrenBatch_shouldDedupeChildCodesCaseInsensitively() {
+        stubCartonChildBindable("TRACE-001");
+        stubCreateLogForAnyChild();
+        stubInsertAssignsId();
+
+        TraceAggregationBatchBindResponse response = service.bindChildrenBatch(
+                batchRequest("CARTON-001", TraceAggregationRelationType.CARTON, " trace-001 ", "TRACE-001", "trace-001"),
+                7L, "operator-a");
+
+        assertThat(response.getTotalRequested()).isEqualTo(1);
+        assertThat(response.getSuccessCount()).isEqualTo(1);
+        verify(traceAggregationMapper, times(1)).insert(any(TraceAggregation.class));
+    }
+
+    @Test
+    void bindChildrenBatch_shouldRejectWhenAllChildCodesBlank() {
+        assertThatThrownBy(() -> service.bindChildrenBatch(
+                batchRequest("CARTON-001", TraceAggregationRelationType.CARTON, "  ", ""),
+                7L, "operator-a"))
+                .isInstanceOf(BizException.class)
+                .satisfies(error -> assertThat(((BizException) error).getCode()).isEqualTo(BizCode.PARAM_ERROR));
+    }
+
+    private void stubInsertAssignsId() {
+        when(traceAggregationMapper.insert(any(TraceAggregation.class))).thenAnswer(invocation -> {
+            TraceAggregation relation = invocation.getArgument(0);
+            relation.setId(99L);
+            return 1;
+        });
+    }
+
+    private void stubCreateLogForAnyChild() {
+        when(traceLogFactory.createLog(
+                any(), any(), any(ActionType.class), any(), any(),
+                any(), any(), any(), any(), any(), any(), any(), any()
+        )).thenAnswer(invocation -> lifecycleLog(
+                700L, "batch-hash",
+                ((ActionType) invocation.getArgument(2)).getCode(),
+                invocation.getArgument(4)));
+    }
+
+    private void stubCartonChildBindable(String normalizedChild) {
+        when(traceAggregationMapper.selectActiveRelation("CARTON-001", normalizedChild)).thenReturn(null);
+        when(traceAggregationMapper.selectActiveParentsByChild(normalizedChild)).thenReturn(List.of());
+        when(traceCodeMapper.selectByTraceCode(normalizedChild)).thenReturn(traceCode(normalizedChild));
+        when(traceSnapshotMapper.selectById(normalizedChild)).thenReturn(snapshot(normalizedChild, "IN_STOCK"));
+    }
+
+    private static TraceAggregationBatchBindRequest batchRequest(
+            String parentCode,
+            TraceAggregationRelationType relationType,
+            String... childCodes
+    ) {
+        TraceAggregationBatchBindRequest request = new TraceAggregationBatchBindRequest();
+        request.setParentCode(parentCode);
+        request.setRelationType(relationType);
+        request.setChildCodes(new ArrayList<>(Arrays.asList(childCodes)));
+        request.setRemark("批量装箱");
+        return request;
     }
 
     private static TraceAggregationBindRequest bindRequest(

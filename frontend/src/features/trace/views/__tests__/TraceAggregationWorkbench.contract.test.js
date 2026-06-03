@@ -30,9 +30,9 @@ vi.mock('@/features/trace/api', () => ({
 
 const aggregationBindDialogStub = {
   name: 'AggregationBindDialog',
-  props: ['modelValue', 'defaultRelationType'],
+  props: ['modelValue', 'defaultRelationType', 'presetParentCode'],
   emits: ['update:modelValue', 'success'],
-  template: `<div v-if="modelValue" :data-test="'aggregation-bind-dialog-' + defaultRelationType"></div>`
+  template: `<div v-if="modelValue" :data-test="'aggregation-bind-dialog-' + defaultRelationType" :data-preset="presetParentCode || ''"></div>`
 }
 
 function row(overrides = {}) {
@@ -147,5 +147,34 @@ describe('TraceAggregationWorkbench contract', () => {
     expect(wrapper.find('[data-test="aggregation-create-carton"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="aggregation-create-pallet"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="aggregation-release-10"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="aggregation-add-member-CARTON-EXT-001-aaa"]').exists()).toBe(false)
+  })
+
+  it('opens an add-member dialog with the group parent prefilled and relation type carried over', async () => {
+    const wrapper = mountWorkbench()
+    await flushPromises()
+
+    await wrapper.find('[data-test="aggregation-add-member-CARTON-EXT-001-aaa"]').trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.find('[data-test="aggregation-bind-dialog-CARTON"]')
+    expect(dialog.exists()).toBe(true)
+    expect(dialog.attributes('data-preset')).toBe('CARTON-EXT-001-aaa')
+  })
+
+  it('clears the preset parent when opening the plain 新建装箱 dialog', async () => {
+    const wrapper = mountWorkbench()
+    await flushPromises()
+
+    // First open add-member (sets preset), then open plain create — preset must reset.
+    await wrapper.find('[data-test="aggregation-add-member-CARTON-EXT-001-aaa"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="aggregation-bind-dialog-CARTON"]').attributes('data-preset'))
+      .toBe('CARTON-EXT-001-aaa')
+
+    await wrapper.find('[data-test="aggregation-create-carton"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="aggregation-bind-dialog-CARTON"]').attributes('data-preset')).toBe('')
   })
 })
